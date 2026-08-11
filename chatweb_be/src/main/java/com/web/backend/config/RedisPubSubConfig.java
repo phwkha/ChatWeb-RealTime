@@ -1,6 +1,7 @@
 package com.web.backend.config;
 
 import com.web.backend.redis.RedisSubscriber;
+import org.springframework.data.redis.core.RedisTemplate;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -25,7 +26,10 @@ public class RedisPubSubConfig {
     }
 
     @Bean
-    public MessageListenerAdapter listenerAdapter(RedisSubscriber subscriber) {
-        return new MessageListenerAdapter(subscriber, "receiveMessage");
+    public MessageListenerAdapter listenerAdapter(RedisSubscriber subscriber,
+            RedisTemplate<String, Object> redisTemplate) {
+        MessageListenerAdapter adapter = new MessageListenerAdapter(subscriber, "receiveMessage");
+        adapter.setSerializer(redisTemplate.getValueSerializer());
+        return adapter;
     }
 }

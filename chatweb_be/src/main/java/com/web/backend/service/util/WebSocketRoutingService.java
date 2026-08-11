@@ -1,6 +1,5 @@
 package com.web.backend.service.util;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.web.backend.config.ServerIdentity;
 import com.web.backend.redis.RedisWsMessage;
 import lombok.RequiredArgsConstructor;
@@ -16,7 +15,6 @@ public class WebSocketRoutingService {
 
     private final SimpMessagingTemplate simpMessagingTemplate;
     private final RedisTemplate<String, Object> redisTemplate;
-    private final ObjectMapper objectMapper;
 
     private static final String WS_ROUTING_STRING = "ws:routing:";
     private static final String CHANNEL_SERVER_STRING = "channel:server:";
@@ -32,8 +30,7 @@ public class WebSocketRoutingService {
                 log.info("Sent locally to {}", username);
             } else {
                 RedisWsMessage wsMessage = new RedisWsMessage(username, destination, payload);
-                redisTemplate.convertAndSend(CHANNEL_SERVER_STRING + targetServerId,
-                        objectMapper.writeValueAsString(wsMessage));
+                redisTemplate.convertAndSend(CHANNEL_SERVER_STRING + targetServerId, wsMessage);
                 log.info("Routed to Server {} for user {}", targetServerId, username);
             }
         } else {

@@ -5,11 +5,15 @@ import com.web.backend.common.MessageStatus;
 import com.web.backend.common.MessageType;
 import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.AllArgsConstructor;
 import java.time.LocalDateTime;
 import java.util.Map;
 
 @Data
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class ChatMessageResponse {
 
     private String id;
