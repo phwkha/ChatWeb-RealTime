@@ -5,5 +5,11 @@ global:
 scrape_configs:
   - job_name: 'chatweb_backend'
     metrics_path: '/actuator/prometheus'
-    static_configs:
-      - targets: ['backend:8080']
+    scheme: https
+    tls_config:
+      insecure_skip_verify: true
+    dns_sd_configs:
+      - names:
+          - 'cw_backend'
+        type: 'A'
+        port: 8443
