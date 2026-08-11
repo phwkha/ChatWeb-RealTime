@@ -24,8 +24,8 @@ public class JwtHandshakeInterceptor implements HandshakeInterceptor {
     public boolean beforeHandshake(@NonNull ServerHttpRequest request, @NonNull ServerHttpResponse response,
             @NonNull WebSocketHandler wsHandler, @NonNull Map<String, Object> attributes) throws Exception {
 
-        if (request instanceof ServletServerHttpRequest) {
-            HttpServletRequest servletRequest = ((ServletServerHttpRequest) request).getServletRequest();
+        if (request instanceof ServletServerHttpRequest servletserverhttprequest) {
+            HttpServletRequest servletRequest = servletserverhttprequest.getServletRequest();
 
             if (servletRequest.getCookies() != null) {
                 for (Cookie cookie : servletRequest.getCookies()) {

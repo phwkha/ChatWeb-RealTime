@@ -1,5 +1,6 @@
 package com.web.backend.config;
 
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 
@@ -11,6 +12,7 @@ import com.web.backend.service.util.UserServiceDetail;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.lang.NonNull;
 import org.springframework.messaging.Message;
@@ -24,6 +26,7 @@ import org.springframework.messaging.support.ChannelInterceptor;
 import org.springframework.messaging.support.MessageHeaderAccessor;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.util.StringUtils;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
@@ -56,10 +59,13 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     private static final String APP_STRING = "/app";
     private static final String WS_STRING = "/ws";
 
+    private static final String WS_LOCALE_STRING = "WS_LOCALE";
+
     private static final String JWT_TOKEN_COOKIE_STRING = "jwt_token_cookie";
     private static final String BLACKLIST_STRING = "blacklist:";
     private static final String AUTHORIZATION_STRING = "Authorization";
     private static final String BEARER_STRING = "Bearer ";
+    private static final String ACCEPT_LANGUAGE_STRING = "Accept-Language";
 
     private static final String ERROR_WS_AUTH_FAILED_STRING = "error.ws.auth_failed";
     private static final String ERROR_WS_BLACKLISTED_STRING = "error.ws.blacklisted";
@@ -90,8 +96,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
                 byte[] payload;
                 try {
-                    SocketResponse<Object> response = 
-                        SocketResponse.error(errorMessage, null);
+                    SocketResponse<Object> response = SocketResponse.error(errorMessage, null);
                     payload = objectMapper.writeValueAsBytes(response);
                 } catch (Exception e) {
                     payload = errorMessage != null ? errorMessage.getBytes() : new byte[0];
@@ -114,16 +119,27 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
             public Message<?> preSend(@NonNull Message<?> message, @NonNull MessageChannel channel) {
                 StompHeaderAccessor accessor = MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
 
-                if (accessor != null && StompCommand.CONNECT.equals(accessor.getCommand())) {
+                if (accessor != null) {
+                    Map<String, Object> sessionAttributes = accessor.getSessionAttributes();
+                    if (StompCommand.CONNECT.equals(accessor.getCommand())) {
+                        String lang = accessor.getFirstNativeHeader(ACCEPT_LANGUAGE_STRING);
+                        if (lang != null && sessionAttributes != null) {
+                            sessionAttributes.put(WS_LOCALE_STRING, lang);
+                            LocaleContextHolder.setLocale(StringUtils.parseLocaleString(lang));
+                        }
+                    } else if (sessionAttributes != null && sessionAttributes.containsKey(WS_LOCALE_STRING)) {
+                        String lang = (String) sessionAttributes.get(WS_LOCALE_STRING);
+                        LocaleContextHolder.setLocale(StringUtils.parseLocaleString(lang));
+                    }
+                }
 
+                if (accessor != null && StompCommand.CONNECT.equals(accessor.getCommand())) {
                     Map<String, Object> sessionAttributes = accessor.getSessionAttributes();
                     String token = sessionAttributes != null ? (String) sessionAttributes.get(JWT_TOKEN_COOKIE_STRING)
                             : null;
-
                     if (token == null) {
                         token = extractTokenFromHeader(accessor);
                     }
-
                     if (token != null) {
                         try {
                             String key = BLACKLIST_STRING + token;
@@ -132,20 +148,15 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                                 throw new MessagingException(
                                         Objects.requireNonNull(Translator.tolocale(ERROR_WS_BLACKLISTED_STRING)));
                             }
-
                             String username = jwtService.extractUsername(token, TokenType.ACCESS_TOKEN);
-
                             if (username != null) {
                                 UserDetails userDetails = userServiceDetail.loadUserByUsername(username);
-
                                 if (userDetails instanceof UserEntity userEntity) {
                                     Integer tokenVersionInJwt = jwtService.extractClaim(token, TokenType.ACCESS_TOKEN,
                                             claims -> claims.get("v", Integer.class));
-
                                     Integer currentVersion = userEntity.getTokenVersion();
                                     if (currentVersion == null)
                                         currentVersion = 0;
-
                                     if (tokenVersionInJwt == null || !tokenVersionInJwt.equals(currentVersion)) {
                                         log.warn("Token version mismatch for user in WebSocket: {}", username);
                                         throw new MessagingException(Objects
@@ -153,7 +164,6 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                                                         Translator.tolocale(ERROR_WS_INVALID_TOKEN_VERSION_STRING)));
                                     }
                                 }
-
                                 UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
                                         userDetails, null, userDetails.getAuthorities());
                                 accessor.setUser(auth);
@@ -181,7 +191,13 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                 if (accessor != null && accessor.isModified()) {
                     return MessageBuilder.createMessage(message.getPayload(), accessor.getMessageHeaders());
                 }
+
                 return message;
+            }
+
+            @Override
+            public void afterSendCompletion(Message<?> message, MessageChannel channel, boolean sent, Exception ex) {
+                LocaleContextHolder.resetLocaleContext();
             }
         });
     }
