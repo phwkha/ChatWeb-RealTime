@@ -176,6 +176,7 @@ services:
 
   # --- SPRING BOOT BACKEND ---
   cw_backend:
+    image: ${DOCKER_USERNAME}/chatweb-backend:latest
     expose:
       - "8443"
     environment:
