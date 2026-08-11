@@ -7,7 +7,7 @@ services:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
     ports:
-      - "27017:27017"
+      - "127.0.0.1:27017:27017"
     volumes:
       - mongo_data:/data/db
       - mongo_config_data:/data/configdb
@@ -23,7 +23,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql
       - ./chatweb_be/initdb.sql:/docker-entrypoint-initdb.d/init.sql
@@ -36,8 +36,8 @@ services:
     container_name: redis
     hostname: redis
     ports:
-      - "6379:6379"
-      - "8001:8001"
+      - "127.0.0.1:6379:6379"
+      - "127.0.0.1:8001:8001"
     environment:
       - REDIS_ARGS=--requirepass ${REDIS_PASSWORD}
     volumes:
@@ -50,7 +50,7 @@ services:
     image: confluentinc/cp-kafka:latest
     container_name: chat-kafka
     ports:
-      - "9092:9092"
+      - "127.0.0.1:9092:9092"
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
@@ -66,16 +66,118 @@ services:
       - kafka_data:/var/lib/kafka/data
       - kafka_secrets:/etc/kafka/secrets
 
+  # --- FILEBEAT ---
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.10.4
+    container_name: filebeat
+    user: root
+    command: filebeat -e -strict.perms=false
+    volumes:
+      - ./chatweb_be/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - ./chatweb_be/logs:/usr/share/filebeat/logs:ro
+    networks:
+      - default
+    depends_on:
+      - logstash
+
+  # --- ELASTICSEARCH ---
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.10.4
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=true
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "127.0.0.1:9200:9200"
+    networks:
+      - default
+
+  # --- LOGSTASH ---
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.10.4
+    container_name: logstash
+    ports:
+      - "127.0.0.1:5000:5000"
+      - "127.0.0.1:5044:5044"
+    volumes:
+      - ./chatweb_be/logstash/pipeline:/usr/share/logstash/pipeline
+    environment:
+      - "LS_JAVA_OPTS=-Xms256m -Xmx256m"
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+    networks:
+      - default
+    depends_on:
+      - elasticsearch
+
+  # --- KIBANA ---
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.10.4
+    container_name: kibana
+    ports:
+      - "127.0.0.1:5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - ELASTICSEARCH_USERNAME=kibana_system
+      - ELASTICSEARCH_PASSWORD=${ELASTIC_PASSWORD}
+      - SERVER_BASEPATH=/kibana
+      - SERVER_REWRITEBASEPATH=true
+    networks:
+      - default
+    depends_on:
+      - elasticsearch
+
+  # --- PROMETHEUS ---
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./chatweb_be/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    networks:
+      - default
+    depends_on:
+      - cw_backend
+
+  # --- GRAFANA ---
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GF_SECURITY_ADMIN_USER}
+      - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD}
+      - GF_SERVER_ROOT_URL=http://localhost:8080/grafana/
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      - default
+    depends_on:
+      - prometheus
+
+  # --- NGINX LOAD BALANCER CHO BACKEND ---
+  nginx_lb:
+    image: nginx:alpine
+    container_name: nginx_load_balancer
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl/ca/rootCA.crt:/etc/nginx/ssl/rootCA.crt:ro
+    networks:
+      - default
+    depends_on:
+      - cw_backend
+
   # --- SPRING BOOT BACKEND ---
   cw_backend:
-    container_name: backend
-    # Thay vì build bằng Dockerfile như cũ, giờ ta dùng luôn Image do Jib tạo ra
-    image: ${DOCKER_USERNAME}/chatweb-backend:latest
-    # build:
-    #   context: ./chatweb_be
-    #   dockerfile: Dockerfile
-    ports:
-      - "8080:8080"
+    expose:
+      - "8443"
     environment:
       MONGO_HOST: mongo
       MONGO_PORT: 27017
@@ -116,8 +218,15 @@ services:
       APP_CORS_ALLOWED_ORIGINS: ${FRONTEND_URL}
 
       SPRING_PROFILES_ACTIVE: dev
+
+      SERVER_PORT: 8443
+      SERVER_SSL_ENABLED: "true"
+      SERVER_SSL_KEY_STORE: file:/app/ssl/backend-keystore.p12
+      SERVER_SSL_KEY_STORE_PASSWORD: ${BACKEND_SSL_PASSWORD}
+      SERVER_SSL_KEY_STORE_TYPE: PKCS12
     volumes:
       - ./chatweb_be/logs:/app/logs
+      - ./ssl/backend:/app/ssl:ro
     networks:
       - default
     depends_on:
@@ -135,101 +244,11 @@ services:
       args:
         - VITE_API_URL=${VITE_API_URL}
     ports:
-      - "5173:80" # Exposed to 5173 on host, forwards to Nginx port 80
+      - "5173:80"
     networks:
       - default
     depends_on:
       - cw_backend
-
-  # --- FILEBEAT ---
-  filebeat:
-    image: docker.elastic.co/beats/filebeat:8.10.4
-    container_name: filebeat
-    user: root
-    command: filebeat -e -strict.perms=false
-    volumes:
-      - ./chatweb_be/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
-      - ./chatweb_be/logs:/usr/share/filebeat/logs:ro
-    networks:
-      - default
-    depends_on:
-      - logstash
-
-  # --- ELASTICSEARCH ---
-  elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.10.4
-    container_name: elasticsearch
-    environment:
-      - discovery.type=single-node
-      - xpack.security.enabled=true
-      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
-      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
-    ports:
-      - "9200:9200"
-    networks:
-      - default
-
-  # --- LOGSTASH ---
-  logstash:
-    image: docker.elastic.co/logstash/logstash:8.10.4
-    container_name: logstash
-    ports:
-      - "5000:5000"
-      - "5044:5044"
-    volumes:
-      - ./chatweb_be/logstash/pipeline:/usr/share/logstash/pipeline
-    environment:
-      - "LS_JAVA_OPTS=-Xms256m -Xmx256m"
-      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
-    networks:
-      - default
-    depends_on:
-      - elasticsearch
-
-  # --- KIBANA ---
-  kibana:
-    image: docker.elastic.co/kibana/kibana:8.10.4
-    container_name: kibana
-    ports:
-      - "5601:5601"
-    environment:
-      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
-      - ELASTICSEARCH_USERNAME=kibana_system
-      - ELASTICSEARCH_PASSWORD=${ELASTIC_PASSWORD}
-    networks:
-      - default
-    depends_on:
-      - elasticsearch
-
-  # --- PROMETHEUS ---
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: prometheus
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./chatweb_be/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-      - prometheus_data:/prometheus
-    networks:
-      - default
-    depends_on:
-      - cw_backend
-
-  # --- GRAFANA ---
-  grafana:
-    image: grafana/grafana:latest
-    container_name: grafana
-    ports:
-      - "3000:3000"
-    environment:
-      - GF_SECURITY_ADMIN_USER=${GF_SECURITY_ADMIN_USER}
-      - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD}
-    volumes:
-      - grafana_data:/var/lib/grafana
-    networks:
-      - default
-    depends_on:
-      - prometheus
 
 volumes:
   mongo_data:

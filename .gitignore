@@ -8,3 +8,10 @@
 .env
 .env.*
 !.env.example
+
+# --- SSL / Security ---
+ssl/
+*.key
+*.crt
+*.p12
+*.csr
