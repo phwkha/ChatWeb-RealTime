@@ -1,4 +1,4 @@
-package com.web.backend.service.util;
+package com.web.backend.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

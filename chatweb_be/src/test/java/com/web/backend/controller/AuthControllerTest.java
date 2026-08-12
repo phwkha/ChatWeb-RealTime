@@ -6,10 +6,11 @@ import com.web.backend.controller.request.*;
 import com.web.backend.controller.response.*;
 import com.web.backend.model.UserEntity;
 import com.web.backend.service.AuthenticationService;
-import com.web.backend.service.util.RateLimitingService;
 import com.web.backend.jwt.JwtAuthenticationFilter;
 import com.web.backend.service.JwtService;
-import com.web.backend.service.util.UserServiceDetail;
+import com.web.backend.service.RateLimitingService;
+import com.web.backend.service.UserServiceDetail;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

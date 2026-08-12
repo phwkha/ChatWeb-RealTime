@@ -5,8 +5,9 @@ import com.web.backend.jwt.JwtAuthenticationEntryPoint;
 import com.web.backend.jwt.JwtAuthenticationFilter;
 import com.web.backend.oauth2.OAuth2AuthenticationSuccessHandler;
 import com.web.backend.oauth2.OAuth2AuthenticationFailureHandler;
-import com.web.backend.service.util.CustomOAuth2UserService;
-import com.web.backend.service.util.UserServiceDetail;
+import com.web.backend.service.CustomOAuth2UserService;
+import com.web.backend.service.UserServiceDetail;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;

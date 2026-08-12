@@ -1,4 +1,4 @@
-package com.web.backend.controller.response.form;
+package com.web.backend.controller.response.wrapper;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.web.backend.common.SocketEventType;

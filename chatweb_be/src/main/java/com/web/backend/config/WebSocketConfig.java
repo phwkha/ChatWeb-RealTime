@@ -8,7 +8,8 @@ import com.web.backend.jwt.JwtHandshakeInterceptor;
 import com.web.backend.common.TokenType;
 import com.web.backend.model.UserEntity;
 import com.web.backend.service.JwtService;
-import com.web.backend.service.util.UserServiceDetail;
+import com.web.backend.service.UserServiceDetail;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Configuration;
@@ -30,10 +31,10 @@ import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBr
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
 import com.web.backend.config.localresolverconfig.Translator;
+import com.web.backend.controller.response.wrapper.SocketResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.socket.messaging.StompSubProtocolErrorHandler;
-import com.web.backend.controller.response.form.SocketResponse;
 import org.springframework.messaging.support.MessageBuilder;
 
 @Configuration

@@ -1,4 +1,4 @@
-package com.web.backend.service.util;
+package com.web.backend.service;
 
 import com.web.backend.config.ServerIdentity;
 import com.web.backend.redis.RedisWsMessage;

@@ -1,4 +1,4 @@
-package com.web.backend.controller.response.form;
+package com.web.backend.controller.response.wrapper;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.AllArgsConstructor;
@@ -14,7 +14,6 @@ import lombok.NoArgsConstructor;
 public class ApiResponse<T> {
     private static final String ERROR_STRING = "error";
     private static final String SUCCESS_STRING = "success";
-
 
     private int code;
     private String status;

@@ -9,7 +9,8 @@ import com.web.backend.jwt.JwtAuthenticationFilter;
 import com.web.backend.model.UserEntity;
 import com.web.backend.service.JwtService;
 import com.web.backend.service.RoleService;
-import com.web.backend.service.util.UserServiceDetail;
+import com.web.backend.service.UserServiceDetail;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

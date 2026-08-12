@@ -1,4 +1,4 @@
-package com.web.backend.service.util;
+package com.web.backend.service;
 
 import java.util.Optional;
 import java.util.UUID;

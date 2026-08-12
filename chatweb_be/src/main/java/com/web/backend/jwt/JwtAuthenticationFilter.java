@@ -3,10 +3,11 @@ package com.web.backend.jwt;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.web.backend.common.TokenType;
 import com.web.backend.config.localresolverconfig.Translator;
-import com.web.backend.controller.response.form.ApiResponse;
+import com.web.backend.controller.response.wrapper.ApiResponse;
 import com.web.backend.model.UserEntity;
 import com.web.backend.service.JwtService;
-import com.web.backend.service.util.UserServiceDetail;
+import com.web.backend.service.UserServiceDetail;
+
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.Cookie;
@@ -52,6 +53,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private static final String BLACK_LIST_PREFIX_STRING = "blacklist:";
 
+    private static final String LOGOUT_URL_STRING = "/api/auth/logout";
+    private static final String LOGOUT_ALL_DEVICES_URL_STRING = "/api/auth/logout-all-devices";
+    private static final String AUTH_PREFIX_STRING = "/api/auth/";
+
     public JwtAuthenticationFilter(
             JwtService jwtService,
             UserServiceDetail userServiceDetail,
@@ -66,10 +71,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(@NonNull HttpServletRequest request) {
         String path = request.getServletPath();
-        if (path.equals("/api/auth/logout") || path.equals("/api/auth/logout-all-devices")) {
+        if (path.equals(LOGOUT_URL_STRING) || path.equals(LOGOUT_ALL_DEVICES_URL_STRING)) {
             return false;
         }
-        return path.startsWith("/api/auth/");
+        return path.startsWith(AUTH_PREFIX_STRING);
     }
 
     @Override
@@ -79,65 +84,83 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             String jwt = getTokenFromRequest(request);
 
             if (jwt != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-
-                String key = BLACK_LIST_PREFIX_STRING + jwt;
-                if (Boolean.TRUE.equals(redisTemplate.hasKey(key))) {
-                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-                    response.setContentType(APPLICATION_JSON_STRING);
-                    response.setCharacterEncoding(UTF_8_STRING);
-
-                    ApiResponse<?> apiResponse = ApiResponse.error(
-                            HttpStatus.UNAUTHORIZED.value(),
-                            Translator.tolocale(ERROR_WS_BLACKLISTED_STRING));
-
-                    ObjectMapper objectMapper = new ObjectMapper();
-                    response.getWriter().write(objectMapper.writeValueAsString(apiResponse));
-
-                    response.flushBuffer();
+                if (isTokenBlacklisted(jwt, response)) {
                     return;
                 }
-
-                String username = jwtService.extractUsername(jwt, TokenType.ACCESS_TOKEN);
-
-                if (username != null) {
-
-                    UserDetails userDetails = userServiceDetail.loadUserByUsername(username);
-
-                    if (userDetails instanceof UserEntity userEntity) {
-                        Integer tokenVersionInJwt = jwtService.extractClaim(jwt, TokenType.ACCESS_TOKEN,
-                                claims -> claims.get("v", Integer.class));
-
-                        Integer currentVersion = userEntity.getTokenVersion();
-                        if (currentVersion == null)
-                            currentVersion = 0;
-
-                        if (tokenVersionInJwt == null || !tokenVersionInJwt.equals(currentVersion)) {
-                            log.warn("Token version mismatch for user {}. Token: {}, Server: {}", username,
-                                    tokenVersionInJwt, currentVersion);
-                            filterChain.doFilter(request, response);
-                            return;
-                        }
-                    }
-
-                    SecurityContext securityContext = SecurityContextHolder.createEmptyContext();
-
-                    UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                            userDetails,
-                            null,
-                            userDetails.getAuthorities());
-
-                    authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-
-                    securityContext.setAuthentication(authToken);
-                    SecurityContextHolder.setContext(securityContext);
+                if (!authenticateUser(jwt, request, response, filterChain)) {
+                    return;
                 }
             }
         } catch (Exception e) {
             log.error("Token error: {}", e.getMessage());
             exceptionResolver.resolveException(request, response, null, e);
-            return; // Dừng filter chain nếu có lỗi (đã đẩy lỗi cho GlobalExceptionHandler)
+            return;
         }
         filterChain.doFilter(request, response);
+    }
+
+    private boolean isTokenBlacklisted(String jwt, HttpServletResponse response) throws IOException {
+        String key = BLACK_LIST_PREFIX_STRING + jwt;
+        if (Boolean.TRUE.equals(redisTemplate.hasKey(key))) {
+            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            response.setContentType(APPLICATION_JSON_STRING);
+            response.setCharacterEncoding(UTF_8_STRING);
+
+            ApiResponse<?> apiResponse = ApiResponse.error(
+                    HttpStatus.UNAUTHORIZED.value(),
+                    Translator.tolocale(ERROR_WS_BLACKLISTED_STRING));
+
+            ObjectMapper objectMapper = new ObjectMapper();
+            response.getWriter().write(objectMapper.writeValueAsString(apiResponse));
+            response.flushBuffer();
+            return true;
+        }
+        return false;
+    }
+
+    private boolean authenticateUser(String jwt, HttpServletRequest request, HttpServletResponse response,
+            FilterChain filterChain) throws ServletException, IOException {
+        String username = jwtService.extractUsername(jwt, TokenType.ACCESS_TOKEN);
+        if (username == null) {
+            return true;
+        }
+
+        UserDetails userDetails = userServiceDetail.loadUserByUsername(username);
+
+        if (!isTokenVersionValid(jwt, userDetails, username)) {
+            filterChain.doFilter(request, response);
+            return false;
+        }
+
+        SecurityContext securityContext = SecurityContextHolder.createEmptyContext();
+        UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
+                userDetails, null, userDetails.getAuthorities());
+        authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+        securityContext.setAuthentication(authToken);
+        SecurityContextHolder.setContext(securityContext);
+
+        return true;
+    }
+
+    private boolean isTokenVersionValid(String jwt, UserDetails userDetails, String username) {
+        if (!(userDetails instanceof UserEntity userEntity)) {
+            return true;
+        }
+
+        Integer tokenVersionInJwt = jwtService.extractClaim(jwt, TokenType.ACCESS_TOKEN,
+                claims -> claims.get("v", Integer.class));
+
+        Integer currentVersion = userEntity.getTokenVersion();
+        if (currentVersion == null) {
+            currentVersion = 0;
+        }
+
+        if (tokenVersionInJwt == null || !tokenVersionInJwt.equals(currentVersion)) {
+            log.warn("Token version mismatch for user {}. Token: {}, Server: {}", username,
+                    tokenVersionInJwt, currentVersion);
+            return false;
+        }
+        return true;
     }
 
     /**

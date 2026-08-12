@@ -33,11 +33,9 @@ import com.web.backend.repository.UserRepository;
 import com.web.backend.repository.FriendshipRepository;
 import org.springframework.context.ApplicationEventPublisher;
 import com.web.backend.service.impl.UserServiceImpl;
-import com.web.backend.service.util.CuckooFilterService;
-import com.web.backend.service.util.EmailService;
 
 @ExtendWith(MockitoExtension.class)
- class UserServiceTest {
+class UserServiceTest {
 
     @Mock
     private UserRepository userRepository;

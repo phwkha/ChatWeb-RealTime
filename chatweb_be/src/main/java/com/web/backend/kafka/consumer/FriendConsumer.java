@@ -6,9 +6,9 @@ import org.springframework.stereotype.Component;
 import com.web.backend.common.NotificationsType;
 import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.response.NotificationMessageResponse;
-import com.web.backend.controller.response.form.SocketResponse;
+import com.web.backend.controller.response.wrapper.SocketResponse;
 import com.web.backend.kafka.payload.FriendPayload;
-import com.web.backend.service.util.WebSocketRoutingService;
+import com.web.backend.service.WebSocketRoutingService;
 
 import java.util.List;
 import java.util.Objects;

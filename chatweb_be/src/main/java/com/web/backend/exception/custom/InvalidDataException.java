@@ -1,10 +1,11 @@
 package com.web.backend.exception.custom;
 
 public class InvalidDataException extends RuntimeException {
-    private Object requestData;
+    private final transient Object requestData;
 
     public InvalidDataException(String message) {
         super(message);
+        this.requestData = null;
     }
 
     public InvalidDataException(String message, Object requestData) {

@@ -1,10 +1,11 @@
 package com.web.backend.exception.custom;
 
 public class AccessForbiddenException extends RuntimeException {
-    private Object requestData;
+    private final transient Object requestData;
 
     public AccessForbiddenException(String message) {
         super(message);
+        this.requestData = null;
     }
 
     public AccessForbiddenException(String message, Object requestData) {

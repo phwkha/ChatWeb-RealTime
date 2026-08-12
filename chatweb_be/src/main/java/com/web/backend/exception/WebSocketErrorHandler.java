@@ -1,7 +1,8 @@
 package com.web.backend.exception;
 
 import com.web.backend.config.localresolverconfig.Translator;
-import com.web.backend.controller.response.form.SocketResponse;
+import com.web.backend.controller.response.wrapper.SocketResponse;
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.handler.annotation.MessageExceptionHandler;
 import org.springframework.messaging.simp.SimpMessagingTemplate;

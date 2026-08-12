@@ -31,7 +31,7 @@ public class JwtHandshakeInterceptor implements HandshakeInterceptor {
                 for (Cookie cookie : servletRequest.getCookies()) {
                     if (ACCESSTOKEN_STRING.equals(cookie.getName())) {
                         attributes.put(JWT_TOKEN_COOKIE_STRING, cookie.getValue());
-                        return true;
+                        break;
                     }
                 }
             }
@@ -42,5 +42,7 @@ public class JwtHandshakeInterceptor implements HandshakeInterceptor {
     @Override
     public void afterHandshake(@NonNull ServerHttpRequest request, @NonNull ServerHttpResponse response,
             @NonNull WebSocketHandler wsHandler, @Nullable Exception exception) {
+        // Intentionally empty. No post-handshake processing is required for JWT
+        // authentication.
     }
 }

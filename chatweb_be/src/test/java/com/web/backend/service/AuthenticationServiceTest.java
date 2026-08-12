@@ -33,9 +33,9 @@ import com.web.backend.common.UserStatus;
 import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.request.CreateUserRequest;
 import com.web.backend.controller.request.LoginRequest;
+import com.web.backend.controller.request.RegisterData;
 import com.web.backend.controller.request.VerifyOtpRequest;
 import com.web.backend.exception.custom.InvalidOtpException;
-import com.web.backend.model.RegisterData;
 import com.web.backend.controller.response.LoginResponse;
 import com.web.backend.controller.response.TokenResponse;
 import com.web.backend.controller.response.UserResponse;
@@ -51,7 +51,6 @@ import com.web.backend.model.UserEntity;
 import com.web.backend.repository.RoleRepository;
 import com.web.backend.repository.UserRepository;
 import com.web.backend.service.impl.AuthenticationServiceImpl;
-import com.web.backend.service.util.CuckooFilterService;
 
 @ExtendWith(MockitoExtension.class)
 class AuthenticationServiceTest {

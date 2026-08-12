@@ -106,11 +106,11 @@ app:
   oauth2:
     redirect-uri: ${OAUTH2_REDIRECT_URI}
   cors:
-    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS}
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173}
   upload:
     avatar:
       max-size: 5242880
     max-size-video: 20971520
     max-size-image: 20971520
   admin:
-    default-password: admin123
+    default-password: ${APP_ADMIN_DEFAULT_PASSWORD:Admin@123Seeder!}

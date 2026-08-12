@@ -4,7 +4,7 @@ package com.web.backend.controller;
 import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.response.CursorResponse;
 import com.web.backend.controller.response.MessageSystemResponse;
-import com.web.backend.controller.response.form.ApiResponse;
+import com.web.backend.controller.response.wrapper.ApiResponse;
 import com.web.backend.service.MessageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

@@ -1,10 +1,11 @@
 package com.web.backend.exception.custom;
 
 public class SystemOverloadException extends RuntimeException {
-    private Object requestData;
+    private final transient Object requestData;
 
     public SystemOverloadException(String message) {
         super(message);
+        this.requestData = null;
     }
 
     public SystemOverloadException(String message, Object requestData) {

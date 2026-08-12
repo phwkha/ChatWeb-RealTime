@@ -2,7 +2,8 @@ package com.web.backend.jwt;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.web.backend.config.localresolverconfig.Translator;
-import com.web.backend.controller.response.form.ApiResponse;
+import com.web.backend.controller.response.wrapper.ApiResponse;
+
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;

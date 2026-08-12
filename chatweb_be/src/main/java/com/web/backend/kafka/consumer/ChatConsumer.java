@@ -5,11 +5,11 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
 import com.web.backend.controller.response.ChatMessageResponse;
 import com.web.backend.controller.response.MessageSystemResponse;
-import com.web.backend.controller.response.form.SocketResponse;
+import com.web.backend.controller.response.wrapper.SocketResponse;
 import com.web.backend.mapper.MessageMapper;
 import com.web.backend.model.ChatMessage;
 import com.web.backend.model.SystemMessage;
-import com.web.backend.service.util.WebSocketRoutingService;
+import com.web.backend.service.WebSocketRoutingService;
 import com.web.backend.common.MessageType;
 
 import lombok.RequiredArgsConstructor;

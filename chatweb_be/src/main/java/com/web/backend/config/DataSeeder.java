@@ -8,7 +8,8 @@ import com.web.backend.model.UserEntity;
 import com.web.backend.repository.PermissionRepository;
 import com.web.backend.repository.RoleRepository;
 import com.web.backend.repository.UserRepository;
-import com.web.backend.service.util.CuckooFilterService;
+import com.web.backend.service.CuckooFilterService;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;

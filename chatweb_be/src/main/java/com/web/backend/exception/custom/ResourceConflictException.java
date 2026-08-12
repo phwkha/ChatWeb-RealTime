@@ -1,10 +1,11 @@
 package com.web.backend.exception.custom;
 
 public class ResourceConflictException extends RuntimeException {
-    private Object requestData;
+    private final transient Object requestData;
 
     public ResourceConflictException(String message) {
         super(message);
+        this.requestData = null;
     }
 
     public ResourceConflictException(String message, Object requestData) {
