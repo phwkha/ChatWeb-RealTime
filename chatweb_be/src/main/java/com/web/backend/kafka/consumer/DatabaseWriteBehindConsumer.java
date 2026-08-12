@@ -4,6 +4,8 @@ import java.util.List;
 import java.util.concurrent.Executors;
 
 import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.annotation.RetryableTopic;
+import org.springframework.retry.annotation.Backoff;
 import org.springframework.stereotype.Component;
 
 import com.web.backend.common.MessageType;
@@ -28,6 +30,7 @@ public class DatabaseWriteBehindConsumer {
 
     private static final String QUEUE_MESSAGES_STRING = "/queue/messages";
 
+    @RetryableTopic(attempts = "Integer.MAX_VALUE", backoff = @Backoff(delay = 300000, maxDelay = 300000), autoCreateTopics = "true")
     @KafkaListener(topics = "${spring.kafka.topic.chat.messages}", groupId = "${spring.kafka.topic.chat.save}", containerFactory = "batchFactory")
     public void handleDbPersistence(List<ChatMessage> messages) {
         List<ChatMessage> messagesToSave = messages.stream().filter(msg -> msg.getMessageType() == MessageType.CHAT)
@@ -36,34 +39,10 @@ public class DatabaseWriteBehindConsumer {
             return;
         }
         log.info("Kafka Consumer: Writing batch of {} messages to Database...", messages.size());
-        int maxAttempts = 3;
-        long backoffDelay = 1000;
+        messageRepository.saveAll(messagesToSave);
+        log.info("Successfully saved {} messages.", messages.size());
 
-        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-            try {
-                messageRepository.saveAll(messagesToSave);
-                log.info("Successfully saved {} messages.", messages.size());
-
-                sendAcknowledgements(messagesToSave);
-
-                return;
-            } catch (Exception e) {
-                log.warn("Error writing to DB (Attempt {}/{}): {}", attempt, maxAttempts, e.getMessage());
-                if (attempt == maxAttempts) {
-                    log.error("Database save FAILED after {} attempts. Throwing exception to prevent data loss.",
-                            maxAttempts);
-                    throw new RuntimeException("Failed to save messages to DB after " + maxAttempts + " attempts", e);
-                } else {
-                    try {
-                        Thread.sleep(backoffDelay);
-                        backoffDelay *= 2;
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-                        throw new RuntimeException("Thread interrupted during DB retry backoff", ie);
-                    }
-                }
-            }
-        }
+        sendAcknowledgements(messagesToSave);
     }
 
     private void sendAcknowledgements(List<ChatMessage> messagesToSave) {

@@ -1,15 +1,22 @@
 package com.web.backend.kafka.consumer;
 
+import org.springframework.kafka.annotation.DltHandler;
 import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.annotation.RetryableTopic;
+import org.springframework.kafka.retrytopic.TopicSuffixingStrategy;
+import org.springframework.kafka.support.KafkaHeaders;
+import org.springframework.kafka.support.Acknowledgment;
+import org.springframework.messaging.handler.annotation.Header;
+import com.web.backend.kafka.payload.EmailPayload;
+
+import org.springframework.retry.annotation.Backoff;
+
 import org.springframework.stereotype.Component;
 
-import com.web.backend.kafka.payload.EmailPayload;
 import com.web.backend.service.EmailService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-
-import org.springframework.kafka.support.Acknowledgment;
 
 @Component
 @RequiredArgsConstructor
@@ -24,6 +31,7 @@ public class EmailConsumer {
 
     private static final String TEXT_STRING = "TEXT";
 
+    @RetryableTopic(attempts = "4", backoff = @Backoff(delay = 2000, multiplier = 2.0, maxDelay = 10000), autoCreateTopics = "true", topicSuffixingStrategy = TopicSuffixingStrategy.SUFFIX_WITH_INDEX_VALUE)
     @KafkaListener(topics = "${spring.kafka.topic.email.email-topic}", groupId = "${spring.kafka.topic.email.group-id}", containerFactory = EMAILKAFKALISTENERCONTAINERFACTORY_STRING)
     public void consumeEmailTask(EmailPayload event, Acknowledgment ack) {
         log.info("Kafka Consumer received email task of type {} for: {}", event.type(), event.to());
@@ -35,5 +43,10 @@ public class EmailConsumer {
         }
 
         ack.acknowledge();
+    }
+
+    @DltHandler
+    public void handleEmailDlt(EmailPayload event, @Header(KafkaHeaders.RECEIVED_TOPIC) String topic) {
+        log.error("🚨 Send mail error for user: {}. topic: {}", event.to(), topic);
     }
 }
