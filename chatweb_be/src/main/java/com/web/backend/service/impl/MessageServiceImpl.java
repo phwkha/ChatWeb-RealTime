@@ -124,7 +124,8 @@ public class MessageServiceImpl implements MessageService {
                                 Translator.tolocale(ERROR_MSG_SYSTEM_OVERLOAD_STRING));
                     }
                 } else if (chatMsg.getMessageType() == MessageType.CHAT) {
-                    log.info("save message success");
+                    log.info("Sent message to Kafka successfully");
+                    cacheMessageToRedis(chatMsg);
                 }
             });
         } catch (Exception syncEx) {
@@ -406,6 +407,9 @@ public class MessageServiceImpl implements MessageService {
         Map<Object, Object> redisCounts = redisTemplate.opsForHash().entries(key);
 
         if (!redisCounts.isEmpty()) {
+            if (redisCounts.containsKey("_empty")) {
+                return UnreadCountsResponse.builder().unreadCounts(new HashMap<>()).build();
+            }
             Map<String, Long> result = redisCounts.entrySet().stream()
                     .collect(Collectors.toMap(
                             e -> (String) e.getKey(),
@@ -419,15 +423,17 @@ public class MessageServiceImpl implements MessageService {
         Map<String, Long> resultMap = new HashMap<>();
         Map<String, Object> redisMap = new HashMap<>();
 
-        for (UnreadCountProjection r : dbResults) {
-            resultMap.put(r.sender(), r.count());
-            redisMap.put(r.sender(), r.count());
+        if (dbResults.isEmpty()) {
+            redisMap.put("_empty", 0L);
+        } else {
+            for (UnreadCountProjection r : dbResults) {
+                resultMap.put(r.sender(), r.count());
+                redisMap.put(r.sender(), r.count());
+            }
         }
 
-        if (!redisMap.isEmpty()) {
-            redisTemplate.opsForHash().putAll(key, redisMap);
-            redisTemplate.expire(key, 7, TimeUnit.DAYS);
-        }
+        redisTemplate.opsForHash().putAll(key, redisMap);
+        redisTemplate.expire(key, 7, TimeUnit.DAYS);
 
         log.info("Fetching unread counts for user (From DB)");
         return UnreadCountsResponse.builder()
@@ -452,6 +458,39 @@ public class MessageServiceImpl implements MessageService {
 
         chatProducer.sendStatusMessage(statusMsg);
 
+    }
+
+    private void cacheMessageToRedis(ChatMessage chatMsg) {
+        if (chatMsg == null || chatMsg.getMessageType() != MessageType.CHAT) {
+            return;
+        }
+        String convId = chatMsg.getConversationId();
+        if (convId == null) {
+            return;
+        }
+        log.info("Caching message from {} to Redis synchronously", chatMsg.getSender());
+        try {
+            String hashKey = CHAT_RECENT_HASH_STRING + convId;
+            String zsetKey = CHAT_RECENT_ZSET_STRING + convId;
+            long score = chatMsg.getTimestamp().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+
+            redisTemplate.opsForHash().put(hashKey, chatMsg.getId(), chatMsg);
+            redisTemplate.opsForZSet().add(zsetKey, chatMsg.getId(), score);
+
+            Set<Object> keysToRemove = redisTemplate.opsForZSet().range(zsetKey, 0, -51);
+            if (keysToRemove != null && !keysToRemove.isEmpty()) {
+                redisTemplate.opsForHash().delete(hashKey, keysToRemove.toArray());
+                redisTemplate.opsForZSet().removeRange(zsetKey, 0, -51);
+            }
+
+            redisTemplate.expire(hashKey, java.time.Duration.ofMinutes(5));
+            redisTemplate.expire(zsetKey, java.time.Duration.ofMinutes(5));
+
+            String key = UNREAD_COUNTS_STRING + chatMsg.getRecipient();
+            redisTemplate.opsForHash().increment(key, chatMsg.getSender(), 1);
+        } catch (Exception e) {
+            log.error("Error caching message to Redis synchronously", e);
+        }
     }
 
     private CursorResponse<ChatMessageResponse> buildCursorResponse(List<ChatMessage> messages, int size) {
