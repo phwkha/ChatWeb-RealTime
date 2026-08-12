@@ -93,7 +93,7 @@ class MessageServiceTest {
         // Mock Translator to avoid NullPointerException for multi-language errors
         ResourceBundleMessageSource messageSource = mock(ResourceBundleMessageSource.class);
         lenient().when(messageSource.getMessage(anyString(), any(), any())).thenReturn("Mocked Error Message");
-        new Translator(messageSource);
+        Translator.setStaticMessageSource(messageSource);
 
         recipientUser = new UserEntity();
         recipientUser.setUsername("recipient");
@@ -481,5 +481,62 @@ class MessageServiceTest {
 
         assertTrue(result.isHasMore());
         assertEquals(10, result.getContent().size()); // should have removed the 11th
+    }
+
+    @Test
+    void testBuildChatMessage_NullFields() {
+        when(userRepository.findByUsername("recipient")).thenReturn(Optional.of(recipientUser));
+        when(friendService.isFriend("sender", "recipient")).thenReturn(true);
+        ChatMessageRequest request = new ChatMessageRequest();
+        request.setRecipient("recipient");
+
+        ChatMessage chatMessage = new ChatMessage();
+        // timestamp, content, and contentType are null
+        when(messageMapper.toEntity(request)).thenReturn(chatMessage);
+        CompletableFuture<SendResult<String, Object>> future = CompletableFuture
+                .completedFuture(mock(SendResult.class, RETURNS_DEEP_STUBS));
+        when(chatProducer.sendChatMessage(any())).thenReturn(future);
+
+        messageService.sendPrivateMessage("sender", request);
+        // Should execute null-checks and set defaults
+        verify(chatProducer).sendChatMessage(argThat((ChatMessage msg) -> 
+            msg.getTimestamp() != null && 
+            "".equals(msg.getContent()) && 
+            msg.getContentType() == com.web.backend.common.ContentType.TEXT
+        ));
+    }
+
+    @Test
+    void testRevokeMessage_Forbidden() {
+        RevokeMessageRequest request = new RevokeMessageRequest();
+        request.setMessageId("msg1");
+
+        ChatMessage dbMsg = new ChatMessage();
+        dbMsg.setSender("other_user");
+
+        when(messageRepository.findById("msg1")).thenReturn(Optional.of(dbMsg));
+
+        assertThrows(AccessForbiddenException.class, () -> messageService.revokeMessage("sender", request));
+    }
+
+    @Test
+    void testFindSystemMessageWithCursor_WithCursor() {
+        SystemMessage msg = new SystemMessage();
+        msg.setTimestamp(Instant.now());
+        when(systemMessageRepository.findMessage(any(), any())).thenReturn(List.of(msg));
+        when(messageMapper.systemMessageToResponse(any())).thenReturn(MessageSystemResponse.builder().build());
+
+        CursorResponse<MessageSystemResponse> result = messageService.findSystemMessageWithCursor(Instant.now().toString(), 10);
+        assertNotNull(result);
+        assertEquals(1, result.getContent().size());
+    }
+
+    @Test
+    void testFetchMessagesFromRedisCache_NullOrEmptyMessageIds() {
+        when(redisTemplate.opsForZSet()).thenReturn(zSetOperations);
+        when(zSetOperations.reverseRange(anyString(), anyLong(), anyLong())).thenReturn(null);
+
+        CursorResponse<ChatMessageResponse> result = messageService.findPrivateMessageWithCursor("user2", "user1", null, 10);
+        assertNotNull(result);
     }
 }

@@ -38,7 +38,7 @@ class JwtServiceTest {
     void setUp() {
         ResourceBundleMessageSource messageSource = mock(ResourceBundleMessageSource.class);
         lenient().when(messageSource.getMessage(anyString(), any(), any())).thenReturn("Mocked Error Message");
-        new Translator(messageSource);
+        Translator.setStaticMessageSource(messageSource);
 
         ReflectionTestUtils.setField(jwtService, "expiryMinutes", 15L);
         ReflectionTestUtils.setField(jwtService, "expiryDay", 7L);

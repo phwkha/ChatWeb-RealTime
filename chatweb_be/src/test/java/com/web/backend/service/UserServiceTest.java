@@ -69,7 +69,7 @@ class UserServiceTest {
     void setUp() {
         ResourceBundleMessageSource messageSource = mock(ResourceBundleMessageSource.class);
         lenient().when(messageSource.getMessage(anyString(), any(), any())).thenReturn("Mocked Error Message");
-        new Translator(messageSource);
+        Translator.setStaticMessageSource(messageSource);
 
         ReflectionTestUtils.setField(userService, "expirationMinutes", 5);
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);

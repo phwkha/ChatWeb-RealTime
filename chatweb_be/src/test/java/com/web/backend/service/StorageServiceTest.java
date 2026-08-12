@@ -40,7 +40,7 @@ class StorageServiceTest {
     void setUp() {
         ResourceBundleMessageSource messageSource = mock(ResourceBundleMessageSource.class);
         lenient().when(messageSource.getMessage(anyString(), any(), any())).thenReturn("Mocked Error Message");
-        new Translator(messageSource);
+        Translator.setStaticMessageSource(messageSource);
 
         ReflectionTestUtils.setField(storageService, "maxAvatarSize", 5000000L); // 5MB
         ReflectionTestUtils.setField(storageService, "maxVideoSize", 50000000L); // 50MB

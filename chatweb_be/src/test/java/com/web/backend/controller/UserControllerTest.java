@@ -81,7 +81,7 @@ class UserControllerTest {
         ResourceBundleMessageSource messageSource = new ResourceBundleMessageSource();
         messageSource.setBasename("i18n/messages");
         messageSource.setDefaultEncoding("UTF-8");
-        new Translator(messageSource);
+        Translator.setStaticMessageSource(messageSource);
 
         mockUser = new UserEntity();
         mockUser.setUsername("testuser");

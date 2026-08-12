@@ -49,7 +49,7 @@ class RoleServiceTest {
     void setUp() {
         ResourceBundleMessageSource messageSource = mock(ResourceBundleMessageSource.class);
         lenient().when(messageSource.getMessage(anyString(), any(), any())).thenReturn("Mocked Error Message");
-        new Translator(messageSource);
+        Translator.setStaticMessageSource(messageSource);
     }
 
     @Test
