@@ -10,6 +10,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
 import java.util.*;
+import java.time.LocalDate;
 
 @Entity
 @Table(name = "users")
@@ -63,7 +64,7 @@ public class UserEntity extends AbstractEntity<Long> implements UserDetails {
     private String avatar;
 
     @Column
-    private Date birthday;
+    private LocalDate birthday;
 
     @Enumerated(EnumType.STRING)
     private GenderType gender;

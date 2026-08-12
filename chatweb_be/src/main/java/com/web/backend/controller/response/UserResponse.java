@@ -8,6 +8,7 @@ import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.Set;
 
 @SuperBuilder
@@ -36,7 +37,7 @@ public class UserResponse {
 
     private String avatar;
 
-    private Instant birthday;
+    private LocalDate birthday;
 
     private GenderType gender;
 

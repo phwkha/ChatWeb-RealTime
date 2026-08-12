@@ -2,6 +2,7 @@ package com.web.backend.config;
 
 import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.OpenAPI;
+import io.swagger.v3.oas.models.Operation;
 import io.swagger.v3.oas.models.info.Info;
 import io.swagger.v3.oas.models.info.License;
 import io.swagger.v3.oas.models.security.SecurityRequirement;
@@ -76,30 +77,28 @@ public class OpenApiConfig {
     public OpenApiCustomizer customGlobalOpenApiCustomizer() {
         return openApi -> {
             if (openApi.getPaths() != null) {
-                openApi.getPaths().values().forEach(pathItem -> pathItem.readOperations().forEach(operation -> {
-                    ApiResponses apiResponses = operation.getResponses();
-                    if (apiResponses == null) {
-                        apiResponses = new ApiResponses();
-                        operation.setResponses(apiResponses);
-                    }
-                    if (!apiResponses.containsKey(STR_400_STRING)) {
-                        apiResponses.addApiResponse(STR_400_STRING,
-                                new ApiResponse().description(BAD_REQUEST_D_LI_U_KH_NG_H_P_L_STRING));
-                    }
-                    if (!apiResponses.containsKey(STR_401_STRING)) {
-                        apiResponses.addApiResponse(STR_401_STRING,
-                                new ApiResponse().description(UNAUTHORIZED_CH_A_X_C_TH_C_STRING));
-                    }
-                    if (!apiResponses.containsKey(STR_403_STRING)) {
-                        apiResponses.addApiResponse(STR_403_STRING,
-                                new ApiResponse().description(FORBIDDEN_KH_NG_C_QUY_N_TRUY_C_P_STRING));
-                    }
-                    if (!apiResponses.containsKey(STR_500_STRING)) {
-                        apiResponses.addApiResponse(STR_500_STRING,
-                                new ApiResponse().description(INTERNAL_SERVER_ERROR_L_I_H_TH_NG_STRING));
-                    }
-                }));
+                openApi.getPaths().values().forEach(pathItem -> 
+                    pathItem.readOperations().forEach(this::addGlobalApiResponses)
+                );
             }
         };
+    }
+
+    private void addGlobalApiResponses(Operation operation) {
+        ApiResponses apiResponses = operation.getResponses();
+        if (apiResponses == null) {
+            apiResponses = new ApiResponses();
+            operation.setResponses(apiResponses);
+        }
+        addApiResponseIfMissing(apiResponses, STR_400_STRING, BAD_REQUEST_D_LI_U_KH_NG_H_P_L_STRING);
+        addApiResponseIfMissing(apiResponses, STR_401_STRING, UNAUTHORIZED_CH_A_X_C_TH_C_STRING);
+        addApiResponseIfMissing(apiResponses, STR_403_STRING, FORBIDDEN_KH_NG_C_QUY_N_TRUY_C_P_STRING);
+        addApiResponseIfMissing(apiResponses, STR_500_STRING, INTERNAL_SERVER_ERROR_L_I_H_TH_NG_STRING);
+    }
+
+    private void addApiResponseIfMissing(ApiResponses apiResponses, String code, String description) {
+        if (!apiResponses.containsKey(code)) {
+            apiResponses.addApiResponse(code, new ApiResponse().description(description));
+        }
     }
 }

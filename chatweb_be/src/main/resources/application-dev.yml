@@ -105,8 +105,12 @@ cloudinary:
 app:
   oauth2:
     redirect-uri: ${OAUTH2_REDIRECT_URI}
+  cors:
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS}
   upload:
     avatar:
       max-size: 5242880
     max-size-video: 20971520
     max-size-image: 20971520
+  admin:
+    default-password: admin123

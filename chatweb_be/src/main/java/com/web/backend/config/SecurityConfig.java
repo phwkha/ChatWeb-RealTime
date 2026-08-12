@@ -18,6 +18,8 @@ import org.springframework.security.config.annotation.authentication.configurati
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.annotation.web.configurers.HeadersConfigurer.FrameOptionsConfig;
 import org.springframework.security.config.annotation.web.configuration.WebSecurityCustomizer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -37,7 +39,7 @@ import org.springframework.beans.factory.annotation.Value;
 @Slf4j(topic = "SECURITY-CONFIG")
 public class SecurityConfig {
 
-        private final OAuth2AuthenticationSuccessHandler OAuth2AuthenticationSuccessHandler;
+        private final OAuth2AuthenticationSuccessHandler oAuth2AuthenticationSuccessHandler;
 
         private final OAuth2AuthenticationFailureHandler oauth2AuthenticationFailureHandler;
 
@@ -52,6 +54,9 @@ public class SecurityConfig {
         private final JwtAccessDeniedHandler jwtAccessDeniedHandler;
 
         private final PasswordEncoder passwordEncoder;
+
+        @Value("${app.cors.allowed-origins}")
+        private String allowedOrigins;
 
         private static final String ACTUATOR_STRING = "/actuator/**";
         private static final String API_AUTH_LOGOUT_ALL_DEVICES_STRING = "/api/auth/logout-all-devices";
@@ -73,9 +78,10 @@ public class SecurityConfig {
         private static final String WS_STRING = "/ws/**";
 
         @Bean
+        @SuppressWarnings("java:S4502")
         public SecurityFilterChain configure(HttpSecurity http) throws Exception {
-                http.csrf(csrf -> csrf.disable())
-                                .headers(headers -> headers.frameOptions(frameOptions -> frameOptions.disable()))
+                http.csrf(AbstractHttpConfigurer::disable)
+                                .headers(headers -> headers.frameOptions(FrameOptionsConfig::disable))
                                 .cors(cors -> cors.configurationSource(addConfigurationSource()))
                                 .exceptionHandling(ex -> ex.authenticationEntryPoint(jwtAuthenticationEntryPoint)
                                                 .accessDeniedHandler(jwtAccessDeniedHandler))
@@ -93,7 +99,7 @@ public class SecurityConfig {
                                 .oauth2Login(oauth2 -> oauth2
                                                 .userInfoEndpoint(userInfo -> userInfo
                                                                 .userService(customOAuth2UserService))
-                                                .successHandler(OAuth2AuthenticationSuccessHandler)
+                                                .successHandler(oAuth2AuthenticationSuccessHandler)
                                                 .failureHandler(oauth2AuthenticationFailureHandler));
 
                 return http.build();
@@ -121,9 +127,6 @@ public class SecurityConfig {
                                                 FAVICON_ICO_STRING,
                                                 SWAGGER_UI_SWAGGER_INITIALIZER_JS_STRING);
         }
-
-        @Value("${app.cors.allowed-origins:http://localhost:5173}")
-        private String allowedOrigins;
 
         @Bean
         public CorsConfigurationSource addConfigurationSource() {

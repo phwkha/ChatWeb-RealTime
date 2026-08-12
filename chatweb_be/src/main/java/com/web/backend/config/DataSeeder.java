@@ -11,6 +11,7 @@ import com.web.backend.repository.UserRepository;
 import com.web.backend.service.util.CuckooFilterService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -40,7 +41,9 @@ public class DataSeeder implements CommandLineRunner {
 
     private final RedisTemplate<String, Object> redisTemplate;
 
-    private static final String ADMIN123_STRING = "admin123";
+    @Value("${app.admin.default-password}")
+    private String adminPassword;
+
     private static final String ADMIN_2_STRING = "admin";
     private static final String ADMIN_3_STRING = "Admin";
     private static final String ADMIN_EXAMPLE_COM_STRING = "admin@example.com";
@@ -56,7 +59,7 @@ public class DataSeeder implements CommandLineRunner {
     private static final String FILTER_USERNAMES_STRING = "filter:usernames";
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public void run(String... args) throws Exception {
         log.info("import data start");
         // Admin permissions to match AdminController
@@ -93,7 +96,7 @@ public class DataSeeder implements CommandLineRunner {
         if (!userRepository.existsByUsername(ADMIN_2_STRING)) {
             UserEntity admin = new UserEntity();
             admin.setUsername(ADMIN_2_STRING);
-            admin.setPassword(passwordEncoder.encode(ADMIN123_STRING));
+            admin.setPassword(passwordEncoder.encode(adminPassword));
             admin.setEmail(ADMIN_EXAMPLE_COM_STRING);
             admin.setUserStatus(UserStatus.ACTIVE);
             admin.setAuthProvider(AuthProvider.LOCAL);
@@ -106,7 +109,7 @@ public class DataSeeder implements CommandLineRunner {
         }
         log.info("import data end");
 
-        if (!redisTemplate.hasKey(FILTER_EMAILS_STRING)) {
+        if (!Boolean.TRUE.equals(redisTemplate.hasKey(FILTER_EMAILS_STRING))) {
             log.info("Initializing Cuckoo Filter...");
             List<UserEntity> allUsers = userRepository.findAll();
             for (UserEntity u : allUsers) {
@@ -150,14 +153,14 @@ public class DataSeeder implements CommandLineRunner {
     @Bean
     public CommandLineRunner cleanupOnlineStatus() {
         return args -> {
-            String ONLINE_USERS_KEY = ONLINE_USERS_STRING;
-            String ONLINE_USERS_COUNT_KEY = ONLINE_USERS_COUNT_STRING;
+            String onlineUsersKey = ONLINE_USERS_STRING;
+            String onlineUsersCountKey = ONLINE_USERS_COUNT_STRING;
 
-            if (Boolean.TRUE.equals(redisTemplate.hasKey(ONLINE_USERS_KEY))) {
-                redisTemplate.delete(ONLINE_USERS_KEY);
+            if (Boolean.TRUE.equals(redisTemplate.hasKey(onlineUsersKey))) {
+                redisTemplate.delete(onlineUsersKey);
             }
-            if (Boolean.TRUE.equals(redisTemplate.hasKey(ONLINE_USERS_COUNT_KEY))) {
-                redisTemplate.delete(ONLINE_USERS_COUNT_KEY);
+            if (Boolean.TRUE.equals(redisTemplate.hasKey(onlineUsersCountKey))) {
+                redisTemplate.delete(onlineUsersCountKey);
             }
             log.info(">>> CLEANUP: Reset Online Users state in Redis to avoid phantom data.");
         };

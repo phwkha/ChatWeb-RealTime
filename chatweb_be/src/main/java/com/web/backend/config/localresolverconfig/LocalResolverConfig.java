@@ -18,10 +18,8 @@ public class LocalResolverConfig extends AcceptHeaderLocaleResolver implements W
     private static final String JA_STRING = "ja";
     private static final String VI_STRING = "vi";
 
-
     @Override
     @NonNull
-    @SuppressWarnings("null")
     public Locale resolveLocale(@NonNull HttpServletRequest request) {
         String languageHeader = request.getHeader(ACCEPT_LANGUAGE_STRING);
         if (!StringUtils.hasLength(languageHeader)) {
