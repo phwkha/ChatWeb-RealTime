@@ -22,7 +22,7 @@ public class Translator {
         setStaticMessageSource(messageSource);
     }
 
-    private static void setStaticMessageSource(ResourceBundleMessageSource source) {
+    public static void setStaticMessageSource(ResourceBundleMessageSource source) {
         Translator.messageSource = source;
     }
 
