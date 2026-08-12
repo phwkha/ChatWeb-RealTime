@@ -10,9 +10,9 @@ import org.mapstruct.*;
 
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.Collections;
 
-@Mapper(componentModel = "spring", unmappedTargetPolicy = ReportingPolicy.IGNORE,
-        nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
+@Mapper(componentModel = "spring", unmappedTargetPolicy = ReportingPolicy.IGNORE, nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
 public interface UserMapper {
 
     @Mapping(target = "role", source = "role.name")
@@ -21,7 +21,8 @@ public interface UserMapper {
 
     @Named("mapPermissionsToStrings")
     default Set<String> mapPermissionsToStrings(UserEntity entity) {
-        if (entity == null) return null;
+        if (entity == null)
+            return Collections.emptySet();
         return entity.getAuthorities().stream()
                 .map(auth -> auth.getAuthority())
                 .collect(Collectors.toSet());

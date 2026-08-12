@@ -46,9 +46,9 @@ public class FriendConsumer {
         String sender = payload.senderUsername();
 
         try {
-            SocketResponse<NotificationMessageResponse> recipientResp = buildResponse(payload.recipientStatus(),
+            SocketResponse<NotificationMessageResponse> recipientResp = buildResponse(payload.recipientType(),
                     payload.senderDisplayName());
-            SocketResponse<NotificationMessageResponse> senderResp = buildResponse(payload.senderStatus(),
+            SocketResponse<NotificationMessageResponse> senderResp = buildResponse(payload.senderType(),
                     payload.recipientDisplayName());
 
             String destination = Objects.requireNonNull(payload.destination(), DESTINATION_MUST_NOT_BE_NULL_STRING);
@@ -69,14 +69,14 @@ public class FriendConsumer {
         }
     }
 
-    private SocketResponse<NotificationMessageResponse> buildResponse(NotificationsType status,
+    private SocketResponse<NotificationMessageResponse> buildResponse(NotificationsType type,
             String relatedUsername) {
-        if (status == null) {
+        if (type == null) {
             return null;
         }
 
         String translationKey;
-        switch (status) {
+        switch (type) {
             case FRIEND_REQUEST:
                 translationKey = SYS_MSG_NEW_FRIEND_INVITE_STRING;
                 break;
@@ -109,7 +109,7 @@ public class FriendConsumer {
         }
 
         NotificationMessageResponse data = NotificationMessageResponse.builder()
-                .status(status)
+                .type(type)
                 .relatedUsername(relatedUsername)
                 .build();
 

@@ -107,8 +107,8 @@ public class FriendServiceImpl implements FriendService {
                                 .senderUsername(requesterUsername)
                                 .recipientUsername(addresseeUsername)
                                 .destination(QUEUE_NOTIFICATIONS_STRING)
-                                .senderStatus(NotificationsType.REQUEST_SENT_SUCCESS)
-                                .recipientStatus(NotificationsType.FRIEND_REQUEST)
+                                .senderType(NotificationsType.REQUEST_SENT_SUCCESS)
+                                .recipientType(NotificationsType.FRIEND_REQUEST)
                                 .senderDisplayName(requester.getFirstName() != null ? requester.getFirstName()
                                                 : requester.getUsername())
                                 .recipientDisplayName(addresseeUsername)
@@ -146,8 +146,8 @@ public class FriendServiceImpl implements FriendService {
                                 .senderUsername(acceptorUsername)
                                 .recipientUsername(requesterUsername)
                                 .destination(QUEUE_NOTIFICATIONS_STRING)
-                                .senderStatus(NotificationsType.YOU_ACCEPTED)
-                                .recipientStatus(NotificationsType.FRIEND_ACCEPTED)
+                                .senderType(NotificationsType.YOU_ACCEPTED)
+                                .recipientType(NotificationsType.FRIEND_ACCEPTED)
                                 .senderDisplayName(acceptor.getFirstName() != null ? acceptor.getFirstName()
                                                 : acceptor.getUsername())
                                 .recipientDisplayName(requesterUsername)
@@ -243,7 +243,7 @@ public class FriendServiceImpl implements FriendService {
                                         .senderUsername(currentUsername)
                                         .recipientUsername(targetUsername)
                                         .destination(QUEUE_NOTIFICATIONS_STRING)
-                                        .recipientStatus(NotificationsType.UNFRIENDED)
+                                        .recipientType(NotificationsType.UNFRIENDED)
                                         .senderDisplayName(currentUsername)
                                         .build());
 
@@ -253,7 +253,7 @@ public class FriendServiceImpl implements FriendService {
                                                 .senderUsername(currentUsername)
                                                 .recipientUsername(targetUsername)
                                                 .destination(QUEUE_NOTIFICATIONS_STRING)
-                                                .recipientStatus(NotificationsType.REQUEST_CANCELLED)
+                                                .recipientType(NotificationsType.REQUEST_CANCELLED)
                                                 .senderDisplayName(currentUsername)
                                                 .build());
 
@@ -262,7 +262,7 @@ public class FriendServiceImpl implements FriendService {
                                                 .senderUsername(currentUsername)
                                                 .recipientUsername(targetUsername)
                                                 .destination(QUEUE_NOTIFICATIONS_STRING)
-                                                .recipientStatus(NotificationsType.REQUEST_REJECTED)
+                                                .recipientType(NotificationsType.REQUEST_REJECTED)
                                                 .senderDisplayName(currentUsername)
                                                 .build());
                         }

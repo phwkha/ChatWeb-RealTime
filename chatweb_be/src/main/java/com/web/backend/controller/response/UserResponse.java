@@ -7,6 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 
+import java.time.Instant;
 import java.util.Date;
 import java.util.Set;
 
@@ -40,9 +41,9 @@ public class UserResponse {
 
     private GenderType gender;
 
-    private Date createAt;
+    private Instant createAt;
 
-    private Date updateAt;
+    private Instant updateAt;
 
 
 }

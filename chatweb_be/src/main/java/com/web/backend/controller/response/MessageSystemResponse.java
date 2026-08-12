@@ -10,8 +10,6 @@ import java.time.Instant;
 public class MessageSystemResponse {
 
     private String sender;
-
     private String content;
-
     private Instant timestamp;
 }

@@ -12,8 +12,7 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class NotificationMessageResponse {
 
-    private NotificationsType status;
-
+    private NotificationsType type;
     private String relatedUsername;
 
 }

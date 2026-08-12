@@ -12,10 +12,11 @@ public class RateLimitingService {
     private final RedisTemplate<String, Object> redisTemplate;
 
     private static final String RATE_LIMIT_STRING = "rate_limit:";
+    private static final String DELIMITE_STRING = ":";
 
     public boolean allowRequest(String ipAddress, String action, int maxRequests, int timeWindowSeconds) {
 
-        String key = RATE_LIMIT_STRING + action + ":" + ipAddress;
+        String key = RATE_LIMIT_STRING + action + DELIMITE_STRING + ipAddress;
 
         Long currentCount = redisTemplate.opsForValue().increment(key);
 

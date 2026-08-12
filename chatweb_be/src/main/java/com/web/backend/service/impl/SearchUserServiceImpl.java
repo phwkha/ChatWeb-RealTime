@@ -1,7 +1,5 @@
 package com.web.backend.service.impl;
 
-import java.util.stream.Collectors;
-
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
@@ -41,6 +39,8 @@ public class SearchUserServiceImpl implements SearchUserService {
 
     private static final String USERNAME_STRING = "username";
 
+    private static final Pattern SEARCH_PATTERN = Pattern.compile("^(\\w+)([<:>~!])(.*)$");
+
     @Override
     @Transactional(readOnly = true)
     public PageResponse<UserSummaryResponse> searchUsers(String keyword, int page, int size, String sortDir) {
@@ -68,43 +68,54 @@ public class SearchUserServiceImpl implements SearchUserService {
             String[] address) {
 
         Specification<UserEntity> finalSpec = Specification.unrestricted();
-        Pattern pattern = Pattern.compile("(\\w+?)([<:>~!])(\\*?)(.*?)(\\*?)");
 
-        if (user != null && user.length > 0) {
-            SearchSpecificationsBuilder userBuilder = new SearchSpecificationsBuilder();
-            for (String str : user) {
-                Matcher matcher = pattern.matcher(str);
-                if (matcher.find()) {
-                    userBuilder.with(matcher.group(1), matcher.group(2), matcher.group(4),
-                            matcher.group(3), matcher.group(5));
-                }
-            }
-            if (!userBuilder.params.isEmpty()) {
-                finalSpec = finalSpec.and(new UserSpecification(userBuilder.params));
-            }
+        SearchSpecificationsBuilder userBuilder = buildSpecifications(user);
+        if (!userBuilder.params.isEmpty()) {
+            finalSpec = finalSpec.and(new UserSpecification(userBuilder.params));
         }
 
-        if (address != null && address.length > 0) {
-            SearchSpecificationsBuilder addressBuilder = new SearchSpecificationsBuilder();
-            for (String str : address) {
-                Matcher matcher = pattern.matcher(str);
-                if (matcher.find()) {
-                    addressBuilder.with(matcher.group(1), matcher.group(2), matcher.group(4),
-                            matcher.group(3), matcher.group(5));
-                }
-            }
-            if (!addressBuilder.params.isEmpty()) {
-                finalSpec = finalSpec.and(new AddressSpecification(addressBuilder.params));
-            }
+        SearchSpecificationsBuilder addressBuilder = buildSpecifications(address);
+        if (!addressBuilder.params.isEmpty()) {
+            finalSpec = finalSpec.and(new AddressSpecification(addressBuilder.params));
         }
+
         Page<UserEntity> users = userRepository.findAll(finalSpec, Objects.requireNonNull(pageable));
         return convertToPageResponse(users);
+    }
+
+    private SearchSpecificationsBuilder buildSpecifications(String[] criteria) {
+        SearchSpecificationsBuilder builder = new SearchSpecificationsBuilder();
+        if (criteria == null || criteria.length == 0) {
+            return builder;
+        }
+        for (String str : criteria) {
+            Matcher matcher = SEARCH_PATTERN.matcher(str.trim());
+            if (matcher.matches()) {
+                String key = matcher.group(1);
+                String op = matcher.group(2);
+                String val = matcher.group(3);
+
+                String prefix = "";
+                String suffix = "";
+                if (val.startsWith("*")) {
+                    prefix = "*";
+                    val = val.substring(1);
+                }
+                if (val.endsWith("*") && !val.isEmpty()) {
+                    suffix = "*";
+                    val = val.substring(0, val.length() - 1);
+                }
+
+                builder.with(key, op, val, prefix, suffix);
+            }
+        }
+        return builder;
     }
 
     private PageResponse<UserDetailResponse> convertToPageResponse(Page<UserEntity> pageResult) {
         List<UserDetailResponse> content = pageResult.getContent().stream()
                 .map(userMapper::toUserDetailResponse)
-                .collect(Collectors.toList());
+                .toList();
         return PageResponse.<UserDetailResponse>builder()
                 .content(content)
                 .pageNo(pageResult.getNumber())

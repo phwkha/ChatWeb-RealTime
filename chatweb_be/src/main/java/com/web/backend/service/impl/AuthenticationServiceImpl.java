@@ -1,8 +1,8 @@
 package com.web.backend.service.impl;
 
 import java.security.SecureRandom;
+import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -126,17 +126,13 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     public UserResponse createUser(CreateUserRequest createUserRequest) {
 
         boolean mightExistEmail = cuckooFilterService.exists(EMAIL_FILTER_KEY, createUserRequest.getEmail());
-        if (mightExistEmail) {
-            if (userRepository.existsByEmail(createUserRequest.getEmail())) {
-                throw new ResourceConflictException(Translator.tolocale(ERROR_AUTH_EMAIL_USED_STRING));
-            }
+        if (mightExistEmail && userRepository.existsByEmail(createUserRequest.getEmail())) {
+            throw new ResourceConflictException(Translator.tolocale(ERROR_AUTH_EMAIL_USED_STRING));
         }
 
         boolean mightExistUsername = cuckooFilterService.exists(USERNAME_FILTER_KEY, createUserRequest.getUsername());
-        if (mightExistUsername) {
-            if (userRepository.existsByUsername(createUserRequest.getUsername())) {
-                throw new ResourceConflictException(Translator.tolocale(ERROR_AUTH_USERNAME_EXISTS_STRING));
-            }
+        if (mightExistUsername && userRepository.existsByUsername(createUserRequest.getUsername())) {
+            throw new ResourceConflictException(Translator.tolocale(ERROR_AUTH_USERNAME_EXISTS_STRING));
         }
 
         String otp = String.valueOf(100000 + this.secureRandom.nextInt(900000));
@@ -335,7 +331,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         newUser.setPassword(data.getPassword());
         newUser.setUserStatus(UserStatus.ACTIVE);
         newUser.setAuthProvider(AuthProvider.LOCAL);
-        newUser.setCreateAt(new Date());
+        newUser.setCreateAt(Instant.now());
 
         Long roleId = data.getRoleId();
         RoleEntity role;

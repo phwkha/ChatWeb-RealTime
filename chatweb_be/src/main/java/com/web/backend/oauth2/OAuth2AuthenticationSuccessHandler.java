@@ -28,6 +28,7 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
         private String redirectUri;
 
         private static final String API_AUTH_STRING = "/api/auth";
+        private static final String PATH_STRING = "/";
 
         private static final String STRICT_STRING = "Strict";
 
@@ -51,8 +52,8 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
                 ResponseCookie accessCookie = ResponseCookie.from(ACCESSTOKEN_STRING, accessToken)
                                 .httpOnly(true)
                                 .secure(true)
-                                .path("/")
-                                .maxAge(15 * 60)
+                                .path(PATH_STRING)
+                                .maxAge(15 * 60l)
                                 .sameSite(STRICT_STRING)
                                 .build();
 
@@ -60,7 +61,7 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
                                 .httpOnly(true)
                                 .secure(true)
                                 .path(API_AUTH_STRING)
-                                .maxAge(7 * 24 * 60 * 60)
+                                .maxAge(7 * 24 * 60 * 60l)
                                 .sameSite(STRICT_STRING)
                                 .build();
 

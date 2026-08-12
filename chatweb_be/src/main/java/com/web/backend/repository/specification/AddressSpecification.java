@@ -38,9 +38,9 @@ public class AddressSpecification implements Specification<UserEntity> {
             Class<?> javaType = addressJoin.get(criteria.getKey()).getJavaType();
             Object value = criteria.getValue();
 
-            if (javaType.isEnum() && value instanceof String) {
+            if (javaType.isEnum() && value instanceof String string) {
                 try {
-                    value = Enum.valueOf((Class<Enum>) javaType, ((String) value).toUpperCase());
+                    value = Enum.valueOf((Class<Enum>) javaType, (string).toUpperCase());
                 } catch (IllegalArgumentException e) {
                     return builder.disjunction();
                 }

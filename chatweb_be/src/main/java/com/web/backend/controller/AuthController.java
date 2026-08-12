@@ -39,6 +39,11 @@ public class AuthController {
 
         private final RateLimitingService rateLimitingService;
 
+        private static final String PATH_STRING = "/";
+        private static final String EMPTY_STRING = "";
+
+        private static final String ACTION_LOGI_STRING = "login";
+
         private static final String API_AUTH_REFRESH_TOKEN_STRING = "/api/auth/refresh-token";
 
         private static final String AUTHORIZATION_STRING = "Authorization";
@@ -51,7 +56,7 @@ public class AuthController {
         private static final String AUTH_PATH = "/api/auth";
 
         private static final String ACCESSTOKEN = "accessToken";
-        private static final String REFRESHTOKEN = "refreshToken";;
+        private static final String REFRESHTOKEN = "refreshToken";
 
         private static final String ERROR_AUTH_TOO_MANY_ATTEMPTS_STRING = "error.auth.too_many_attempts";
 
@@ -72,7 +77,7 @@ public class AuthController {
 
                 String ip = request.getRemoteAddr();
 
-                if (!rateLimitingService.allowRequest(ip, "login", 5, 60)) {
+                if (!rateLimitingService.allowRequest(ip, ACTION_LOGI_STRING, 5, 60)) {
                         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
                                         .body(ApiResponse.error(429,
                                                         Translator.tolocale(ERROR_AUTH_TOO_MANY_ATTEMPTS_STRING)));
@@ -82,9 +87,10 @@ public class AuthController {
 
                 LoginResponse loginResponse = authenticationService.login(loginRequest);
 
-                ResponseCookie accessCookie = buildCookie(ACCESSTOKEN, loginResponse.getAccessToken(), "/", 15 * 60);
+                ResponseCookie accessCookie = buildCookie(ACCESSTOKEN, loginResponse.getAccessToken(), PATH_STRING,
+                                15 * 60L);
                 ResponseCookie refreshCookie = buildCookie(REFRESHTOKEN, loginResponse.getRefreshToken(),
-                                API_AUTH_REFRESH_TOKEN_STRING, 7 * 24 * 60 * 60);
+                                API_AUTH_REFRESH_TOKEN_STRING, 7 * 24 * 60 * 60L);
 
                 return ResponseEntity.ok()
                                 .header(HttpHeaders.SET_COOKIE, accessCookie.toString())
@@ -135,10 +141,11 @@ public class AuthController {
                 log.info("Refresh token with user");
                 TokenResponse newTokenResponse = authenticationService.refreshToken(refreshToken);
 
-                ResponseCookie newAccessCookie = buildCookie(ACCESSTOKEN, newTokenResponse.getAccessToken(), "/",
-                                15 * 60);
+                ResponseCookie newAccessCookie = buildCookie(ACCESSTOKEN, newTokenResponse.getAccessToken(),
+                                PATH_STRING,
+                                15 * 60L);
                 ResponseCookie newrefreshCookie = buildCookie(REFRESHTOKEN, newTokenResponse.getRefreshToken(),
-                                AUTH_PATH, 7 * 24 * 60 * 60);
+                                AUTH_PATH, 7 * 24 * 60 * 60L);
 
                 return ResponseEntity.ok()
                                 .header(HttpHeaders.SET_COOKIE, newAccessCookie.toString())
@@ -184,8 +191,8 @@ public class AuthController {
                 log.info("User logout {}", userEntityPrincipal.getUsername());
                 clearTokens(request);
 
-                ResponseCookie deleteAccess = buildCookie(ACCESSTOKEN, "", "/", 0);
-                ResponseCookie deleteRefresh = buildCookie(REFRESHTOKEN, "", AUTH_PATH, 0);
+                ResponseCookie deleteAccess = buildCookie(ACCESSTOKEN, EMPTY_STRING, PATH_STRING, 0);
+                ResponseCookie deleteRefresh = buildCookie(REFRESHTOKEN, EMPTY_STRING, AUTH_PATH, 0);
 
                 return ResponseEntity.ok()
                                 .header(HttpHeaders.SET_COOKIE, deleteAccess.toString())
@@ -204,8 +211,8 @@ public class AuthController {
 
                 clearTokens(request);
 
-                ResponseCookie deleteAccess = buildCookie(ACCESSTOKEN, "", "/", 0);
-                ResponseCookie deleteRefresh = buildCookie(REFRESHTOKEN, "", AUTH_PATH, 0);
+                ResponseCookie deleteAccess = buildCookie(ACCESSTOKEN, EMPTY_STRING, PATH_STRING, 0);
+                ResponseCookie deleteRefresh = buildCookie(REFRESHTOKEN, EMPTY_STRING, AUTH_PATH, 0);
 
                 return ResponseEntity.ok()
                                 .header(HttpHeaders.SET_COOKIE, deleteAccess.toString())

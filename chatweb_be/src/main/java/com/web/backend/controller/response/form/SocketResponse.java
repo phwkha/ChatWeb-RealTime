@@ -7,8 +7,6 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import org.springframework.lang.NonNull;
-
 @Data
 @Builder
 @NoArgsConstructor
@@ -22,8 +20,6 @@ public class SocketResponse<T> {
 
     private T data;
 
-    @NonNull
-    @SuppressWarnings("null")
     public static <T> SocketResponse<T> message(T data) {
         return SocketResponse.<T>builder()
                 .type(SocketEventType.MESSAGE)
@@ -32,8 +28,6 @@ public class SocketResponse<T> {
                 .build();
     }
 
-    @NonNull
-    @SuppressWarnings("null")
     public static <T> SocketResponse<T> error(String message, T data) {
         return SocketResponse.<T>builder()
                 .type(SocketEventType.ERROR)
@@ -42,8 +36,6 @@ public class SocketResponse<T> {
                 .build();
     }
 
-    @NonNull
-    @SuppressWarnings("null")
     public static <T> SocketResponse<T> notifications(String message, T data) {
         return SocketResponse.<T>builder()
                 .type(SocketEventType.NOTIFICATIONS)

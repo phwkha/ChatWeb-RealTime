@@ -1,6 +1,7 @@
 package com.web.backend.kafka.consumer;
 
 import java.util.List;
+import java.util.concurrent.Executors;
 
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
@@ -66,7 +67,7 @@ public class DatabaseWriteBehindConsumer {
     }
 
     private void sendAcknowledgements(List<ChatMessage> messagesToSave) {
-        try (var executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             for (ChatMessage msg : messagesToSave) {
                 executor.submit(() -> {
                     try {

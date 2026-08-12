@@ -18,7 +18,7 @@ public class UserHeartbeatScheduler {
     private final RedisTemplate<String, Object> redisTemplate;
     private static final String ONLINE_USERS_KEY = "online_users";
 
-    @Scheduled(fixedRate = 60 * 1000) // Run every 1 minute
+    @Scheduled(fixedRate = 60 * 1000)
     public void updateLocalUsersHeartbeat() {
         try {
             long currentTime = System.currentTimeMillis();

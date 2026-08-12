@@ -3,6 +3,7 @@ package com.web.backend.listener;
 import com.web.backend.config.ServerIdentity;
 
 import java.security.Principal;
+import java.time.Instant;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -34,85 +35,90 @@ public class WebSocketListener {
 
     private static final String ONLINE_USERS_COUNT_KEY = "online_users_count";
 
+    private static final String WS_ROUTING_STRING = "ws:routing:";
+
     @EventListener
     public void handleWebSocketConnectListener(SessionConnectedEvent event) {
         StompHeaderAccessor headerAccessor = StompHeaderAccessor.wrap(event.getMessage());
-
         Principal user = headerAccessor.getUser();
-        String username = (user != null) ? user.getName() : null;
 
-        if (username != null) {
-
-            Long count = redisTemplate.opsForHash().increment(ONLINE_USERS_COUNT_KEY, username, 1);
-
-            if (count != null && count <= 0) {
-                redisTemplate.opsForHash().put(ONLINE_USERS_COUNT_KEY, username, 1L);
-                count = 1L;
-            }
-
-            redisTemplate.opsForZSet().add(ONLINE_USERS_KEY, username, System.currentTimeMillis());
-
-            if (count != null && count == 1) {
-                userService.setUserOnlineStatus(username, true);
-
-                log.info("User Online (First Session): {}", username);
-            } else {
-                log.debug("User opened new tab/device: {}, total sessions: {}", username, count);
-            }
-
-            redisTemplate.opsForValue().set("ws:routing:" + username, ServerIdentity.SERVER_ID);
-            log.info("Mapped User {} to Server {}", username, ServerIdentity.SERVER_ID);
+        if (user == null || user.getName() == null) {
+            return;
         }
+
+        String username = user.getName();
+        Long count = redisTemplate.opsForHash().increment(ONLINE_USERS_COUNT_KEY, username, 1);
+
+        if (count != null && count <= 0) {
+            redisTemplate.opsForHash().put(ONLINE_USERS_COUNT_KEY, username, 1L);
+            count = 1L;
+        }
+
+        redisTemplate.opsForZSet().add(ONLINE_USERS_KEY, username, Instant.now().toEpochMilli());
+
+        if (count != null && count == 1) {
+            userService.setUserOnlineStatus(username, true);
+            log.info("User Online (First Session): {}", username);
+        } else {
+            log.debug("User opened new tab/device: {}, total sessions: {}", username, count);
+        }
+
+        redisTemplate.opsForValue().set(WS_ROUTING_STRING + username, ServerIdentity.SERVER_ID);
+        log.info("Mapped User {} to Server {}", username, ServerIdentity.SERVER_ID);
     }
 
     @EventListener
     public void handleWebSocketDisconnectListener(SessionDisconnectEvent event) {
         StompHeaderAccessor headerAccessor = StompHeaderAccessor.wrap(event.getMessage());
-
         Principal user = headerAccessor.getUser();
-        String username = (user != null) ? user.getName() : null;
 
-        if (username != null) {
-
-            log.info("WebSocket Disconnected: {}", username);
-
-            Long count = redisTemplate.opsForHash().increment(ONLINE_USERS_COUNT_KEY, username, -1);
-
-            if (count != null && count < 0) {
-                redisTemplate.opsForHash().put(ONLINE_USERS_COUNT_KEY, username, 0L);
-                count = 0L;
-            }
-
-            if (count != null && count <= 0) {
-                log.info("User count <= 0, scheduling offline debounce for: {}", username);
-                scheduler.schedule(() -> {
-                    try {
-                        Object currentCountObj = redisTemplate.opsForHash().get(ONLINE_USERS_COUNT_KEY, username);
-                        long currentCount = 0;
-                        if (currentCountObj != null) {
-                            if (currentCountObj instanceof Number number) {
-                                currentCount = (number).longValue();
-                            } else {
-                                currentCount = Long.parseLong(currentCountObj.toString());
-                            }
-                        }
-
-                        if (currentCount <= 0) {
-                            redisTemplate.opsForZSet().remove(ONLINE_USERS_KEY, username);
-                            redisTemplate.opsForHash().delete(ONLINE_USERS_COUNT_KEY, username);
-                            redisTemplate.delete("ws:routing:" + username);
-                            userService.setUserOnlineStatus(username, false);
-                            log.info("User Disconnected Completely (All sessions closed): {}", username);
-                        } else {
-                            log.info("User reconnected during debounce period: {}", username);
-                        }
-                    } catch (Exception e) {
-                        log.error("Error during offline debounce", e);
-                    }
-                }, 5, TimeUnit.SECONDS);
-            } else {
-                log.info("User closed one session, still online on other devices: {}, remaining: {}", username, count);
-            }
+        if (user == null || user.getName() == null) {
+            return;
         }
+
+        String username = user.getName();
+        log.info("WebSocket Disconnected: {}", username);
+
+        Long count = redisTemplate.opsForHash().increment(ONLINE_USERS_COUNT_KEY, username, -1);
+
+        if (count != null && count < 0) {
+            redisTemplate.opsForHash().put(ONLINE_USERS_COUNT_KEY, username, 0L);
+            count = 0L;
+        }
+
+        if (count != null && count <= 0) {
+            log.info("User count <= 0, scheduling offline debounce for: {}", username);
+            scheduler.schedule(() -> processOfflineDebounce(username), 5, TimeUnit.SECONDS);
+        } else {
+            log.info("User closed one session, still online on other devices: {}, remaining: {}", username, count);
+        }
+    }
+
+    private void processOfflineDebounce(String username) {
+        try {
+            long currentCount = getCurrentUserCount(username);
+
+            if (currentCount <= 0) {
+                redisTemplate.opsForZSet().remove(ONLINE_USERS_KEY, username);
+                redisTemplate.opsForHash().delete(ONLINE_USERS_COUNT_KEY, username);
+                redisTemplate.delete(WS_ROUTING_STRING + username);
+                userService.setUserOnlineStatus(username, false);
+                log.info("User Disconnected Completely (All sessions closed): {}", username);
+            } else {
+                log.info("User reconnected during debounce period: {}", username);
+            }
+        } catch (Exception e) {
+            log.error("Error during offline debounce", e);
+        }
+    }
+
+    private long getCurrentUserCount(String username) {
+        Object currentCountObj = redisTemplate.opsForHash().get(ONLINE_USERS_COUNT_KEY, username);
+        if (currentCountObj instanceof Number number) {
+            return number.longValue();
+        } else if (currentCountObj != null) {
+            return Long.parseLong(currentCountObj.toString());
+        }
+        return 0L;
     }
 }

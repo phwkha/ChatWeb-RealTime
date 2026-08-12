@@ -34,18 +34,16 @@ public class SpecSearchCriteria {
 
     public SpecSearchCriteria(String key, String operation, String prefix, String value, String suffix) {
         SearchOperation searchOperation = SearchOperation.getSimpleOperation(operation.charAt(0));
-        if (searchOperation != null) {
-            if (searchOperation == EQUALITY) { // the operation may be complex operation
-                final boolean startWithAsterisk = prefix != null && prefix.contains(ZERO_OR_MORE_REGEX);
-                final boolean endWithAsterisk = suffix != null && suffix.contains(ZERO_OR_MORE_REGEX);
+        if (searchOperation != null && searchOperation == EQUALITY) { // the operation may be complex operation
+            final boolean startWithAsterisk = prefix != null && prefix.contains(ZERO_OR_MORE_REGEX);
+            final boolean endWithAsterisk = suffix != null && suffix.contains(ZERO_OR_MORE_REGEX);
 
-                if (startWithAsterisk && endWithAsterisk) {
-                    searchOperation = CONTAINS;
-                } else if (startWithAsterisk) {
-                    searchOperation = ENDS_WITH;
-                } else if (endWithAsterisk) {
-                    searchOperation = STARTS_WITH;
-                }
+            if (startWithAsterisk && endWithAsterisk) {
+                searchOperation = CONTAINS;
+            } else if (startWithAsterisk) {
+                searchOperation = ENDS_WITH;
+            } else if (endWithAsterisk) {
+                searchOperation = STARTS_WITH;
             }
         }
         this.key = key;

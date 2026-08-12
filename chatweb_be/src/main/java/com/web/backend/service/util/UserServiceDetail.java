@@ -1,6 +1,7 @@
 package com.web.backend.service.util;
 
 import com.web.backend.config.localresolverconfig.Translator;
+import com.web.backend.common.UserStatus;
 import com.web.backend.model.UserEntity;
 import com.web.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -39,12 +40,12 @@ public class UserServiceDetail implements UserDetailsService {
             throw new LockedException(Translator.tolocale(ERROR_AUTH_LOCKED_ADMIN_STRING));
         }
 
-        if (user.getUserStatus() == com.web.backend.common.UserStatus.UNVERIFIED) {
+        if (user.getUserStatus() == UserStatus.UNVERIFIED) {
             log.info("user unverified: {}", username);
             throw new DisabledException(Translator.tolocale(ERROR_AUTH_ACCOUNT_UNVERIFIED_STRING));
         }
 
-        if (user.getUserStatus() == com.web.backend.common.UserStatus.INACTIVE) {
+        if (user.getUserStatus() == UserStatus.INACTIVE) {
             log.info("user inactive: {}", username);
             throw new DisabledException(Translator.tolocale(ERROR_AUTH_ACCOUNT_INACTIVE_STRING));
         }

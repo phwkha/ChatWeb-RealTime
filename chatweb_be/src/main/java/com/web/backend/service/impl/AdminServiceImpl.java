@@ -6,8 +6,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.data.domain.Page;
@@ -64,6 +62,8 @@ public class AdminServiceImpl implements AdminService {
 
     private final RedisTemplate<String, Object> redisTemplate;
 
+    private static final String DELIMITE_STRING = ":";
+
     private static final String ASC_STRING = "asc";
     private static final String ROLEID_CANNOT_BE_NULL_STRING = "RoleId cannot be null";
 
@@ -113,8 +113,9 @@ public class AdminServiceImpl implements AdminService {
 
         List<UserEntity> userEntities = userRepository.findByUsernameIn(usernames);
 
+        userEntities.forEach(entity -> entity.setOnline(true));
+
         List<UserSummaryResponse> content = userEntities.stream()
-                .peek(entity -> entity.setOnline(true))
                 .sorted(Comparator.comparingInt(entity -> usernames.indexOf(entity.getUsername())))
                 .map(userMapper::toUserSummaryResponse)
                 .toList();
@@ -138,13 +139,12 @@ public class AdminServiceImpl implements AdminService {
         List<Sort.Order> orders = new ArrayList<>();
         if (sorts != null) {
             for (String sortBy : sorts) {
-                Pattern pattern = Pattern.compile("(\\w+?)(:)(.*)");
-                Matcher matcher = pattern.matcher(sortBy);
-                if (matcher.find()) {
-                    if (matcher.group(3).equalsIgnoreCase(ASC_STRING)) {
-                        orders.add(new Sort.Order(Sort.Direction.ASC, Objects.requireNonNull(matcher.group(1))));
+                String[] parts = sortBy.split(DELIMITE_STRING, 2);
+                if (parts.length == 2 && !parts[0].isEmpty()) {
+                    if (parts[1].equalsIgnoreCase(ASC_STRING)) {
+                        orders.add(new Sort.Order(Sort.Direction.ASC, parts[0]));
                     } else {
-                        orders.add(new Sort.Order(Sort.Direction.DESC, Objects.requireNonNull(matcher.group(1))));
+                        orders.add(new Sort.Order(Sort.Direction.DESC, parts[0]));
                     }
                 }
             }

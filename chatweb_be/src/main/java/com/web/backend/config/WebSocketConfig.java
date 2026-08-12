@@ -1,8 +1,8 @@
 package com.web.backend.config;
 
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.security.Principal;
 
 import com.web.backend.jwt.JwtHandshakeInterceptor;
 import com.web.backend.common.TokenType;
@@ -15,6 +15,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.lang.NonNull;
+import org.springframework.lang.Nullable;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.MessagingException;
@@ -61,6 +62,9 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     private static final String WS_LOCALE_STRING = "WS_LOCALE";
 
+    private static final String VERSION_STRING = "v";
+    private static final String ONLINE_USERS = "online_users";
+
     private static final String JWT_TOKEN_COOKIE_STRING = "jwt_token_cookie";
     private static final String BLACKLIST_STRING = "blacklist:";
     private static final String AUTHORIZATION_STRING = "Authorization";
@@ -86,14 +90,14 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     public void registerStompEndpoints(@NonNull StompEndpointRegistry registry) {
         registry.setErrorHandler(new StompSubProtocolErrorHandler() {
             @Override
-            public Message<byte[]> handleClientMessageProcessingError(Message<byte[]> clientMessage, Throwable ex) {
+            @Nullable
+            public Message<byte[]> handleClientMessageProcessingError(@Nullable Message<byte[]> clientMessage,
+                    @NonNull Throwable ex) {
                 Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
                 String errorMessage = cause.getMessage();
-
                 StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.ERROR);
                 accessor.setMessage(errorMessage);
                 accessor.setLeaveMutable(true);
-
                 byte[] payload;
                 try {
                     SocketResponse<Object> response = SocketResponse.error(errorMessage, null);
@@ -101,7 +105,6 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                 } catch (Exception e) {
                     payload = errorMessage != null ? errorMessage.getBytes() : new byte[0];
                 }
-
                 return MessageBuilder.createMessage(payload, accessor.getMessageHeaders());
             }
         });
@@ -116,90 +119,116 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     public void configureClientInboundChannel(@NonNull ChannelRegistration registration) {
         registration.interceptors(new ChannelInterceptor() {
             @Override
+            @Nullable
             public Message<?> preSend(@NonNull Message<?> message, @NonNull MessageChannel channel) {
                 StompHeaderAccessor accessor = MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
-
                 if (accessor != null) {
-                    Map<String, Object> sessionAttributes = accessor.getSessionAttributes();
-                    if (StompCommand.CONNECT.equals(accessor.getCommand())) {
-                        String lang = accessor.getFirstNativeHeader(ACCEPT_LANGUAGE_STRING);
-                        if (lang != null && sessionAttributes != null) {
-                            sessionAttributes.put(WS_LOCALE_STRING, lang);
-                            LocaleContextHolder.setLocale(StringUtils.parseLocaleString(lang));
-                        }
-                    } else if (sessionAttributes != null && sessionAttributes.containsKey(WS_LOCALE_STRING)) {
-                        String lang = (String) sessionAttributes.get(WS_LOCALE_STRING);
-                        LocaleContextHolder.setLocale(StringUtils.parseLocaleString(lang));
+                    handleLocaleSetup(accessor);
+                    handleAuthentication(accessor);
+                    updateOnlineUsers(accessor);
+                    if (accessor.isModified()) {
+                        return MessageBuilder.createMessage(message.getPayload(), accessor.getMessageHeaders());
                     }
                 }
-
-                if (accessor != null && StompCommand.CONNECT.equals(accessor.getCommand())) {
-                    Map<String, Object> sessionAttributes = accessor.getSessionAttributes();
-                    String token = sessionAttributes != null ? (String) sessionAttributes.get(JWT_TOKEN_COOKIE_STRING)
-                            : null;
-                    if (token == null) {
-                        token = extractTokenFromHeader(accessor);
-                    }
-                    if (token != null) {
-                        try {
-                            String key = BLACKLIST_STRING + token;
-                            if (Boolean.TRUE.equals(redisTemplate.hasKey(key))) {
-                                log.info("Token expired");
-                                throw new MessagingException(
-                                        Objects.requireNonNull(Translator.tolocale(ERROR_WS_BLACKLISTED_STRING)));
-                            }
-                            String username = jwtService.extractUsername(token, TokenType.ACCESS_TOKEN);
-                            if (username != null) {
-                                UserDetails userDetails = userServiceDetail.loadUserByUsername(username);
-                                if (userDetails instanceof UserEntity userEntity) {
-                                    Integer tokenVersionInJwt = jwtService.extractClaim(token, TokenType.ACCESS_TOKEN,
-                                            claims -> claims.get("v", Integer.class));
-                                    Integer currentVersion = userEntity.getTokenVersion();
-                                    if (currentVersion == null)
-                                        currentVersion = 0;
-                                    if (tokenVersionInJwt == null || !tokenVersionInJwt.equals(currentVersion)) {
-                                        log.warn("Token version mismatch for user in WebSocket: {}", username);
-                                        throw new MessagingException(Objects
-                                                .requireNonNull(
-                                                        Translator.tolocale(ERROR_WS_INVALID_TOKEN_VERSION_STRING)));
-                                    }
-                                }
-                                UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
-                                        userDetails, null, userDetails.getAuthorities());
-                                accessor.setUser(auth);
-                                log.info("WebSocket Authenticated User: {}", username);
-                            }
-                        } catch (Exception e) {
-                            log.error("WebSocket Auth Failed: {}", e.getMessage());
-                            throw new MessagingException(Objects
-                                    .requireNonNull(Translator.tolocale(ERROR_WS_AUTH_FAILED_STRING, e.getMessage())));
-                        }
-                    } else {
-                        throw new MessagingException(
-                                Objects.requireNonNull(Translator.tolocale(ERROR_WS_MISSING_TOKEN_STRING)));
-                    }
-                }
-
-                if (accessor != null
-                        && accessor.getUser() != null
-                        && accessor.getUser().getName() != null
-                        && !StompCommand.DISCONNECT.equals(accessor.getCommand())) {
-                    redisTemplate.opsForZSet().add("online_users", accessor.getUser().getName(),
-                            System.currentTimeMillis());
-                }
-
-                if (accessor != null && accessor.isModified()) {
-                    return MessageBuilder.createMessage(message.getPayload(), accessor.getMessageHeaders());
-                }
-
                 return message;
             }
 
             @Override
-            public void afterSendCompletion(Message<?> message, MessageChannel channel, boolean sent, Exception ex) {
+            public void afterSendCompletion(@NonNull Message<?> message, @NonNull MessageChannel channel, boolean sent,
+                    @Nullable Exception ex) {
                 LocaleContextHolder.resetLocaleContext();
             }
         });
+    }
+
+    private void handleLocaleSetup(StompHeaderAccessor accessor) {
+        Map<String, Object> sessionAttributes = accessor.getSessionAttributes();
+        if (sessionAttributes == null) {
+            return;
+        }
+
+        if (StompCommand.CONNECT.equals(accessor.getCommand())) {
+            String lang = accessor.getFirstNativeHeader(ACCEPT_LANGUAGE_STRING);
+            if (lang != null) {
+                sessionAttributes.put(WS_LOCALE_STRING, lang);
+                LocaleContextHolder.setLocale(StringUtils.parseLocaleString(lang));
+            }
+        } else if (sessionAttributes.containsKey(WS_LOCALE_STRING)) {
+            String lang = (String) sessionAttributes.get(WS_LOCALE_STRING);
+            LocaleContextHolder.setLocale(StringUtils.parseLocaleString(lang));
+        }
+    }
+
+    private void handleAuthentication(StompHeaderAccessor accessor) {
+        if (!StompCommand.CONNECT.equals(accessor.getCommand())) {
+            return;
+        }
+
+        Map<String, Object> sessionAttributes = accessor.getSessionAttributes();
+        String token = sessionAttributes != null ? (String) sessionAttributes.get(JWT_TOKEN_COOKIE_STRING) : null;
+
+        if (token == null) {
+            token = extractTokenFromHeader(accessor);
+        }
+
+        if (token == null) {
+            throw new MessagingException(Objects.requireNonNull(Translator.tolocale(ERROR_WS_MISSING_TOKEN_STRING)));
+        }
+
+        try {
+            validateAndAuthenticateToken(token, accessor);
+        } catch (Exception e) {
+            log.error("WebSocket Auth Failed: {}", e.getMessage());
+            throw new MessagingException(
+                    Objects.requireNonNull(Translator.tolocale(ERROR_WS_AUTH_FAILED_STRING, e.getMessage())));
+        }
+    }
+
+    private void validateAndAuthenticateToken(String token, StompHeaderAccessor accessor) {
+        String key = BLACKLIST_STRING + token;
+        if (Boolean.TRUE.equals(redisTemplate.hasKey(key))) {
+            log.info("Token expired");
+            throw new MessagingException(Objects.requireNonNull(Translator.tolocale(ERROR_WS_BLACKLISTED_STRING)));
+        }
+
+        String username = jwtService.extractUsername(token, TokenType.ACCESS_TOKEN);
+        if (username != null) {
+            UserDetails userDetails = userServiceDetail.loadUserByUsername(username);
+
+            if (userDetails instanceof UserEntity userEntity) {
+                checkTokenVersion(token, userEntity, username);
+            }
+
+            UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
+                    userDetails, null, userDetails.getAuthorities());
+            accessor.setUser(auth);
+            log.info("WebSocket Authenticated User: {}", username);
+        }
+    }
+
+    private void checkTokenVersion(String token, UserEntity userEntity, String username) {
+        Integer tokenVersionInJwt = jwtService.extractClaim(token, TokenType.ACCESS_TOKEN,
+                claims -> claims.get(VERSION_STRING, Integer.class));
+        Integer currentVersion = userEntity.getTokenVersion();
+        if (currentVersion == null) {
+            currentVersion = 0;
+        }
+
+        if (tokenVersionInJwt == null || !tokenVersionInJwt.equals(currentVersion)) {
+            log.warn("Token version mismatch for user in WebSocket: {}", username);
+            throw new MessagingException(
+                    Objects.requireNonNull(Translator.tolocale(ERROR_WS_INVALID_TOKEN_VERSION_STRING)));
+        }
+    }
+
+    private void updateOnlineUsers(StompHeaderAccessor accessor) {
+        Principal user = accessor.getUser();
+        if (user != null
+                && user.getName() != null
+                && !StompCommand.DISCONNECT.equals(accessor.getCommand())) {
+            redisTemplate.opsForZSet().add(ONLINE_USERS, user.getName(),
+                    System.currentTimeMillis());
+        }
     }
 
     private String extractTokenFromHeader(StompHeaderAccessor accessor) {

@@ -95,7 +95,7 @@ public class StorageServiceImpl implements StorageService {
 
         } catch (IOException e) {
             log.error("Upload failed: {}", e.getMessage());
-            throw new RuntimeException(Translator.tolocale(ERROR_STORAGE_UPLOAD_FAILED_STRING, e.getMessage()));
+            throw new InvalidDataException(Translator.tolocale(ERROR_STORAGE_UPLOAD_FAILED_STRING, e.getMessage()));
         }
     }
 

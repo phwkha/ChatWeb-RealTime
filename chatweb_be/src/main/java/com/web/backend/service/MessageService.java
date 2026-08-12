@@ -3,6 +3,8 @@ package com.web.backend.service;
 import com.web.backend.controller.request.ChatMessageRequest;
 import com.web.backend.controller.request.MessageSystemRequest;
 import com.web.backend.controller.request.ReactionRequest;
+import com.web.backend.controller.request.EditMessageRequest;
+import com.web.backend.controller.request.RevokeMessageRequest;
 import com.web.backend.controller.response.ChatMessageResponse;
 import com.web.backend.controller.response.CursorResponse;
 import com.web.backend.controller.response.MessageSystemResponse;
@@ -26,7 +28,7 @@ public interface MessageService {
 
     ChatMessageResponse getMessageById(String messageId, String currentUsername);
 
-    void editMessage(String senderUsername, com.web.backend.controller.request.EditMessageRequest request);
+    void editMessage(String senderUsername, EditMessageRequest request);
 
-    void revokeMessage(String senderUsername, com.web.backend.controller.request.RevokeMessageRequest request);
+    void revokeMessage(String senderUsername, RevokeMessageRequest request);
 }

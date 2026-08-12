@@ -7,7 +7,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.io.Serializable;
-import java.util.Date;
+import java.time.Instant;
 
 @Getter
 @Setter
@@ -20,9 +20,9 @@ public abstract class AbstractEntity<T extends Serializable> implements Serializ
 
     @Column(name = "create_at")
     @CreationTimestamp
-    private Date createAt;
+    private Instant createAt;
 
     @Column(name = "update_at")
     @UpdateTimestamp
-    private Date updateAt;
+    private Instant updateAt;
 }

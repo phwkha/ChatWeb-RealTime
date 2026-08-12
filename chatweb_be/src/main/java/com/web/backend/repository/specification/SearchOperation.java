@@ -1,9 +1,11 @@
 package com.web.backend.repository.specification;
 
+import java.util.List;
+
 public enum SearchOperation {
     EQUALITY, NEGATION, GREATER_THAN, LESS_THAN, LIKE, STARTS_WITH, ENDS_WITH, CONTAINS;
 
-    public static final String[] SIMPLE_OPERATION_SET = { ":", "!", ">", "<", "~" };
+    public static final List<String> SIMPLE_OPERATION_SET = List.of(":", "!", ">", "<", "~");
 
     public static final String OR_PREDICATE_FLAG = "'";
 

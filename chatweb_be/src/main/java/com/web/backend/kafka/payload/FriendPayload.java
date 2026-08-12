@@ -7,12 +7,12 @@ import java.util.List;
 
 @Builder
 public record FriendPayload(
-        String senderUsername,
-        String senderDisplayName,
-        String recipientUsername,
-        String recipientDisplayName,
-        List<String> recipientUsernames,
-        String destination,
-        NotificationsType senderStatus,
-        NotificationsType recipientStatus) {
+                String senderUsername,
+                String senderDisplayName,
+                String recipientUsername,
+                String recipientDisplayName,
+                List<String> recipientUsernames,
+                String destination,
+                NotificationsType senderType,
+                NotificationsType recipientType) {
 }

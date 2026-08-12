@@ -4,18 +4,15 @@ import com.web.backend.common.GenderType;
 import jakarta.validation.constraints.Pattern;
 import lombok.Data;
 
-import java.util.Date;
+import java.time.LocalDate;
 
 @Data
 public class UpdateUserRequest {
     private String firstName;
     private String lastName;
 
-    @Pattern(
-            regexp = "^(0[0-9]{9}|\\+84[0-9]{9})$",
-            message = "{valid.phone_invalid}"
-    )
+    @Pattern(regexp = "^(0\\d{9}|\\+84\\d{9})$", message = "{valid.phone_invalid}")
     private String phone;
-    private Date birthday;
+    private LocalDate birthday;
     private GenderType gender;
 }

@@ -377,7 +377,7 @@ public class UserServiceImpl implements UserService {
             eventPublisher.publishEvent(FriendPayload.builder()
                     .recipientUsernames(friends)
                     .destination(QUEUE_NOTIFICATIONS_STRING)
-                    .recipientStatus(isOnline ? NotificationsType.USER_ONLINE : NotificationsType.USER_OFFLINE)
+                    .recipientType(isOnline ? NotificationsType.USER_ONLINE : NotificationsType.USER_OFFLINE)
                     .senderDisplayName(username)
                     .build());
         }

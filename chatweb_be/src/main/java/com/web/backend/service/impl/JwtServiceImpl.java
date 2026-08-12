@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import javax.crypto.SecretKey;
 import java.util.*;
 import java.util.function.Function;
+import java.time.Instant;
 
 @Service
 @Slf4j(topic = "JWT-SERVICE")
@@ -61,7 +62,7 @@ public class JwtServiceImpl implements JwtService {
     @Override
     public String extractUsername(String token, TokenType type) {
         log.info("extract username from token {} with type {}", token, type);
-        return extractClaims(type, token, claims -> claims.getSubject());
+        return extractClaims(type, token, Claims::getSubject);
     }
 
     @Override
@@ -72,8 +73,8 @@ public class JwtServiceImpl implements JwtService {
 
     @Override
     public long getRemainingTime(String token, TokenType tokenType) {
-        Date expiration = extractClaim(token, tokenType, claims -> claims.getExpiration());
-        long now = System.currentTimeMillis();
+        Date expiration = extractClaim(token, tokenType, Claims::getExpiration);
+        long now = Instant.now().toEpochMilli();
         long remaining = expiration.getTime() - now;
         return Math.max(remaining, 0);
     }
@@ -93,24 +94,24 @@ public class JwtServiceImpl implements JwtService {
 
     private String generateToken(Map<String, Object> claims, String username) {
         log.info("generate access token for user {} with name {}", username, claims);
-        long now = System.currentTimeMillis();
+        Instant now = Instant.now();
         return Jwts.builder()
                 .claims(claims)
                 .subject(username)
-                .issuedAt(new Date(now))
-                .expiration(new Date(now + 1000 * 60 * expiryMinutes))
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(now.plusMillis(1000L * 60 * expiryMinutes)))
                 .signWith(getKey(TokenType.ACCESS_TOKEN), Jwts.SIG.HS256)
                 .compact();
     }
 
     private String generateRefreshToken(Map<String, Object> claims, String username) {
         log.info("generate refresh token for user {} with name {}", username, claims);
-        long now = System.currentTimeMillis();
+        Instant now = Instant.now();
         return Jwts.builder()
                 .claims(claims)
                 .subject(username)
-                .issuedAt(new Date(now))
-                .expiration(new Date(now + 1000 * 60 * 60 * 24 * expiryDay))
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(now.plusMillis(1000L * 60 * 60 * 24 * expiryDay)))
                 .signWith(getKey(TokenType.REFRESH_TOKEN), Jwts.SIG.HS256)
                 .compact();
     }
