@@ -14,8 +14,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.lang.NonNull;
-import org.springframework.lang.Nullable;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.MessagingException;
@@ -77,7 +75,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     private static final String ERROR_WS_MISSING_TOKEN_STRING = "error.ws.missing_token";
 
     @Override
-    public void configureMessageBroker(@NonNull MessageBrokerRegistry registry) {
+    public void configureMessageBroker(MessageBrokerRegistry registry) {
         registry.enableSimpleBroker(TOPIC_STRING, QUEUE_STRING);
         registry.setApplicationDestinationPrefixes(APP_STRING);
         registry.setUserDestinationPrefix(USER_STRING);
@@ -87,12 +85,11 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     private String allowedOrigins;
 
     @Override
-    public void registerStompEndpoints(@NonNull StompEndpointRegistry registry) {
+    public void registerStompEndpoints(StompEndpointRegistry registry) {
         registry.setErrorHandler(new StompSubProtocolErrorHandler() {
             @Override
-            @Nullable
-            public Message<byte[]> handleClientMessageProcessingError(@Nullable Message<byte[]> clientMessage,
-                    @NonNull Throwable ex) {
+            public Message<byte[]> handleClientMessageProcessingError(Message<byte[]> clientMessage,
+                    Throwable ex) {
                 Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
                 String errorMessage = cause.getMessage();
                 StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.ERROR);
@@ -116,11 +113,10 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     }
 
     @Override
-    public void configureClientInboundChannel(@NonNull ChannelRegistration registration) {
+    public void configureClientInboundChannel(ChannelRegistration registration) {
         registration.interceptors(new ChannelInterceptor() {
             @Override
-            @Nullable
-            public Message<?> preSend(@NonNull Message<?> message, @NonNull MessageChannel channel) {
+            public Message<?> preSend(Message<?> message, MessageChannel channel) {
                 StompHeaderAccessor accessor = MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
                 if (accessor != null) {
                     handleLocaleSetup(accessor);
@@ -134,8 +130,8 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
             }
 
             @Override
-            public void afterSendCompletion(@NonNull Message<?> message, @NonNull MessageChannel channel, boolean sent,
-                    @Nullable Exception ex) {
+            public void afterSendCompletion(Message<?> message, MessageChannel channel, boolean sent,
+                    Exception ex) {
                 LocaleContextHolder.resetLocaleContext();
             }
         });
