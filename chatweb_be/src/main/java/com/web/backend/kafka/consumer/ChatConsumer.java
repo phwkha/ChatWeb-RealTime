@@ -5,12 +5,10 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
 import com.web.backend.controller.response.ChatMessageResponse;
 import com.web.backend.controller.response.MessageSystemResponse;
-import com.web.backend.controller.response.wrapper.SocketResponse;
 import com.web.backend.mapper.MessageMapper;
 import com.web.backend.model.ChatMessage;
 import com.web.backend.model.SystemMessage;
 import com.web.backend.service.WebSocketRoutingService;
-import com.web.backend.common.MessageType;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -41,14 +39,8 @@ public class ChatConsumer {
         try {
             ChatMessageResponse messageResponse = messageMapper.toResponse(message);
             messageResponse.setLocalId(message.getLocalId());
-            SocketResponse<ChatMessageResponse> response = SocketResponse.message(messageResponse);
 
-            if (message.getMessageType() == MessageType.CHAT) {
-                webSocketRoutingService.routeMessage(recipient, QUEUE_MESSAGES_STRING, response);
-            } else {
-                webSocketRoutingService.routeMessage(recipient, QUEUE_MESSAGES_STRING, response);
-                webSocketRoutingService.routeMessage(sender, QUEUE_MESSAGES_STRING, response);
-            }
+            webSocketRoutingService.routeMessage(recipient, QUEUE_MESSAGES_STRING, messageResponse);
 
             log.info("Finished processing Kafka message for recipient: {}", message.getRecipient());
         } catch (Exception e) {

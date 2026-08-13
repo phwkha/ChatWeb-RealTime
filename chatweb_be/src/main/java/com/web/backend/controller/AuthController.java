@@ -1,10 +1,10 @@
 package com.web.backend.controller;
 
 import com.web.backend.controller.request.*;
+import com.web.backend.controller.response.ApiResponse;
 import com.web.backend.controller.response.LoginResponse;
 import com.web.backend.controller.response.TokenResponse;
 import com.web.backend.controller.response.UserResponse;
-import com.web.backend.controller.response.wrapper.ApiResponse;
 import com.web.backend.model.UserEntity;
 import com.web.backend.service.AuthenticationService;
 import com.web.backend.service.RateLimitingService;

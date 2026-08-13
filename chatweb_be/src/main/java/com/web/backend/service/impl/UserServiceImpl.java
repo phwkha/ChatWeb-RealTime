@@ -78,7 +78,6 @@ public class UserServiceImpl implements UserService {
     private static final String AVATARS_STRING = "avatars";
     private static final String OTP_STRING = "otp:";
     private static final String COOLDOWN_RESEND_STRING = "cooldown:resend:";
-    private static final String QUEUE_NOTIFICATIONS_STRING = "/queue/notifications";
 
     private static final String ERROR_USER_NOT_FOUND_WITH_STRING = "error.user.not_found_with";
     private static final String ERROR_AUTH_INVALID_OTP_ATTEMPTS_STRING = "error.auth.invalid_otp_attempts";
@@ -376,8 +375,8 @@ public class UserServiceImpl implements UserService {
         if (friends != null && !friends.isEmpty()) {
             eventPublisher.publishEvent(FriendPayload.builder()
                     .recipientUsernames(friends)
-                    .destination(QUEUE_NOTIFICATIONS_STRING)
-                    .recipientType(isOnline ? NotificationsType.USER_ONLINE : NotificationsType.USER_OFFLINE)
+                    .recipientType(
+                            isOnline ? NotificationsType.USER_ONLINE : NotificationsType.USER_OFFLINE)
                     .senderDisplayName(username)
                     .build());
         }

@@ -1,6 +1,5 @@
 package com.web.backend.controller.response;
 
-import com.web.backend.common.NotificationsType;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -10,9 +9,9 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class NotificationMessageResponse {
+public class ErrorSocketResponse {
 
-    private NotificationsType type;
-    private String relatedUsername;
+    private String message;
+    private Object request;
 
 }

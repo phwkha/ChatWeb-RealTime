@@ -1,0 +1,146 @@
+package com.web.backend.kafka.consumer;
+
+import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.annotation.RetryableTopic;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.stereotype.Component;
+
+import com.web.backend.common.NotificationsType;
+import com.web.backend.common.UpdateMessageType;
+import com.web.backend.controller.response.ChatMessageResponse;
+import com.web.backend.controller.response.NotificationResponse;
+import com.web.backend.config.localresolverconfig.Translator;
+import com.web.backend.kafka.payload.UpdateMessagePayload;
+import com.web.backend.mapper.MessageMapper;
+import com.web.backend.model.ChatMessage;
+import com.web.backend.service.WebSocketRoutingService;
+import org.springframework.data.mongodb.core.FindAndModifyOptions;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
+@Component
+@RequiredArgsConstructor
+@Slf4j(topic = "CHAT-UPDATE-CONSUMER")
+public class ChatUpdateConsunmer {
+
+    private final MessageMapper messageMapper;
+    private final WebSocketRoutingService webSocketRoutingService;
+    private final MongoTemplate mongoTemplate;
+    private final ObjectMapper objectMapper;
+
+    private static final String QUEUE_NOTIFICATIONS_STRING = "/queue/notifications";
+    
+    private static final String SYS_MSG_EDIT_MESSAGE_STRING = "sys.msg.edit_message";
+    private static final String SYS_MSG_REVOKE_MESSAGE_STRING = "sys.msg.revoke_message";
+    private static final String SYS_MSG_REACT_MESSAGE_STRING = "sys.msg.react_message";
+    private static final String SYS_MSG_STATUS_MESSAGE_STRING = "sys.msg.status_message";
+
+    @RetryableTopic(attempts = "Integer.MAX_VALUE", backoff = @Backoff(delay = 1000, maxDelay = 10000), autoCreateTopics = "true")
+    @KafkaListener(topics = "${spring.kafka.topic.update-message.update}", groupId = "${spring.kafka.topic.update-message.group-id}")
+    public void handleMessageUpdates(UpdateMessagePayload updateEvent) {
+        if (updateEvent.type() != UpdateMessageType.STATUS && updateEvent.updateEvent() != null) {
+            processContentUpdate(updateEvent);
+        } else {
+            processStatusUpdate(updateEvent);
+        }
+    }
+
+    private void processContentUpdate(UpdateMessagePayload updateEvent) {
+        ChatMessage msg = (updateEvent.updateEvent() instanceof ChatMessage chatMessage)
+                ? chatMessage
+                : objectMapper.convertValue(updateEvent.updateEvent(), ChatMessage.class);
+
+        Query query = new Query(Criteria.where("id").is(msg.getId()));
+        Update update = new Update();
+
+        switch (updateEvent.type()) {
+            case EDIT:
+                update.set("content", msg.getContent());
+                update.set("isEdited", true);
+                break;
+            case REVOKE:
+                update.set("content", "");
+                update.set("fileUrl", null);
+                update.set("fileName", null);
+                update.set("fileSize", null);
+                update.set("reactions", null);
+                update.set("isDeleted", true);
+                break;
+            case REACT:
+                update.set("reactions", msg.getReactions());
+                break;
+            default:
+                break;
+        }
+
+        FindAndModifyOptions options = new FindAndModifyOptions().returnNew(true);
+        ChatMessage updatedMsg = mongoTemplate.findAndModify(query, update, options, ChatMessage.class);
+
+        if (updatedMsg == null) {
+            throw new IllegalStateException("Original message not found in DB yet, retrying update...");
+        }
+
+        log.info("Successfully applied update to message {} in DB", updatedMsg.getId());
+        try {
+            NotificationResponse<?> response = buildResponse(updateEvent.relatedUsername(), updateEvent.type(),
+                    updatedMsg);
+            webSocketRoutingService.routeMessage(updatedMsg.getSender(), QUEUE_NOTIFICATIONS_STRING, response);
+            webSocketRoutingService.routeMessage(updatedMsg.getRecipient(), QUEUE_NOTIFICATIONS_STRING, response);
+            log.info("Finished processing Kafka update message: {}", updatedMsg.getId());
+        } catch (Exception e) {
+            log.error("Failed to send WebSocket update message: {}", e.getMessage());
+        }
+    }
+
+    private void processStatusUpdate(UpdateMessagePayload updateEvent) {
+        try {
+            String reader = updateEvent.relatedUsername();
+
+            String receiver = (updateEvent.updateEvent() instanceof String r) ? r : null;
+
+            if (receiver != null) {
+                NotificationResponse<?> response = buildResponse(reader, updateEvent.type(), null);
+                webSocketRoutingService.routeMessage(receiver, QUEUE_NOTIFICATIONS_STRING, response);
+                log.info("Finished processing Kafka update message status");
+            }
+        } catch (Exception e) {
+            log.error("Failed to send WebSocket update status message: {}", e.getMessage());
+        }
+    }
+
+    private NotificationResponse<?> buildResponse(String relatedUsername, UpdateMessageType type,
+            ChatMessage chatMessage) {
+        if (type != UpdateMessageType.STATUS && chatMessage != null) {
+            NotificationResponse<ChatMessageResponse> response = new NotificationResponse<>();
+            switch (type) {
+                case EDIT:
+                    response.setType(NotificationsType.EDIT_MESSAGE);
+                    response.setMessage(Translator.tolocale(SYS_MSG_EDIT_MESSAGE_STRING));
+                    break;
+                case REVOKE:
+                    response.setType(NotificationsType.REVOKE_MESSAGE);
+                    response.setMessage(Translator.tolocale(SYS_MSG_REVOKE_MESSAGE_STRING));
+                    break;
+                case REACT:
+                    response.setType(NotificationsType.REACT_MESSAGE);
+                    response.setMessage(Translator.tolocale(SYS_MSG_REACT_MESSAGE_STRING));
+                    break;
+                default:
+                    break;
+            }
+            response.setRelatedUsername(relatedUsername);
+            response.setData(messageMapper.toResponse(chatMessage));
+            return response;
+        } else {
+            return NotificationResponse.notificationData(NotificationsType.STATUS_MESSAGE, relatedUsername, 
+                    Translator.tolocale(SYS_MSG_STATUS_MESSAGE_STRING));
+        }
+    }
+
+}

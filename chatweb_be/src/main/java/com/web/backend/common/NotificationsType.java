@@ -12,5 +12,10 @@ public enum NotificationsType {
     REQUEST_REJECTED,
 
     USER_ONLINE,
-    USER_OFFLINE
+    USER_OFFLINE,
+
+    EDIT_MESSAGE,
+    REVOKE_MESSAGE,
+    REACT_MESSAGE,
+    STATUS_MESSAGE
 }

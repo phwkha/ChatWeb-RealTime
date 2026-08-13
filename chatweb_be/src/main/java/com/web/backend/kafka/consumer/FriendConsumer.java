@@ -5,13 +5,11 @@ import org.springframework.stereotype.Component;
 
 import com.web.backend.common.NotificationsType;
 import com.web.backend.config.localresolverconfig.Translator;
-import com.web.backend.controller.response.NotificationMessageResponse;
-import com.web.backend.controller.response.wrapper.SocketResponse;
+import com.web.backend.controller.response.NotificationResponse;
 import com.web.backend.kafka.payload.FriendPayload;
 import com.web.backend.service.WebSocketRoutingService;
 
 import java.util.List;
-import java.util.Objects;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,7 +21,7 @@ public class FriendConsumer {
 
     private final WebSocketRoutingService webSocketRoutingService;
 
-    private static final String DESTINATION_MUST_NOT_BE_NULL_STRING = "Destination must not be null";
+    private static final String QUEUE_NOTIFICATIONS_STRING = "/queue/notifications";
 
     private static final String SYS_MSG_NEW_FRIEND_INVITE_STRING = "sys.msg.new_friend_invite";
     private static final String SUCCESS_FRIEND_INVITE_SENT_STRING = "success.friend.invite_sent";
@@ -46,30 +44,28 @@ public class FriendConsumer {
         String sender = payload.senderUsername();
 
         try {
-            SocketResponse<NotificationMessageResponse> recipientResp = buildResponse(payload.recipientType(),
+            NotificationResponse<?> recipientResp = buildResponse(payload.recipientType(),
                     payload.senderDisplayName());
-            SocketResponse<NotificationMessageResponse> senderResp = buildResponse(payload.senderType(),
+            NotificationResponse<?> senderResp = buildResponse(payload.senderType(),
                     payload.recipientDisplayName());
-
-            String destination = Objects.requireNonNull(payload.destination(), DESTINATION_MUST_NOT_BE_NULL_STRING);
 
             if (recipients != null && !recipients.isEmpty() && recipientResp != null) {
                 for (String r : recipients) {
-                    webSocketRoutingService.routeMessage(r, destination, recipientResp);
+                    webSocketRoutingService.routeMessage(r, QUEUE_NOTIFICATIONS_STRING, recipientResp);
                 }
             } else if (recipient != null && recipientResp != null) {
-                webSocketRoutingService.routeMessage(recipient, destination, recipientResp);
+                webSocketRoutingService.routeMessage(recipient, QUEUE_NOTIFICATIONS_STRING, recipientResp);
             }
 
             if (sender != null && senderResp != null) {
-                webSocketRoutingService.routeMessage(sender, destination, senderResp);
+                webSocketRoutingService.routeMessage(sender, QUEUE_NOTIFICATIONS_STRING, senderResp);
             }
         } catch (Exception e) {
             log.error("Error sending WS notification: {}", e.getMessage(), e);
         }
     }
 
-    private SocketResponse<NotificationMessageResponse> buildResponse(NotificationsType type,
+    private NotificationResponse<?> buildResponse(NotificationsType type,
             String relatedUsername) {
         if (type == null) {
             return null;
@@ -108,11 +104,6 @@ public class FriendConsumer {
                 translationKey = "";
         }
 
-        NotificationMessageResponse data = NotificationMessageResponse.builder()
-                .type(type)
-                .relatedUsername(relatedUsername)
-                .build();
-
-        return SocketResponse.notifications(Translator.tolocale(translationKey), data);
+        return NotificationResponse.notificationData(type, relatedUsername, Translator.tolocale(translationKey));
     }
 }

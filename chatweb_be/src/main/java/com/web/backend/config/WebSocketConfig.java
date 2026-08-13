@@ -31,7 +31,7 @@ import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBr
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
 import com.web.backend.config.localresolverconfig.Translator;
-import com.web.backend.controller.response.wrapper.SocketResponse;
+import com.web.backend.controller.response.ErrorSocketResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.socket.messaging.StompSubProtocolErrorHandler;
@@ -98,7 +98,8 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                 accessor.setLeaveMutable(true);
                 byte[] payload;
                 try {
-                    SocketResponse<Object> response = SocketResponse.error(errorMessage, null);
+                    ErrorSocketResponse response = ErrorSocketResponse.builder().message(errorMessage)
+                            .request(null).build();
                     payload = objectMapper.writeValueAsBytes(response);
                 } catch (Exception e) {
                     payload = errorMessage != null ? errorMessage.getBytes() : new byte[0];

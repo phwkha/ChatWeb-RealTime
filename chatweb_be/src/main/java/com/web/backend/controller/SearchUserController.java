@@ -1,8 +1,8 @@
 package com.web.backend.controller;
 
 import com.web.backend.controller.response.UserSummaryResponse;
-import com.web.backend.controller.response.wrapper.ApiResponse;
 import com.web.backend.config.localresolverconfig.Translator;
+import com.web.backend.controller.response.ApiResponse;
 import com.web.backend.controller.response.PageResponse;
 import com.web.backend.controller.response.UserDetailResponse;
 import com.web.backend.service.SearchUserService;

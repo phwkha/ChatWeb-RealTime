@@ -46,6 +46,7 @@ public class ChatMessage {
 
     private boolean isEdited;
     private boolean isDeleted;
+    private boolean isReacted;
 
     private Map<String, String> reactions;
 

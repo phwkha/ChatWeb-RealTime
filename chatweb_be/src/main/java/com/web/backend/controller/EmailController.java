@@ -2,7 +2,7 @@ package com.web.backend.controller;
 
 import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.request.EmailRequest;
-import com.web.backend.controller.response.wrapper.ApiResponse;
+import com.web.backend.controller.response.ApiResponse;
 import com.web.backend.service.EmailService;
 
 import jakarta.validation.Valid;

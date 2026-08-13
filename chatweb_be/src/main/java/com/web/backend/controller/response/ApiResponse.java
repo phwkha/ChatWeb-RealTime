@@ -1,4 +1,4 @@
-package com.web.backend.controller.response.wrapper;
+package com.web.backend.controller.response;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.AllArgsConstructor;

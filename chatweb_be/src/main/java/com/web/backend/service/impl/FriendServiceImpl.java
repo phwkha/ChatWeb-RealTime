@@ -53,8 +53,6 @@ public class FriendServiceImpl implements FriendService {
 
         private static final String CREATEAT_STRING = "createAt";
 
-        private static final String QUEUE_NOTIFICATIONS_STRING = "/queue/notifications";
-
         private static final String ERROR_FRIEND_SELF_ADD_STRING = "error.friend.self_add";
         private static final String ERROR_FRIEND_SEND_DELETED_STRING = "error.friend.send_deleted";
         private static final String ERROR_FRIEND_SEND_LOCKED_STRING = "error.friend.send_locked";
@@ -106,7 +104,6 @@ public class FriendServiceImpl implements FriendService {
                 eventPublisher.publishEvent(FriendPayload.builder()
                                 .senderUsername(requesterUsername)
                                 .recipientUsername(addresseeUsername)
-                                .destination(QUEUE_NOTIFICATIONS_STRING)
                                 .senderType(NotificationsType.REQUEST_SENT_SUCCESS)
                                 .recipientType(NotificationsType.FRIEND_REQUEST)
                                 .senderDisplayName(requester.getFirstName() != null ? requester.getFirstName()
@@ -145,7 +142,6 @@ public class FriendServiceImpl implements FriendService {
                 eventPublisher.publishEvent(FriendPayload.builder()
                                 .senderUsername(acceptorUsername)
                                 .recipientUsername(requesterUsername)
-                                .destination(QUEUE_NOTIFICATIONS_STRING)
                                 .senderType(NotificationsType.YOU_ACCEPTED)
                                 .recipientType(NotificationsType.FRIEND_ACCEPTED)
                                 .senderDisplayName(acceptor.getFirstName() != null ? acceptor.getFirstName()
@@ -242,7 +238,6 @@ public class FriendServiceImpl implements FriendService {
                         eventPublisher.publishEvent(FriendPayload.builder()
                                         .senderUsername(currentUsername)
                                         .recipientUsername(targetUsername)
-                                        .destination(QUEUE_NOTIFICATIONS_STRING)
                                         .recipientType(NotificationsType.UNFRIENDED)
                                         .senderDisplayName(currentUsername)
                                         .build());
@@ -252,7 +247,6 @@ public class FriendServiceImpl implements FriendService {
                                 eventPublisher.publishEvent(FriendPayload.builder()
                                                 .senderUsername(currentUsername)
                                                 .recipientUsername(targetUsername)
-                                                .destination(QUEUE_NOTIFICATIONS_STRING)
                                                 .recipientType(NotificationsType.REQUEST_CANCELLED)
                                                 .senderDisplayName(currentUsername)
                                                 .build());
@@ -261,7 +255,6 @@ public class FriendServiceImpl implements FriendService {
                                 eventPublisher.publishEvent(FriendPayload.builder()
                                                 .senderUsername(currentUsername)
                                                 .recipientUsername(targetUsername)
-                                                .destination(QUEUE_NOTIFICATIONS_STRING)
                                                 .recipientType(NotificationsType.REQUEST_REJECTED)
                                                 .senderDisplayName(currentUsername)
                                                 .build());

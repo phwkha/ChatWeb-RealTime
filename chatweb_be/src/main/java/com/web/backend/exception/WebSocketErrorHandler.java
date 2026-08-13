@@ -1,7 +1,7 @@
 package com.web.backend.exception;
 
 import com.web.backend.config.localresolverconfig.Translator;
-import com.web.backend.controller.response.wrapper.SocketResponse;
+import com.web.backend.controller.response.ErrorSocketResponse;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.handler.annotation.MessageExceptionHandler;
@@ -38,7 +38,7 @@ public class WebSocketErrorHandler {
         simpMessagingTemplate.convertAndSendToUser(
                 username,
                 QUEUE_ERRORS_STRING,
-                SocketResponse.error(message, request));
+                ErrorSocketResponse.builder().message(message).request(request).build());
     }
 
     public void handleChatError(Authentication authentication, String sessionId, Object request, String message) {
@@ -52,7 +52,7 @@ public class WebSocketErrorHandler {
             simpMessagingTemplate.convertAndSendToUser(
                     sessionId,
                     QUEUE_ERRORS_STRING,
-                    SocketResponse.error(message, request),
+                    ErrorSocketResponse.builder().message(message).request(request).build(),
                     headerAccessor.getMessageHeaders());
         }
     }

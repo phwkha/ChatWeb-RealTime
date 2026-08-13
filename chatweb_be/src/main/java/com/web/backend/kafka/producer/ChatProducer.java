@@ -23,6 +23,9 @@ public class ChatProducer {
     @Value("${spring.kafka.topic.chat.system-messages}")
     private String systemTopic;
 
+    @Value("${spring.kafka.topic.update-message.update}")
+    private String chatTopicUpdate;
+
     public CompletableFuture<SendResult<String, Object>> sendChatMessage(Object messageChat) {
         return sendSafely(chatTopic, messageChat, "Chat Message");
     }
@@ -32,19 +35,19 @@ public class ChatProducer {
     }
 
     public CompletableFuture<SendResult<String, Object>> sendReaction(Object messageReaction) {
-        return sendSafely(chatTopic, messageReaction, "Reaction");
+        return sendSafely(chatTopicUpdate, messageReaction, "Reaction");
     }
 
     public CompletableFuture<SendResult<String, Object>> sendEditMessage(Object messageEdit) {
-        return sendSafely(chatTopic, messageEdit, "Edit Message");
+        return sendSafely(chatTopicUpdate, messageEdit, "Edit Message");
     }
 
     public CompletableFuture<SendResult<String, Object>> sendRevokeMessage(Object messageRevoke) {
-        return sendSafely(chatTopic, messageRevoke, "Revoke Message");
+        return sendSafely(chatTopicUpdate, messageRevoke, "Revoke Message");
     }
 
     public CompletableFuture<SendResult<String, Object>> sendStatusMessage(Object statusMsg) {
-        return sendSafely(chatTopic, statusMsg, "Status Message");
+        return sendSafely(chatTopicUpdate, statusMsg, "Status Message");
     }
 
     private CompletableFuture<SendResult<String, Object>> sendSafely(String topic, Object payload, String actionName) {

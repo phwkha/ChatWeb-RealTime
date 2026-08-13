@@ -45,10 +45,13 @@ spring:
     topic:
       chat:
         messages: chat-messages
-        system-messages: "chat-system-messages"
-        save: chat-save
+        system-messages: chat-system-messages
+        messages-save-group-id: chat-save-group
         messages-group-id: chat-websocket-group
         system-messages-group-id: system-websocket-group
+      update-message:
+        update: message-update
+        group-id: message-update-group-id
       email:
         email-topic: email-messages
         group-id: email-worker-group
