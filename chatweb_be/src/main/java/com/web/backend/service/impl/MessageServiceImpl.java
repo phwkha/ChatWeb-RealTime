@@ -108,16 +108,27 @@ public class MessageServiceImpl implements MessageService {
         ChatMessage chatMsg = buildChatMessage(sender, request, convId);
 
         try {
+            if (chatMsg.getMessageType() == MessageType.CHAT) {
+                cacheMessageToRedis(chatMsg);
+            }
             chatProducer.sendChatMessage(chatMsg).whenComplete((result, ex) -> {
                 if (ex != null) {
                     if (chatMsg.getMessageType() == MessageType.CHAT) {
                         log.error("Kafka failed for message {}", chatMsg.getId());
+                        try {
+                            String hashKey = CHAT_RECENT_HASH_STRING + convId;
+                            String zsetKey = CHAT_RECENT_ZSET_STRING + convId;
+                            redisTemplate.opsForZSet().remove(zsetKey, chatMsg.getId());
+                            redisTemplate.opsForHash().delete(hashKey, chatMsg.getId());
+                        } catch (Exception redisEx) {
+                            log.error("Failed to rollback Redis for message {}", chatMsg.getId(), redisEx);
+                        }
                         webSocketErrorHandler.handleChatError(sender, request,
                                 Translator.tolocale(ERROR_MSG_SYSTEM_OVERLOAD_STRING));
                     }
                 } else if (chatMsg.getMessageType() == MessageType.CHAT) {
                     log.info("Sent message to Kafka successfully");
-                    cacheMessageToRedis(chatMsg);
+                    updateMessageInRedisCache(convId, chatMsg.getId(), m -> m.setStatus(MessageStatus.SENT));
                 }
             });
         } catch (Exception syncEx) {
@@ -149,7 +160,7 @@ public class MessageServiceImpl implements MessageService {
         chatMsg.setConversationId(convId);
         chatMsg.setSender(sender);
         chatMsg.setId(new ObjectId().toHexString());
-        chatMsg.setStatus(MessageStatus.SENT);
+        chatMsg.setStatus(MessageStatus.SENDING);
         chatMsg.setLocalId(request.getLocalId());
         if (chatMsg.getTimestamp() == null) {
             chatMsg.setTimestamp(LocalDateTime.now(ZoneId.systemDefault()));
