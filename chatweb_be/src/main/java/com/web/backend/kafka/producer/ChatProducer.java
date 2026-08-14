@@ -55,9 +55,9 @@ public class ChatProducer {
                 payload);
         future.whenComplete((result, ex) -> {
             if (ex != null) {
-                log.error("Critical Error: Cannot push {} to Kafka. Topic: {}", actionName, topic, ex);
+                log.error("Failed to publish {} to Kafka topic '{}'", actionName, topic, ex);
             } else {
-                log.debug("{}: Kafka push successful offset: {}", actionName, result.getRecordMetadata().offset());
+                log.debug("Published {} to Kafka topic '{}' [offset={}]", actionName, topic, result.getRecordMetadata().offset());
             }
         });
         return future;

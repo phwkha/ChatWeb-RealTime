@@ -42,6 +42,8 @@ public class FriendConsumer {
         String recipient = payload.recipientUsername();
         List<String> recipients = payload.recipientUsernames();
         String sender = payload.senderUsername();
+        log.debug("Consumed friend notification event: sender='{}', recipient='{}', type='{}'", sender, recipient,
+                payload.recipientType());
 
         try {
             NotificationResponse<?> recipientResp = buildResponse(payload.recipientType(),
@@ -61,7 +63,8 @@ public class FriendConsumer {
                 webSocketRoutingService.routeMessage(sender, QUEUE_NOTIFICATIONS_STRING, senderResp);
             }
         } catch (Exception e) {
-            log.error("Error sending WS notification: {}", e.getMessage(), e);
+            log.error("Failed to route WebSocket friend notification: sender='{}', recipient='{}'", sender, recipient,
+                    e);
         }
     }
 

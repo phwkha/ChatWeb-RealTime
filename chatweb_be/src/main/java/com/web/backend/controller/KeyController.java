@@ -36,8 +36,6 @@ public class KeyController {
         public ResponseEntity<ApiResponse<RsaKeyResponse>> getRsaKey(Authentication auth) {
                 UserEntity user = (UserEntity) auth.getPrincipal();
 
-                log.info("Fetching RSA key for user: {}", user.getUsername());
-
                 return ResponseEntity.ok(
                                 ApiResponse.success(HttpStatus.OK.value(),
                                                 Translator.tolocale(SUCCESS_KEY_GET_RSA_STRING),
@@ -54,7 +52,7 @@ public class KeyController {
 
                 UserEntity user = (UserEntity) auth.getPrincipal();
 
-                log.info("Saving RSA key for user: {}", user.getUsername());
+                log.debug("User '{}' saving encrypted RSA key", user.getUsername());
 
                 keyService.saveRsaKey(user.getUsername(), request.getKey());
 
@@ -65,10 +63,7 @@ public class KeyController {
 
         @Operation(summary = "Get public key", description = "API endpoint for get public key")
         @GetMapping("/public-key/{username}")
-        public ResponseEntity<ApiResponse<String>> getPublicKey(Authentication authentication,
-                        @PathVariable String username) {
-                UserEntity userEntityPrincipal = (UserEntity) authentication.getPrincipal();
-                log.info("Get public key: {}", userEntityPrincipal.getUsername());
+        public ResponseEntity<ApiResponse<String>> getPublicKey(@PathVariable String username) {
                 return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(),
                                 Translator.tolocale(SUCCESS_KEY_GET_PUB_STRING),
                                 keyService.getPublicKey(username)));
@@ -79,7 +74,7 @@ public class KeyController {
         public ResponseEntity<ApiResponse<Void>> savePublicKey(Authentication authentication,
                         @RequestBody @Valid SavePublicKeyRequest request) {
                 UserEntity userEntityPrincipal = (UserEntity) authentication.getPrincipal();
-                log.info("Saved public key for user: {}", userEntityPrincipal.getUsername());
+                log.debug("User '{}' saving public key", userEntityPrincipal.getUsername());
                 keyService.savePublicKey(userEntityPrincipal.getUsername(), request.getPublicKey());
                 return ResponseEntity
                                 .ok(ApiResponse.success(HttpStatus.OK.value(),

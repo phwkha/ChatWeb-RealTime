@@ -23,28 +23,26 @@ public class EmailProducer {
     private String emailTopic;
 
     public void sendOtpEmailTask(String to, String name, String otp) {
-        log.info("Pushing OTP email task to Kafka for email: {}", to);
+        log.debug("Dispatching OTP email task to Kafka for recipient '{}'", to);
         EmailPayload event = EmailPayload.createOtpEvent(to, name, otp);
         kafkaTemplate.send(Objects.requireNonNull(emailTopic), event).whenComplete((result, ex) -> {
             if (ex != null) {
-                log.error("Critical Error: Cannot push message to Kafka. Topic: {}", emailTopic, ex);
+                log.error("Failed to publish OTP email task to Kafka topic '{}' for recipient '{}'", emailTopic, to, ex);
             } else {
-                log.debug("Email otp: Kafka push successful offset: {}", result.getRecordMetadata().offset());
+                log.debug("Published OTP email task to Kafka topic '{}' for recipient '{}' [offset={}]", emailTopic, to, result.getRecordMetadata().offset());
             }
         });
-        log.info("Pushed OTP email task to Kafka Topic '{}' for email: {}", emailTopic, to);
     }
 
     public void sendTextEmailTask(String to, String subject, String content) {
-        log.info("Pushing TEXT email task to Kafka for email: {}", to);
+        log.debug("Dispatching text email task to Kafka for recipient '{}'", to);
         EmailPayload event = EmailPayload.createTextEvent(to, subject, content);
         kafkaTemplate.send(Objects.requireNonNull(emailTopic), event).whenComplete((result, ex) -> {
             if (ex != null) {
-                log.error("Critical Error: Cannot push message to Kafka. Topic: {}", emailTopic, ex);
+                log.error("Failed to publish text email task to Kafka topic '{}' for recipient '{}'", emailTopic, to, ex);
             } else {
-                log.debug("Email text: Kafka push successful offset: {}", result.getRecordMetadata().offset());
+                log.debug("Published text email task to Kafka topic '{}' for recipient '{}' [offset={}]", emailTopic, to, result.getRecordMetadata().offset());
             }
         });
-        log.info("Pushed TEXT email task to Kafka Topic '{}' for email: {}", emailTopic, to);
     }
 }

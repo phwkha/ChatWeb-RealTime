@@ -39,7 +39,7 @@ public class JwtServiceImpl implements JwtService {
 
     @Override
     public String generateAccessToken(String username, List<String> authorities, Integer tokenVersion) {
-        log.info("generate access token for user {} with authorities {}", username, authorities);
+        log.debug("Generating access token for user '{}' [authorities={}]", username, authorities);
 
         Map<String, Object> claims = new HashMap<>();
         claims.put(ROLE_STRING, authorities);
@@ -50,7 +50,7 @@ public class JwtServiceImpl implements JwtService {
 
     @Override
     public String generateRefreshToken(String username, List<String> authorities, Integer tokenVersion) {
-        log.info("generate refresh token for user {} with authorities {}", username, authorities);
+        log.debug("Generating refresh token for user '{}'", username);
 
         Map<String, Object> claims = new HashMap<>();
         claims.put(ROLE_STRING, authorities);
@@ -61,7 +61,6 @@ public class JwtServiceImpl implements JwtService {
 
     @Override
     public String extractUsername(String token, TokenType type) {
-        log.info("extract username from token {} with type {}", token, type);
         return extractClaims(type, token, Claims::getSubject);
     }
 
@@ -93,7 +92,6 @@ public class JwtServiceImpl implements JwtService {
     }
 
     private String generateToken(Map<String, Object> claims, String username) {
-        log.info("generate access token for user {} with name {}", username, claims);
         Instant now = Instant.now();
         return Jwts.builder()
                 .claims(claims)
@@ -105,7 +103,6 @@ public class JwtServiceImpl implements JwtService {
     }
 
     private String generateRefreshToken(Map<String, Object> claims, String username) {
-        log.info("generate refresh token for user {} with name {}", username, claims);
         Instant now = Instant.now();
         return Jwts.builder()
                 .claims(claims)

@@ -9,7 +9,6 @@ import com.web.backend.service.SearchUserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -20,7 +19,6 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/search")
 @RequiredArgsConstructor
-@Slf4j(topic = "SEARCH-CONTROLLER")
 public class SearchUserController {
 
     private final SearchUserService searchUserService;
@@ -36,8 +34,6 @@ public class SearchUserController {
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(defaultValue = "desc") String sortDir) {
 
-        log.info("Searching users with keyword: {}", keyword);
-
         PageResponse<UserSummaryResponse> result = searchUserService.searchUsers(keyword, page, size, sortDir);
 
         return ResponseEntity.ok(ApiResponse.success(
@@ -52,8 +48,6 @@ public class SearchUserController {
             Pageable pageable,
             @RequestParam(required = false) String[] user,
             @RequestParam(required = false) String[] address) {
-
-        log.info("Advance searching users with specifications");
 
         return ResponseEntity.ok(ApiResponse.success(
                 HttpStatus.OK.value(),

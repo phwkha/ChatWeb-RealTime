@@ -35,14 +35,14 @@ public class FriendProducer {
             kafkaTemplate.send(Objects.requireNonNull(friendTopic, TOPIC_MUST_NOT_BE_NULL_STRING), payload)
                     .whenComplete((result, ex) -> {
                         if (ex != null) {
-                            log.error("Critical Error: Cannot push friend payload to Kafka. Topic: {}", friendTopic,
-                                    ex);
+                            log.error("Failed to publish friend notification to Kafka topic '{}'", friendTopic, ex);
                         } else {
-                            log.info("sendFriendNoti Kafka message to topic: {}", friendTopic);
+                            log.debug("Published friend notification to Kafka topic '{}' [offset={}]", friendTopic,
+                                    result.getRecordMetadata().offset());
                         }
                     });
         } catch (Exception e) {
-            log.error("Error sendFriendNoti Kafka message: {}", e.getMessage(), e);
+            log.error("Error dispatching friend notification to Kafka topic '{}'", friendTopic, e);
         }
     }
 }

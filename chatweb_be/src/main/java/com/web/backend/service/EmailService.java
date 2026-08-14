@@ -31,16 +31,16 @@ public class EmailService {
             message.setText(content);
 
             mailSender.send(message);
-            log.info("Email sent successfully via Gmail to: {}", to);
+            log.info("Email sent successfully to '{}'", to);
 
         } catch (Exception e) {
-            log.error("Failed to send email to {}. Error: {}", to, e.getMessage());
+            log.error("Failed to send email to '{}'", to, e);
             throw e;
         }
     }
 
     public void sendOtpEmail(String to, String name, String otp) {
-        log.info("Sending OTP via Gmail to: {}", to);
+        log.debug("Sending OTP email to '{}'", to);
 
         String subject = Translator.tolocale(EMAIL_OTP_SUBJECT_STRING);
         String content = Translator.tolocale(EMAIL_OTP_BODY_STRING, name, otp);

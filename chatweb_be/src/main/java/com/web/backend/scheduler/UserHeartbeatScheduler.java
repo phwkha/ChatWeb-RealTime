@@ -29,7 +29,7 @@ public class UserHeartbeatScheduler {
                 }
             }
         } catch (Exception e) {
-            log.error("Failed to update user heartbeats in Redis", e);
+            log.error("Failed to refresh user heartbeats in Redis", e);
         }
     }
 }

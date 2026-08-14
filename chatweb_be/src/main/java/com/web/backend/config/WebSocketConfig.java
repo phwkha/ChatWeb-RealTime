@@ -176,7 +176,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         try {
             validateAndAuthenticateToken(token, accessor);
         } catch (Exception e) {
-            log.error("WebSocket Auth Failed: {}", e.getMessage());
+            log.warn("WebSocket authentication handshake failed: {}", e.getMessage());
             throw new MessagingException(
                     Objects.requireNonNull(Translator.tolocale(ERROR_WS_AUTH_FAILED_STRING, e.getMessage())));
         }
@@ -185,7 +185,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     private void validateAndAuthenticateToken(String token, StompHeaderAccessor accessor) {
         String key = BLACKLIST_STRING + token;
         if (Boolean.TRUE.equals(redisTemplate.hasKey(key))) {
-            log.info("Token expired");
+            log.warn("WebSocket authentication rejected: Token is blacklisted");
             throw new MessagingException(Objects.requireNonNull(Translator.tolocale(ERROR_WS_BLACKLISTED_STRING)));
         }
 
@@ -200,7 +200,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
             UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
                     userDetails, null, userDetails.getAuthorities());
             accessor.setUser(auth);
-            log.info("WebSocket Authenticated User: {}", username);
+            log.debug("WebSocket handshake authenticated user '{}'", username);
         }
     }
 
@@ -213,7 +213,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         }
 
         if (tokenVersionInJwt == null || !tokenVersionInJwt.equals(currentVersion)) {
-            log.warn("Token version mismatch for user in WebSocket: {}", username);
+            log.warn("WebSocket token version mismatch for user '{}'", username);
             throw new MessagingException(
                     Objects.requireNonNull(Translator.tolocale(ERROR_WS_INVALID_TOKEN_VERSION_STRING)));
         }

@@ -37,7 +37,7 @@ public class KeyServiceImpl implements KeyService {
         userEntity.setEncryptedRsaPrivateKey(encryptedKey);
 
         userRepository.save(userEntity);
-        log.info("RSA key saved successfully for user: {}", username);
+        log.info("Encrypted RSA private key updated for user '{}'", username);
     }
 
     @Override
@@ -53,10 +53,9 @@ public class KeyServiceImpl implements KeyService {
 
         String key = userEntity.getEncryptedRsaPrivateKey();
         if (key == null) {
-            log.warn("RSA key not found for user: {}", username);
+            log.warn("Encrypted RSA private key not found for user '{}'", username);
             return null;
         }
-        log.debug("Fetching RSA key for user: {}", username);
         return key;
     }
 
@@ -65,7 +64,6 @@ public class KeyServiceImpl implements KeyService {
         UserEntity userEntity = userRepository.findByUsername(username)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         Translator.tolocale(ERROR_USER_NOT_FOUND_WITH_STRING, username)));
-        log.info("Get public key");
         return userEntity.getPublicKey();
     }
 
@@ -77,6 +75,6 @@ public class KeyServiceImpl implements KeyService {
                         Translator.tolocale(ERROR_USER_NOT_FOUND_WITH_STRING, username)));
         userEntity.setPublicKey(publicKey);
         userRepository.save(userEntity);
-        log.info("Saved public key for user");
+        log.info("Public key updated for user '{}'", username);
     }
 }

@@ -46,7 +46,6 @@ public class RoleServiceImpl implements RoleService {
 
     @Override
     public List<RoleResponse> getAllRoles() {
-        log.info("Get all roles");
         return roleRepository.findAll().stream()
                 .map(userMapper::toRoleResponse)
                 .toList();
@@ -54,7 +53,6 @@ public class RoleServiceImpl implements RoleService {
 
     @Override
     public List<PermissionResponse> getAllPermissions() {
-        log.info("Get all permission");
         return permissionRepository.findAll().stream()
                 .map(userMapper::toPermissionResponse)
                 .toList();
@@ -78,7 +76,7 @@ public class RoleServiceImpl implements RoleService {
         }
 
         RoleEntity savedRole = roleRepository.save(role);
-        log.info("Create role");
+        log.info("Created new role '{}'", savedRole.getName());
         return userMapper.toRoleResponse(savedRole);
     }
 
@@ -99,7 +97,7 @@ public class RoleServiceImpl implements RoleService {
         }
 
         RoleEntity savedRole = roleRepository.save(role);
-        log.info("Update role and cleared all user cache");
+        log.info("Updated role '{}' (id={}) and evicted user details cache", savedRole.getName(), roleId);
         return userMapper.toRoleResponse(savedRole);
     }
 
@@ -114,6 +112,6 @@ public class RoleServiceImpl implements RoleService {
             throw new ResourceConflictException(Translator.tolocale(ERROR_ROLE_IN_USE_STRING));
         }
         roleRepository.delete(Objects.requireNonNull(role));
-        log.info("Delete role and cleared all user cache");
+        log.info("Deleted role id={} and evicted user details cache", roleId);
     }
 }

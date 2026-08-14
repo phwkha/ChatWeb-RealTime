@@ -33,7 +33,7 @@ public class EmailController {
     @PostMapping("/send")
     @PreAuthorize("hasAuthority('SEND_EMAIL')")
     public ResponseEntity<ApiResponse<Void>> sendEmail(@RequestBody @Valid EmailRequest request) {
-        log.info("Request to send email to: {}", request.getTo());
+        log.debug("Email dispatch requested for recipient '{}'", request.getTo());
 
         emailService.sendTextEmail(request.getTo(), request.getSubject(), request.getText());
 

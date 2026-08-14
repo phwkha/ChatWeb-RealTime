@@ -90,11 +90,11 @@ public class StorageServiceImpl implements StorageService {
                             RESOURCE_TYPE_STRING, resourceType));
 
             String url = (String) uploadResult.get(SECURE_URL_STRING);
-            log.info("Upload {} success: {}", resourceType, url);
+            log.debug("Uploaded file successfully [type='{}', folder='{}', url='{}']", resourceType, folder, url);
             return url;
 
         } catch (IOException e) {
-            log.error("Upload failed: {}", e.getMessage());
+            log.error("Failed to upload file [type='{}', folder='{}']", resourceType, folder, e);
             throw new InvalidDataException(Translator.tolocale(ERROR_STORAGE_UPLOAD_FAILED_STRING, e.getMessage()));
         }
     }
@@ -102,20 +102,21 @@ public class StorageServiceImpl implements StorageService {
     @Override
     @Async
     public void delete(String url, String folder) {
+        String publicId = null;
         try {
             if (url == null || url.isEmpty())
                 return;
 
             String resourceType = folder.equals(AVATARS_STRING) ? IMAGE_STRING : RAW_STRING;
-            String publicId = extractPublicId(url, folder);
+            publicId = extractPublicId(url, folder);
 
             if (publicId != null) {
                 cloudinary.uploader().destroy(publicId,
                         ObjectUtils.asMap(RESOURCE_TYPE_STRING, resourceType));
-                log.info("Deleted old file: {} (type: {})", publicId, resourceType);
+                log.debug("Deleted file from Cloudinary [publicId='{}', type='{}']", publicId, resourceType);
             }
         } catch (IOException e) {
-            log.error("Failed to delete file: {}", e.getMessage());
+            log.error("Failed to delete file from Cloudinary [publicId='{}']", publicId, e);
         }
     }
 
@@ -127,7 +128,7 @@ public class StorageServiceImpl implements StorageService {
                 return url.substring(startIndex, endIndex);
             }
         } catch (Exception e) {
-            log.warn("Cannot extract publicId from url: {}", url);
+            log.warn("Failed to extract publicId from url: '{}'", url);
         }
         return null;
     }

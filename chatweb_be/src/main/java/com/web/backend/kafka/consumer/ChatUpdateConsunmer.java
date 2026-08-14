@@ -86,31 +86,31 @@ public class ChatUpdateConsunmer {
             throw new IllegalStateException("Original message not found in DB yet, retrying update...");
         }
 
-        log.info("Successfully applied update to message {} in DB", updatedMsg.getId());
+        log.debug("Updated message '{}' in MongoDB [type={}]", updatedMsg.getId(), updateEvent.type());
         try {
             NotificationResponse<?> response = buildResponse(updateEvent.relatedUsername(), updateEvent.type(),
                     updatedMsg);
             webSocketRoutingService.routeMessage(updatedMsg.getSender(), QUEUE_NOTIFICATIONS_STRING, response);
             webSocketRoutingService.routeMessage(updatedMsg.getRecipient(), QUEUE_NOTIFICATIONS_STRING, response);
-            log.info("Finished processing Kafka update message: {}", updatedMsg.getId());
+            log.debug("Dispatched update notifications to sender '{}' and recipient '{}' for message '{}'",
+                    updatedMsg.getSender(), updatedMsg.getRecipient(), updatedMsg.getId());
         } catch (Exception e) {
-            log.error("Failed to send WebSocket update message: {}", e.getMessage());
+            log.error("Failed to route WebSocket update notification for message '{}'", updatedMsg.getId(), e);
         }
     }
 
     private void processStatusUpdate(UpdateMessagePayload updateEvent) {
+        String reader = updateEvent.relatedUsername();
+        String receiver = (updateEvent.updateEvent() instanceof String r) ? r : null;
         try {
-            String reader = updateEvent.relatedUsername();
-
-            String receiver = (updateEvent.updateEvent() instanceof String r) ? r : null;
-
             if (receiver != null) {
                 NotificationResponse<?> response = buildResponse(reader, updateEvent.type(), null);
                 webSocketRoutingService.routeMessage(receiver, QUEUE_NOTIFICATIONS_STRING, response);
-                log.info("Finished processing Kafka update message status");
+                log.debug("Dispatched read status notification from '{}' to receiver '{}'", reader, receiver);
             }
         } catch (Exception e) {
-            log.error("Failed to send WebSocket update status message: {}", e.getMessage());
+            log.error("Failed to route WebSocket read status notification from '{}' to receiver '{}'", reader,
+                    receiver, e);
         }
     }
 

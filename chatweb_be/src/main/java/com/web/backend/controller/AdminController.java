@@ -50,12 +50,9 @@ public class AdminController {
         @GetMapping("/users")
         @PreAuthorize("hasAuthority('ADMIN_VIEW')")
         public ResponseEntity<ApiResponse<PageResponse<UserSummaryResponse>>> getAllUsers(
-                        Authentication authentication,
                         @RequestParam(defaultValue = "0") int page,
                         @RequestParam(defaultValue = STR_10_STRING) int size,
                         @RequestParam(required = false) String... sorts) {
-                UserEntity userEntityPrincipal = (UserEntity) authentication.getPrincipal();
-                log.info("Get all user by: {}", userEntityPrincipal.getUsername());
                 PageResponse<UserSummaryResponse> users = adminService.getAllUsers(page, size, sorts);
                 return ResponseEntity
                                 .ok(ApiResponse.success(HttpStatus.OK.value(),
@@ -66,11 +63,8 @@ public class AdminController {
         @GetMapping("/online")
         @PreAuthorize("hasAuthority('ADMIN_VIEW')")
         public ResponseEntity<ApiResponse<PageResponse<UserSummaryResponse>>> getOnlineUsers(
-                        Authentication authentication,
                         @RequestParam(defaultValue = "0") int page,
                         @RequestParam(defaultValue = STR_10_STRING) int size) {
-                UserEntity userEntityPrincipal = (UserEntity) authentication.getPrincipal();
-                log.info("Get online users: {}", userEntityPrincipal.getUsername());
                 PageResponse<UserSummaryResponse> userPageResponse = adminService.getOnlineUsers(page, size);
                 return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(),
                                 Translator.tolocale(SUCCESS_ADMIN_GET_ONLINE_USERS_STRING),
@@ -80,10 +74,7 @@ public class AdminController {
         @Operation(summary = "Get user by username", description = "API endpoint for get user by username")
         @GetMapping("/user/{username}")
         @PreAuthorize("hasAuthority('ADMIN_VIEW')")
-        public ResponseEntity<ApiResponse<UserDetailResponse>> getUserByUsername(Authentication authentication,
-                        @PathVariable String username) {
-                UserEntity userEntityPrincipal = (UserEntity) authentication.getPrincipal();
-                log.info("Get user by: {}", userEntityPrincipal.getUsername());
+        public ResponseEntity<ApiResponse<UserDetailResponse>> getUserByUsername(@PathVariable String username) {
                 UserDetailResponse user = adminService.getUserByUsername(username);
                 return ResponseEntity
                                 .ok(ApiResponse.success(HttpStatus.OK.value(),
@@ -96,7 +87,7 @@ public class AdminController {
         public ResponseEntity<ApiResponse<UserResponse>> addUser(Authentication authentication,
                         @RequestBody @Valid AdminCreateUserRequest request) {
                 UserEntity userEntityPrincipal = (UserEntity) authentication.getPrincipal();
-                log.info("Add user by: {}", userEntityPrincipal.getUsername());
+                log.debug("Admin '{}' creating new user '{}'", userEntityPrincipal.getUsername(), request.getUsername());
                 UserResponse newUser = adminService.adminCreateUser(request);
                 return ResponseEntity.status(HttpStatus.CREATED)
                                 .body(ApiResponse.success(HttpStatus.CREATED.value(),
@@ -110,7 +101,7 @@ public class AdminController {
         public ResponseEntity<ApiResponse<UserResponse>> unlockUser(Authentication authentication,
                         @PathVariable String username) {
                 UserEntity userEntityPrincipal = (UserEntity) authentication.getPrincipal();
-                log.info("Unlock user by: {}", userEntityPrincipal.getUsername());
+                log.debug("Admin '{}' unlocking user '{}'", userEntityPrincipal.getUsername(), username);
                 UserResponse unlockedUser = adminService.unlockUser(username);
                 return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(),
                                 Translator.tolocale(SUCCESS_ADMIN_UNLOCK_USER_STRING), unlockedUser));
@@ -122,7 +113,7 @@ public class AdminController {
         public ResponseEntity<ApiResponse<UserResponse>> lockUser(Authentication authentication,
                         @PathVariable String username) {
                 UserEntity userEntityPrincipal = (UserEntity) authentication.getPrincipal();
-                log.info("Lock user by: {}", userEntityPrincipal.getUsername());
+                log.debug("Admin '{}' locking user '{}'", userEntityPrincipal.getUsername(), username);
                 UserResponse lockedUser = adminService.lockUser(username);
                 return ResponseEntity.ok(
                                 ApiResponse.success(HttpStatus.OK.value(),
@@ -135,7 +126,7 @@ public class AdminController {
         public ResponseEntity<ApiResponse<Void>> deleteAvatar(Authentication authentication,
                         @PathVariable String username) {
                 UserEntity userEntity = (UserEntity) authentication.getPrincipal();
-                log.info("delete avatar by: {}", userEntity.getUsername());
+                log.debug("Admin '{}' deleting avatar for user '{}'", userEntity.getUsername(), username);
                 adminService.deleteAvatar(username);
                 return ResponseEntity
                                 .ok(ApiResponse.success(HttpStatus.OK.value(),
@@ -150,7 +141,7 @@ public class AdminController {
                         @PathVariable String username,
                         @RequestBody @Valid AdminUpdateUserRequest request) {
                 UserEntity userEntityPrincipal = (UserEntity) authentication.getPrincipal();
-                log.info("Update user by: {}", userEntityPrincipal.getUsername());
+                log.debug("Admin '{}' updating user '{}'", userEntityPrincipal.getUsername(), username);
                 UserResponse updatedUser = adminService.adminUpdateUser(username, request);
                 return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(),
                                 Translator.tolocale(SUCCESS_ADMIN_UPDATE_USER_STRING), updatedUser));
@@ -162,7 +153,7 @@ public class AdminController {
         public ResponseEntity<ApiResponse<Void>> deleteUser(@PathVariable String username,
                         Authentication authentication) {
                 UserEntity adminPrincipal = (UserEntity) authentication.getPrincipal();
-                log.info("Delete user by {}", adminPrincipal.getUsername());
+                log.debug("Admin '{}' deleting user '{}'", adminPrincipal.getUsername(), username);
 
                 adminService.adminDeleteUser(username, adminPrincipal.getUsername());
 
@@ -176,10 +167,7 @@ public class AdminController {
         @GetMapping("/user/{username}/addresses")
         @PreAuthorize("hasAuthority('ADMIN_VIEW')")
         public ResponseEntity<ApiResponse<List<AddressResponse>>> getAllAddressesForUser(
-                        Authentication authentication,
                         @PathVariable String username) {
-                UserEntity userEntityPrincipal = (UserEntity) authentication.getPrincipal();
-                log.info("Get all address for user by: {}", userEntityPrincipal.getUsername());
                 List<AddressResponse> addresses = adminService.adminGetAllAddresses(username);
                 return ResponseEntity.ok(ApiResponse.success(
                                 HttpStatus.OK.value(),
@@ -191,12 +179,8 @@ public class AdminController {
         @GetMapping("/user/{username}/address/{addressId}")
         @PreAuthorize("hasAuthority('ADMIN_VIEW')")
         public ResponseEntity<ApiResponse<AddressResponse>> getAddressByIdForUser(
-                        Authentication authentication,
                         @PathVariable String username,
                         @PathVariable Long addressId) {
-                UserEntity userEntityPrincipal = (UserEntity) authentication.getPrincipal();
-                log.info("Get address with id for user by: {}", userEntityPrincipal.getUsername());
-
                 AddressResponse address = adminService.adminGetAddressById(username, addressId);
                 return ResponseEntity.ok(ApiResponse.success(
                                 HttpStatus.OK.value(),
@@ -213,7 +197,8 @@ public class AdminController {
                         @PathVariable Long addressId,
                         @RequestBody @Valid AddressRequest addressRequest) {
                 UserEntity userEntityPrincipal = (UserEntity) authentication.getPrincipal();
-                log.info("Update address for user by: {}", userEntityPrincipal.getUsername());
+                log.debug("Admin '{}' updating address id={} for user '{}'", userEntityPrincipal.getUsername(),
+                                addressId, username);
 
                 UserDetailResponse result = adminService.adminUpdateAddress(username, addressId, addressRequest);
 
@@ -231,7 +216,8 @@ public class AdminController {
                         @PathVariable String username,
                         @PathVariable Long addressId) {
                 UserEntity userEntityPrincipal = (UserEntity) authentication.getPrincipal();
-                log.info("Delete address for user by: {}", userEntityPrincipal.getUsername());
+                log.debug("Admin '{}' deleting address id={} for user '{}'", userEntityPrincipal.getUsername(),
+                                addressId, username);
 
                 adminService.adminDeleteAddress(username, addressId);
 

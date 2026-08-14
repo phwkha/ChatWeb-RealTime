@@ -27,14 +27,15 @@ public class WebSocketRoutingService {
         if (targetServerId != null) {
             if (ServerIdentity.SERVER_ID.equals(targetServerId)) {
                 simpMessagingTemplate.convertAndSendToUser(username, destination, payload);
-                log.info("Sent locally to {}", username);
+                log.debug("Routed message locally to user '{}' on destination '{}'", username, destination);
             } else {
                 RedisWsMessage wsMessage = new RedisWsMessage(username, destination, payload);
                 redisTemplate.convertAndSend(CHANNEL_SERVER_STRING + targetServerId, wsMessage);
-                log.info("Routed to Server {} for user {}", targetServerId, username);
+                log.debug("Routed message to target server '{}' for user '{}' on destination '{}'", targetServerId,
+                        username, destination);
             }
         } else {
-            log.info("User {} is offline, skipped routing.", username);
+            log.debug("User '{}' is offline. Skipped WebSocket routing on destination '{}'", username, destination);
         }
     }
 }

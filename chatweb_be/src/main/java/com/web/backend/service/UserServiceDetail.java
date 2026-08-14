@@ -36,17 +36,17 @@ public class UserServiceDetail implements UserDetailsService {
                 .orElseThrow(() -> new UsernameNotFoundException(
                         Translator.tolocale(ERROR_USER_NOT_FOUND_WITH_STRING, username)));
         if (!user.isAccountNonLocked()) {
-            log.info("user locked: {}", username);
+            log.warn("Authentication rejected: Account for user '{}' is LOCKED", username);
             throw new LockedException(Translator.tolocale(ERROR_AUTH_LOCKED_ADMIN_STRING));
         }
 
         if (user.getUserStatus() == UserStatus.UNVERIFIED) {
-            log.info("user unverified: {}", username);
+            log.warn("Authentication rejected: Account for user '{}' is UNVERIFIED", username);
             throw new DisabledException(Translator.tolocale(ERROR_AUTH_ACCOUNT_UNVERIFIED_STRING));
         }
 
         if (user.getUserStatus() == UserStatus.INACTIVE) {
-            log.info("user inactive: {}", username);
+            log.warn("Authentication rejected: Account for user '{}' is INACTIVE", username);
             throw new DisabledException(Translator.tolocale(ERROR_AUTH_ACCOUNT_INACTIVE_STRING));
         }
 

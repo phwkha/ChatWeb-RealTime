@@ -114,25 +114,26 @@ public class MessageServiceImpl implements MessageService {
             chatProducer.sendChatMessage(chatMsg).whenComplete((result, ex) -> {
                 if (ex != null) {
                     if (chatMsg.getMessageType() == MessageType.CHAT) {
-                        log.error("Kafka failed for message {}", chatMsg.getId());
+                        log.error("Failed to publish message '{}' to Kafka", chatMsg.getId(), ex);
                         try {
                             String hashKey = CHAT_RECENT_HASH_STRING + convId;
                             String zsetKey = CHAT_RECENT_ZSET_STRING + convId;
                             redisTemplate.opsForZSet().remove(zsetKey, chatMsg.getId());
                             redisTemplate.opsForHash().delete(hashKey, chatMsg.getId());
                         } catch (Exception redisEx) {
-                            log.error("Failed to rollback Redis for message {}", chatMsg.getId(), redisEx);
+                            log.error("Failed to rollback Redis cache for message '{}' in conversation '{}'",
+                                    chatMsg.getId(), convId, redisEx);
                         }
                         webSocketErrorHandler.handleChatError(sender, request,
                                 Translator.tolocale(ERROR_MSG_SYSTEM_OVERLOAD_STRING));
                     }
                 } else if (chatMsg.getMessageType() == MessageType.CHAT) {
-                    log.info("Sent message to Kafka successfully");
+                    log.debug("Published message '{}' to Kafka successfully", chatMsg.getId());
                     updateMessageInRedisCache(convId, chatMsg.getId(), m -> m.setStatus(MessageStatus.SENT));
                 }
             });
         } catch (Exception syncEx) {
-            log.error("Kafka producer threw synchronous error", syncEx);
+            log.error("Synchronous error publishing message '{}' to Kafka", chatMsg.getId(), syncEx);
             throw new SystemOverloadException(Translator.tolocale(ERROR_MSG_SYSTEM_OVERLOAD_STRING), request, syncEx);
         }
     }
@@ -215,7 +216,8 @@ public class MessageServiceImpl implements MessageService {
                         .updateEvent(msg).build())
                 .whenComplete((result, ex) -> {
                     if (ex != null) {
-                        log.error("Kafka failed for reaction message: {}", request.getMessageId(), ex);
+                        log.error("Failed to publish reaction update to Kafka for message '{}'", request.getMessageId(),
+                                ex);
                         updateMessageInRedisCache(convId, request.getMessageId(), m -> {
                             m.setReactions(oldReactions);
                             m.setReacted(oldIsReacted);
@@ -236,13 +238,11 @@ public class MessageServiceImpl implements MessageService {
             List<ChatMessage> cachedMessages = fetchMessagesFromRedisCache(conversationId, 0, size);
             if (cachedMessages.size() >= size + 1) {
                 cachedMessages.sort(Comparator.comparing(ChatMessage::getTimestamp).reversed());
-                log.info("Fetching private messages (Redis-First Cache Hit)");
                 return buildCursorResponse(cachedMessages, size);
             }
         }
 
         List<ChatMessage> finalMessages = fetchMessagesFromDatabaseAndMerge(conversationId, cursorStr, size, pageable);
-        log.info("Fetching private messages (DB Fallback)");
         return buildCursorResponse(finalMessages, size);
     }
 
@@ -328,7 +328,7 @@ public class MessageServiceImpl implements MessageService {
                         .type(UpdateMessageType.EDIT).updateEvent(msg).build())
                 .whenComplete((result, ex) -> {
                     if (ex != null) {
-                        log.error("Kafka failed for edit message: {}", request.getMessageId(), ex);
+                        log.error("Failed to publish edit update to Kafka for message '{}'", request.getMessageId(), ex);
                         updateMessageInRedisCache(convId, request.getMessageId(), m -> {
                             m.setContent(oldContent);
                             m.setEdited(oldIsEdited);
@@ -377,7 +377,8 @@ public class MessageServiceImpl implements MessageService {
                         .updateEvent(msg).build())
                 .whenComplete((result, ex) -> {
                     if (ex != null) {
-                        log.error("Kafka failed for revoke message: {}", request.getMessageId(), ex);
+                        log.error("Failed to publish revoke update to Kafka for message '{}'", request.getMessageId(),
+                                ex);
                         updateMessageInRedisCache(convId, request.getMessageId(), m -> {
                             m.setContent(oldContent);
                             m.setFileUrl(oldFileUrl);
@@ -421,7 +422,6 @@ public class MessageServiceImpl implements MessageService {
                 .map(messageMapper::systemMessageToResponse)
                 .toList();
 
-        log.info("Fetching system messages");
         return new CursorResponse<>(responseList, nextCursor, hasMore);
     }
 
@@ -440,7 +440,6 @@ public class MessageServiceImpl implements MessageService {
                     .collect(Collectors.toMap(
                             e -> (String) e.getKey(),
                             e -> Long.valueOf(e.getValue().toString())));
-            log.info("Fetching unread counts for user (Optimized) redis");
             return UnreadCountsResponse.builder().unreadCounts(result).build();
         }
 
@@ -461,7 +460,6 @@ public class MessageServiceImpl implements MessageService {
         redisTemplate.opsForHash().putAll(key, redisMap);
         redisTemplate.expire(key, 7, TimeUnit.DAYS);
 
-        log.info("Fetching unread counts for user (From DB)");
         return UnreadCountsResponse.builder()
                 .unreadCounts(resultMap)
                 .build();
@@ -485,7 +483,8 @@ public class MessageServiceImpl implements MessageService {
                 .type(UpdateMessageType.STATUS).updateEvent(senderUsername).build())
                 .whenComplete((result, ex) -> {
                     if (ex != null) {
-                        log.error("Kafka failed for status message from {} to {}", senderUsername, recipientUsername, ex);
+                        log.error("Failed to publish read status update to Kafka: reader='{}', sender='{}'",
+                                recipientUsername, senderUsername, ex);
                     }
                 });
     }
@@ -498,7 +497,7 @@ public class MessageServiceImpl implements MessageService {
         if (convId == null) {
             return;
         }
-        log.info("Caching message from {} to Redis synchronously", chatMsg.getSender());
+        log.debug("Caching message '{}' from sender '{}' to Redis", chatMsg.getId(), chatMsg.getSender());
         try {
             String hashKey = CHAT_RECENT_HASH_STRING + convId;
             String zsetKey = CHAT_RECENT_ZSET_STRING + convId;
@@ -519,7 +518,7 @@ public class MessageServiceImpl implements MessageService {
             String key = UNREAD_COUNTS_STRING + chatMsg.getRecipient();
             redisTemplate.opsForHash().increment(key, chatMsg.getSender(), 1);
         } catch (Exception e) {
-            log.error("Error caching message to Redis synchronously", e);
+            log.error("Failed to cache message '{}' to Redis", chatMsg.getId(), e);
         }
     }
 
@@ -555,7 +554,7 @@ public class MessageServiceImpl implements MessageService {
                 redisTemplate.opsForHash().put(hashKey, messageId, msg);
             }
         } catch (Exception e) {
-            log.warn("Error updating Redis cache for message {}: {}", messageId, e.getMessage());
+            log.warn("Failed to update message '{}' in Redis cache", messageId, e);
         }
     }
 

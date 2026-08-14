@@ -58,13 +58,13 @@ public class WebSocketListener {
 
         if (count != null && count == 1) {
             userService.setUserOnlineStatus(username, true);
-            log.info("User Online (First Session): {}", username);
+            log.info("User '{}' connected (Initial Session)", username);
         } else {
-            log.debug("User opened new tab/device: {}, total sessions: {}", username, count);
+            log.debug("User '{}' opened additional session [totalSessions={}]", username, count);
         }
 
         redisTemplate.opsForValue().set(WS_ROUTING_STRING + username, ServerIdentity.SERVER_ID);
-        log.info("Mapped User {} to Server {}", username, ServerIdentity.SERVER_ID);
+        log.debug("Mapped user '{}' to server node '{}'", username, ServerIdentity.SERVER_ID);
     }
 
     @EventListener
@@ -77,7 +77,7 @@ public class WebSocketListener {
         }
 
         String username = user.getName();
-        log.info("WebSocket Disconnected: {}", username);
+        log.debug("WebSocket session disconnected for user '{}'", username);
 
         Long count = redisTemplate.opsForHash().increment(ONLINE_USERS_COUNT_KEY, username, -1);
 
@@ -87,10 +87,10 @@ public class WebSocketListener {
         }
 
         if (count != null && count <= 0) {
-            log.info("User count <= 0, scheduling offline debounce for: {}", username);
+            log.debug("User session count <= 0. Scheduling offline debounce for user '{}'", username);
             scheduler.schedule(() -> processOfflineDebounce(username), 5, TimeUnit.SECONDS);
         } else {
-            log.info("User closed one session, still online on other devices: {}, remaining: {}", username, count);
+            log.debug("User '{}' closed one session [remainingSessions={}]", username, count);
         }
     }
 
@@ -103,12 +103,12 @@ public class WebSocketListener {
                 redisTemplate.opsForHash().delete(ONLINE_USERS_COUNT_KEY, username);
                 redisTemplate.delete(WS_ROUTING_STRING + username);
                 userService.setUserOnlineStatus(username, false);
-                log.info("User Disconnected Completely (All sessions closed): {}", username);
+                log.info("User '{}' disconnected completely (All sessions closed)", username);
             } else {
-                log.info("User reconnected during debounce period: {}", username);
+                log.debug("User '{}' reconnected during debounce period", username);
             }
         } catch (Exception e) {
-            log.error("Error during offline debounce", e);
+            log.error("Error during offline debounce processing for user '{}'", username, e);
         }
     }
 

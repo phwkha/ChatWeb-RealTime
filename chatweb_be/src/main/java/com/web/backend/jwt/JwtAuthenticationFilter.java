@@ -92,7 +92,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 }
             }
         } catch (Exception e) {
-            log.error("Token error: {}", e.getMessage());
+            log.warn("JWT authentication filter error: {}", e.getMessage());
             exceptionResolver.resolveException(request, response, null, e);
             return;
         }
@@ -156,7 +156,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         if (tokenVersionInJwt == null || !tokenVersionInJwt.equals(currentVersion)) {
-            log.warn("Token version mismatch for user {}. Token: {}, Server: {}", username,
+            log.warn("Token version mismatch for user '{}' [jwtVersion={}, currentVersion={}]", username,
                     tokenVersionInJwt, currentVersion);
             return false;
         }

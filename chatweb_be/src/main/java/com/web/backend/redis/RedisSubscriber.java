@@ -6,7 +6,7 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
 @Service
-@Slf4j
+@Slf4j(topic = "REDIS-SUBSCRIBER")
 @RequiredArgsConstructor
 public class RedisSubscriber {
 
@@ -16,9 +16,10 @@ public class RedisSubscriber {
         try {
             simpMessagingTemplate.convertAndSendToUser(wsMessage.getRecipient(), wsMessage.getDestination(),
                     wsMessage.getPayload());
-            log.info("Routed WebSocket message to {} via Redis Pub/Sub", wsMessage.getRecipient());
+            log.debug("Routed WebSocket message to '{}' on destination '{}' via Redis Pub/Sub",
+                    wsMessage.getRecipient(), wsMessage.getDestination());
         } catch (Exception e) {
-            log.error("Error processing Redis WebSocket message: {}", e.getMessage(), e);
+            log.error("Failed to process Redis WebSocket message for recipient '{}'", wsMessage.getRecipient(), e);
         }
     }
 }

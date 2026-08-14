@@ -153,7 +153,8 @@ public class AuthenticationServiceImpl implements AuthenticationService {
 
         emailKafkaProducer.sendOtpEmailTask(createUserRequest.getEmail(), createUserRequest.getUsername(), otp);
 
-        log.info("Registering new user: {}", createUserRequest.getUsername());
+        log.info("User '{}' initiated registration [email='{}']", createUserRequest.getUsername(),
+                createUserRequest.getEmail());
         return UserResponse.builder()
                 .username(createUserRequest.getUsername())
                 .email(createUserRequest.getEmail())
@@ -195,7 +196,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                 tokenVersion);
 
         UserResponse userResponse = userMapper.toUserResponse(userPrincipal);
-        log.info("Login with user: {}", loginRequest.getUsername());
+        log.info("User '{}' logged in successfully", loginRequest.getUsername());
         return LoginResponse.builder()
                 .accessToken(accessToken)
                 .refreshToken(refreshToken)
@@ -211,7 +212,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             String key = BLACKLIST_STRING + token;
             redisTemplate.opsForValue().set(key, LOGGED_OUT_STRING, remainingTime, TimeUnit.MILLISECONDS);
         }
-        log.info("Token added to blacklist with TTL: {} ms", remainingTime);
+        log.debug("Access token added to blacklist with TTL: {} ms", remainingTime);
     }
 
     @Override
@@ -228,7 +229,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         if (userCache != null) {
             userCache.evict(Objects.requireNonNull(username));
         }
-        log.info("User {} logged out from all devices (token version incremented)", username);
+        log.info("User '{}' logged out from all devices (token version incremented)", username);
     }
 
     @Override
@@ -273,7 +274,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             redisTemplate.opsForValue().set(blacklistKey, ROTATED_STRING, remainingTime, TimeUnit.MILLISECONDS);
         }
 
-        log.info("Refresh token with user: {}", username);
+        log.info("User '{}' refreshed access token", username);
         return TokenResponse.builder().accessToken(newAccessToken).refreshToken(newRefreshToken).build();
     }
 
@@ -290,7 +291,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
 
         generateAndSenResponseToken(user, OtpType.PASSWORD_RESET, null, user.getEmail());
 
-        log.info("Password reset initiated for email: {}", email);
+        log.info("Password reset initiated for email '{}'", email);
     }
 
     private void generateAndSenResponseToken(UserEntity user, OtpType type, String extraData, String targetEmail) {
@@ -353,7 +354,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
 
         redisTemplate.delete(redisKey);
 
-        log.info("User {} activated with role {}", newUser.getUsername(), role.getName());
+        log.info("User '{}' verified and activated account with role '{}'", newUser.getUsername(), role.getName());
     }
 
     @Override
@@ -377,7 +378,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                     TimeUnit.MINUTES);
             redisTemplate.opsForValue().set(cooldownKey, "1", 60, TimeUnit.SECONDS);
             emailKafkaProducer.sendOtpEmailTask(data.getEmail(), data.getUsername(), otp);
-            log.info("Resend Register OTP to Redis user: {}", data.getUsername());
+            log.info("Resent registration OTP for user '{}' to email '{}'", data.getUsername(), data.getEmail());
             return;
         }
 
@@ -415,7 +416,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         if (userCache != null && user.getUsername() != null) {
             userCache.evict(Objects.requireNonNull(user.getUsername()));
         }
-        log.info("Password reset successfully via Redis OTP for user: {}", user.getUsername());
+        log.info("Password reset completed successfully for user '{}'", user.getUsername());
     }
 
     @Override
@@ -499,7 +500,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         }
         redisTemplate.opsForValue().set(cooldownKey, "1", 60, TimeUnit.SECONDS);
         emailKafkaProducer.sendOtpEmailTask(emailToSend, usernameForMail, newOtp);
-        log.info("Resent {} OTP to {}", type, emailToSend);
+        log.info("Resent {} OTP to '{}'", type, emailToSend);
     }
 
 }

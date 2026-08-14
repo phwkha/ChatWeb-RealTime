@@ -280,7 +280,7 @@ public class FriendServiceImpl implements FriendService {
                 redisTemplate.opsForSet().remove(FRIENDS_STRING + blockerUsername, targetUsername);
                 redisTemplate.opsForSet().remove(FRIENDS_STRING + targetUsername, blockerUsername);
 
-                log.info("User {} blocked {}", blockerUsername, targetUsername);
+                log.info("User '{}' blocked '{}'", blockerUsername, targetUsername);
         }
 
         @Override

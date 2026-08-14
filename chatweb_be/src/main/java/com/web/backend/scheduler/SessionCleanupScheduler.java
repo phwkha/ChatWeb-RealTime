@@ -34,21 +34,19 @@ public class SessionCleanupScheduler {
                 Set<Object> zombieUsers = redisTemplate.opsForZSet().rangeByScore(ONLINE_USERS_KEY, 0, timeoutLimit);
 
                 if (zombieUsers != null && !zombieUsers.isEmpty()) {
-                    log.info("Found {} zombie sessions. Cleaning up...", zombieUsers.size());
+                    log.info("Detected {} zombie sessions. Initiating cleanup...", zombieUsers.size());
                     for (Object userObj : zombieUsers) {
                         String username = (String) userObj;
                         redisTemplate.opsForZSet().remove(ONLINE_USERS_KEY, username);
                         redisTemplate.opsForHash().delete(ONLINE_USERS_COUNT_KEY, username);
                         redisTemplate.delete("ws:routing:" + username);
                         userService.setUserOnlineStatus(username, false);
-                        log.info("Cleaned up zombie session for user: {}", username);
+                        log.debug("Cleaned up zombie session for user '{}'", username);
                     }
                 }
             } finally {
                 redisTemplate.delete(LOCK_KEY);
             }
-        } else {
-            log.debug("Cleanup job is already being executed by another server node");
         }
     }
 }

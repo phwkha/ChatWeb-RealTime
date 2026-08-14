@@ -27,7 +27,7 @@ public class ChatController {
         UserEntity userPrincipal = (UserEntity) authentication.getPrincipal();
         String currentUsername = userPrincipal.getUsername();
 
-        log.debug("Public chat from: {}", currentUsername);
+        log.debug("STOMP public system message received from admin '{}'", currentUsername);
         messageService.sendSystemMessage(currentUsername, request);
     }
 
@@ -37,7 +37,8 @@ public class ChatController {
         UserEntity userPrincipal = (UserEntity) authentication.getPrincipal();
         String senderUsername = userPrincipal.getUsername();
 
-        log.debug("Private from {} to {}", senderUsername, request.getRecipient());
+        log.debug("STOMP private message received: sender='{}', recipient='{}'", senderUsername,
+                request.getRecipient());
         messageService.sendPrivateMessage(senderUsername, request);
     }
 }

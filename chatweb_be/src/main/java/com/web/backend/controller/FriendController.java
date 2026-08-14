@@ -41,7 +41,6 @@ public class FriendController {
                         @RequestParam(defaultValue = "10") int size,
                         @RequestParam(defaultValue = "desc") String sortDir) {
                 UserEntity user = (UserEntity) auth.getPrincipal();
-                log.info("Get friend invites for: {}", user.getUsername());
 
                 return ResponseEntity.ok(ApiResponse.success(
                                 HttpStatus.OK.value(),
@@ -71,7 +70,6 @@ public class FriendController {
                         @RequestParam(defaultValue = "10") int size,
                         @RequestParam(defaultValue = "desc") String sortDir) {
                 UserEntity user = (UserEntity) auth.getPrincipal();
-                log.info("Get friend list for: {}", user.getUsername());
 
                 return ResponseEntity.ok(ApiResponse.success(
                                 HttpStatus.OK.value(),
@@ -113,7 +111,7 @@ public class FriendController {
                         @RequestBody @Valid FriendRequest request) {
 
                 UserEntity user = (UserEntity) auth.getPrincipal();
-                log.info("User {} sending friend request to {}", user.getUsername(), request.getTargetUsername());
+                log.debug("User '{}' sending friend request to '{}'", user.getUsername(), request.getTargetUsername());
 
                 friendService.sendFriendRequest(user.getUsername(), request.getTargetUsername());
 
@@ -130,7 +128,7 @@ public class FriendController {
                         @RequestBody @Valid FriendRequest request) {
 
                 UserEntity user = (UserEntity) auth.getPrincipal();
-                log.info("User {} accepting friend request from {}", user.getUsername(), request.getTargetUsername());
+                log.debug("User '{}' accepting friend request from '{}'", user.getUsername(), request.getTargetUsername());
 
                 friendService.acceptFriendRequest(user.getUsername(), request.getTargetUsername());
 

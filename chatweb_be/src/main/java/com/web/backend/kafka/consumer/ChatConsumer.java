@@ -35,16 +35,16 @@ public class ChatConsumer {
         }
         String recipient = message.getRecipient();
         String sender = message.getSender();
-        log.info("Kafka received message: {} -> {}", sender, recipient);
+        log.debug("Consumed chat message: sender='{}', recipient='{}'", sender, recipient);
         try {
             ChatMessageResponse messageResponse = messageMapper.toResponse(message);
             messageResponse.setLocalId(message.getLocalId());
 
             webSocketRoutingService.routeMessage(recipient, QUEUE_MESSAGES_STRING, messageResponse);
 
-            log.info("Finished processing Kafka message for recipient: {}", message.getRecipient());
+            log.debug("Dispatched chat message to WebSocket recipient '{}'", recipient);
         } catch (Exception e) {
-            log.error("Failed to send WebSocket message: {}", e.getMessage());
+            log.error("Failed to route WebSocket chat message to recipient '{}'", recipient, e);
         }
     }
 
@@ -55,13 +55,13 @@ public class ChatConsumer {
 
         MessageSystemResponse response = messageMapper.systemMessageToResponse(systemMessage);
 
-        log.info("Kafka received SYSTEM message from: {}", response.getSender());
+        log.debug("Consumed system message from sender '{}'", response.getSender());
 
         try {
             simpMessagingTemplate.convertAndSend(TOPIC_PUBLIC_STRING, response);
-            log.info("Kafka sent SYSTEM message from: {}", response.getSender());
+            log.debug("Broadcasted system message to topic '{}'", TOPIC_PUBLIC_STRING);
         } catch (Exception e) {
-            log.error("Failed to send System WebSocket message: {}", e.getMessage());
+            log.error("Failed to broadcast system message to '{}'", TOPIC_PUBLIC_STRING, e);
         }
     }
 }

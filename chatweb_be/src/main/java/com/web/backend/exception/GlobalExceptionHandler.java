@@ -61,21 +61,21 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(DisabledException.class)
     @ResponseStatus(HttpStatus.FORBIDDEN)
     public ApiResponse<Void> handleDisabledException(DisabledException ex) {
-        log.error("Account Disabled");
+        log.warn("Access rejected: Account is disabled - {}", ex.getMessage());
         return ApiResponse.error(HttpStatus.FORBIDDEN.value(), ex.getMessage());
     }
 
     @ExceptionHandler(LockedException.class)
     @ResponseStatus(HttpStatus.FORBIDDEN)
     public ApiResponse<Void> handleLockedException(LockedException ex) {
-        log.error("Account Locked");
+        log.warn("Access rejected: Account is locked - {}", ex.getMessage());
         return ApiResponse.error(HttpStatus.FORBIDDEN.value(), ex.getMessage());
     }
 
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
     @ResponseStatus(HttpStatus.METHOD_NOT_ALLOWED)
     public ApiResponse<Void> handleHttpRequestMethodNotSupportedException(HttpRequestMethodNotSupportedException ex) {
-        log.error("Http Request Method Not Supported: {}", ex.getMessage());
+        log.warn("HTTP method not supported: {}", ex.getMessage());
         return ApiResponse.error(HttpStatus.METHOD_NOT_ALLOWED.value(),
                 Translator.tolocale(ERROR_SYS_METHOD_STRING) + ex.getMethod()
                         + Translator.tolocale(ERROR_SYS_METHOD_NOT_SUPPORTED_STRING));
@@ -84,7 +84,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MissingServletRequestParameterException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ApiResponse<Void> handleMissingServletRequestParameterException(MissingServletRequestParameterException ex) {
-        log.error("Missing Servlet Request Parameter: {}", ex.getMessage());
+        log.warn("Missing required request parameter: {}", ex.getParameterName());
         return ApiResponse.error(HttpStatus.BAD_REQUEST.value(),
                 Translator.tolocale(ERROR_SYS_MISSING_PARAM_STRING, ex.getParameterName()));
     }
@@ -92,7 +92,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ApiResponse<Void> handleMethodArgumentTypeMismatchException(MethodArgumentTypeMismatchException ex) {
-        log.error("Method Argument Type Mismatch: {}", ex.getMessage());
+        log.warn("Method argument type mismatch: param='{}', message='{}'", ex.getName(), ex.getMessage());
         String message = String.format(Translator.tolocale(ERROR_SYS_PARAM_FORMAT_STRING), ex.getName());
         return ApiResponse.error(HttpStatus.BAD_REQUEST.value(), message);
     }
@@ -100,77 +100,77 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(HttpMessageNotReadableException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ApiResponse<Void> handleHttpMessageNotReadableException(HttpMessageNotReadableException ex) {
-        log.warn("Bad JSON: {}", ex.getMessage());
+        log.warn("Malformed JSON request: {}", ex.getMessage());
         return ApiResponse.error(HttpStatus.BAD_REQUEST.value(), Translator.tolocale(ERROR_SYS_BAD_FORMAT_STRING));
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public ApiResponse<Void> handleDataIntegrityViolationException(DataIntegrityViolationException ex) {
-        log.error("DB Constraint: {}", ex.getMessage());
+        log.error("Database integrity constraint violation: {}", ex.getMessage(), ex);
         return ApiResponse.error(HttpStatus.CONFLICT.value(), Translator.tolocale(ERROR_SYS_CONFLICT_STRING));
     }
 
     @ExceptionHandler(AccessDeniedException.class)
     @ResponseStatus(HttpStatus.FORBIDDEN)
     public ApiResponse<Void> handleSpringAccessDeniedException(AccessDeniedException ex) {
-        log.error("Spring Access Denied: {}", ex.getMessage());
+        log.warn("Access denied (Spring Security): {}", ex.getMessage());
         return ApiResponse.error(HttpStatus.FORBIDDEN.value(), ex.getMessage());
     }
 
     @ExceptionHandler(AuthenticationFailedException.class)
     @ResponseStatus(HttpStatus.UNAUTHORIZED)
     public ApiResponse<Void> handleAuthenticationFailedException(AuthenticationFailedException ex) {
-        log.error("Authentication Failed: {}", ex.getMessage());
+        log.warn("Authentication failed: {}", ex.getMessage());
         return ApiResponse.error(HttpStatus.UNAUTHORIZED.value(), ex.getMessage());
     }
 
     @ExceptionHandler(PasswordMismatchException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ApiResponse<Void> handlePasswordMismatchException(PasswordMismatchException ex) {
-        log.error("Password Mismatch: {}", ex.getMessage());
+        log.warn("Password mismatch: {}", ex.getMessage());
         return ApiResponse.error(HttpStatus.BAD_REQUEST.value(), ex.getMessage());
     }
 
     @ExceptionHandler(InvalidPasswordException.class)
     @ResponseStatus(HttpStatus.UNAUTHORIZED)
     public ApiResponse<Void> handleInvalidPasswordException(InvalidPasswordException ex) {
-        log.error("Invalid Password: {}", ex.getMessage());
+        log.warn("Invalid password attempt: {}", ex.getMessage());
         return ApiResponse.error(HttpStatus.UNAUTHORIZED.value(), ex.getMessage());
     }
 
     @ExceptionHandler(InvalidOtpException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ApiResponse<Void> handleInvalidOtpException(InvalidOtpException ex) {
-        log.warn("OTP Validation Failed: {}", ex.getMessage());
+        log.warn("OTP validation failed: {}", ex.getMessage());
         return ApiResponse.error(HttpStatus.BAD_REQUEST.value(), ex.getMessage());
     }
 
     @ExceptionHandler(InvalidDataException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ApiResponse<Void> handleInvalidDataException(InvalidDataException ex) {
-        log.warn("Invalid Data Failed: {}", ex.getMessage());
+        log.warn("Invalid data error: {}", ex.getMessage());
         return ApiResponse.error(HttpStatus.BAD_REQUEST.value(), ex.getMessage());
     }
 
     @ExceptionHandler(ResourceNotFoundException.class)
     @ResponseStatus(HttpStatus.NOT_FOUND)
     public ApiResponse<Void> handleResourceNotFoundException(ResourceNotFoundException ex) {
-        log.warn("Resource Not Found: {}", ex.getMessage());
+        log.warn("Resource not found: {}", ex.getMessage());
         return ApiResponse.error(HttpStatus.NOT_FOUND.value(), ex.getMessage());
     }
 
     @ExceptionHandler(ResourceConflictException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public ApiResponse<Void> handleResourceConflictException(ResourceConflictException ex) {
-        log.warn("Resource Conflict: {}", ex.getMessage());
+        log.warn("Resource conflict: {}", ex.getMessage());
         return ApiResponse.error(HttpStatus.CONFLICT.value(), ex.getMessage());
     }
 
     @ExceptionHandler(AccessForbiddenException.class)
     @ResponseStatus(HttpStatus.FORBIDDEN)
     public ApiResponse<Void> handleAccessForbiddenException(AccessForbiddenException ex) {
-        log.warn("Access Forbidden: {}", ex.getMessage());
+        log.warn("Access forbidden: {}", ex.getMessage());
         return ApiResponse.error(HttpStatus.FORBIDDEN.value(), ex.getMessage());
     }
 
@@ -196,21 +196,21 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ExpiredJwtException.class)
     @ResponseStatus(HttpStatus.UNAUTHORIZED)
     public ApiResponse<Void> handleExpiredJwtException(ExpiredJwtException ex) {
-        log.info("Token Expired: {}", ex.getMessage());
+        log.warn("JWT token expired: {}", ex.getMessage());
         return ApiResponse.error(4011, Translator.tolocale(ERROR_AUTH_TOKEN_EXPIRED_STRING));
     }
 
     @ExceptionHandler(JwtException.class)
     @ResponseStatus(HttpStatus.UNAUTHORIZED)
     public ApiResponse<Void> handleJwtException(JwtException ex) {
-        log.warn("Token Error JWT: {}", ex.getMessage());
+        log.warn("JWT validation failed: {}", ex.getMessage());
         return ApiResponse.error(4012, Translator.tolocale(ERROR_AUTH_TOKEN_INVALID_STRING));
     }
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     @ResponseStatus(HttpStatus.PAYLOAD_TOO_LARGE)
     public ApiResponse<Void> handleMaxSizeException(MaxUploadSizeExceededException exc) {
-        log.warn("File too large: {}", exc.getMessage());
+        log.warn("Upload size exceeded limit: {}", exc.getMessage());
         return ApiResponse.error(HttpStatus.PAYLOAD_TOO_LARGE.value(),
                 Translator.tolocale(ERROR_STORAGE_FILE_TOO_LARGE_STRING, STR_20_STRING));
     }
@@ -218,13 +218,13 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ConstraintViolationException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ApiResponse<Void> handleConstraintViolationException(ConstraintViolationException ex) {
-        log.warn("Invalid param/path variable: {}", ex.getMessage());
+        log.warn("Validation constraint violated: {}", ex.getMessage());
         return ApiResponse.error(HttpStatus.BAD_REQUEST.value(), Translator.tolocale(ERROR_SYS_INVALID_INPUT_STRING));
     }
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleException(Exception ex) {
-        log.error("System Error (Uncaught): ", ex);
+        log.error("Uncaught server exception occurred: ", ex);
 
         return ResponseEntity
                 .status(HttpStatus.INTERNAL_SERVER_ERROR)

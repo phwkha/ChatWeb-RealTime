@@ -45,8 +45,6 @@ public class MessageController {
                         @RequestParam String user2,
                         @RequestParam(required = false) String cursor,
                         @RequestParam(defaultValue = "20") int size) {
-                log.info("Fetching private messages between {} and {}", user1, user2);
-
                 CursorResponse<ChatMessageResponse> response = messageService.findPrivateMessageWithCursor(user1, user2,
                                 cursor,
                                 size);
@@ -59,8 +57,6 @@ public class MessageController {
         @GetMapping("/unread-counts")
         public ResponseEntity<ApiResponse<UnreadCountsResponse>> getUnreadCounts(Authentication auth) {
                 UserEntity user = (UserEntity) auth.getPrincipal();
-
-                log.info("Fetching unread counts for user: {}", user.getUsername());
 
                 return ResponseEntity
                                 .ok(ApiResponse.success(HttpStatus.OK.value(),
@@ -76,7 +72,7 @@ public class MessageController {
 
                 UserEntity user = (UserEntity) auth.getPrincipal();
 
-                log.info("User {} marking messages from {} as read", user.getUsername(), request.getSender());
+                log.debug("User '{}' marked messages from '{}' as read", user.getUsername(), request.getSender());
 
                 messageService.markMessagesAsRead(user.getUsername(), request.getSender());
 
@@ -92,7 +88,6 @@ public class MessageController {
                         Authentication auth) {
 
                 UserEntity user = (UserEntity) auth.getPrincipal();
-                log.info("Fetching message ID {} for user: {}", id, user.getUsername());
 
                 ChatMessageResponse response = messageService.getMessageById(id, user.getUsername());
 
@@ -108,7 +103,7 @@ public class MessageController {
 
                 UserEntity user = (UserEntity) auth.getPrincipal();
 
-                log.info("User {} reacting to message {}", user.getUsername(), request.getMessageId());
+                log.debug("User '{}' reacted to message '{}'", user.getUsername(), request.getMessageId());
 
                 messageService.reactToMessage(user.getUsername(), request);
 
@@ -125,7 +120,7 @@ public class MessageController {
 
                 UserEntity user = (UserEntity) auth.getPrincipal();
 
-                log.info("User {} editing message {}", user.getUsername(), request.getMessageId());
+                log.debug("User '{}' edited message '{}'", user.getUsername(), request.getMessageId());
 
                 messageService.editMessage(user.getUsername(), request);
 
@@ -142,7 +137,7 @@ public class MessageController {
 
                 UserEntity user = (UserEntity) auth.getPrincipal();
 
-                log.info("User {} revoking message {}", user.getUsername(), request.getMessageId());
+                log.debug("User '{}' revoked message '{}'", user.getUsername(), request.getMessageId());
 
                 messageService.revokeMessage(user.getUsername(), request);
 

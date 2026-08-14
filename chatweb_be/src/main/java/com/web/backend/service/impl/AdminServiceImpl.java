@@ -164,7 +164,6 @@ public class AdminServiceImpl implements AdminService {
                 .map(userMapper::toUserSummaryResponse)
                 .toList();
 
-        log.info("Get all user");
         return PageResponse.<UserSummaryResponse>builder()
                 .content(content)
                 .pageNo(pageResult.getNumber())
@@ -184,7 +183,6 @@ public class AdminServiceImpl implements AdminService {
         if (userEntity.getUserStatus() == UserStatus.INACTIVE) {
             throw new ResourceNotFoundException(Translator.tolocale(ERROR_USER_NOT_FOUND_WITH_STRING, username));
         }
-        log.info("Get user");
         return userMapper.toUserDetailResponse(userEntity);
     }
 
@@ -217,7 +215,7 @@ public class AdminServiceImpl implements AdminService {
 
         user.setRole(role);
         UserEntity savedUser = userRepository.save(user);
-        log.info("Created new user: {}", savedUser.getUsername());
+        log.info("Admin created new user '{}'", savedUser.getUsername());
 
         return userMapper.toUserResponse(savedUser);
     }
@@ -234,7 +232,7 @@ public class AdminServiceImpl implements AdminService {
         userEntity.setOnline(false);
 
         UserEntity savedUser = userRepository.save(userEntity);
-        log.info("Locked user: {}", username);
+        log.info("Admin locked user account '{}'", username);
 
         return userMapper.toUserResponse(savedUser);
     }
@@ -250,12 +248,13 @@ public class AdminServiceImpl implements AdminService {
         if (userEntity.getUserStatus() == UserStatus.LOCKED) {
             userEntity.setUserStatus(UserStatus.ACTIVE);
             UserEntity savedUser = userRepository.save(userEntity);
-            log.info("Unlocked user: {}", username);
+            log.info("Admin unlocked user account '{}'", username);
 
             return userMapper.toUserResponse(savedUser);
         }
 
-        log.warn("Tried to unlock user {} who was not LOCKED (Status: {})", username, userEntity.getUserStatus());
+        log.warn("Admin attempted to unlock user '{}' who was not in LOCKED status (Status: {})", username,
+                userEntity.getUserStatus());
 
         return userMapper.toUserResponse(userEntity);
     }
@@ -274,7 +273,7 @@ public class AdminServiceImpl implements AdminService {
 
         storageService.delete(urlAvatar, AVATARS_STRING);
 
-        log.info("delete avatar for user {}", username);
+        log.info("Admin deleted avatar for user '{}'", username);
     }
 
     @Override
@@ -299,7 +298,7 @@ public class AdminServiceImpl implements AdminService {
         }
 
         UserEntity saved = userRepository.save(Objects.requireNonNull(userEntity));
-        log.info("Update user");
+        log.info("Admin updated user profile for '{}'", username);
         return userMapper.toUserResponse(saved);
     }
 
@@ -321,12 +320,11 @@ public class AdminServiceImpl implements AdminService {
             userEntity.setLastName(Translator.tolocale(SYS_DELETED_STRING));
             userEntity.setAvatar(null);
             userRepository.save(userEntity);
-            log.info("Soft deleted user: {} (user has message history) by {}", targetUsername, requesterUsername);
+            log.info("Admin '{}' soft-deleted user '{}' (retaining chat history)", requesterUsername, targetUsername);
         } else {
             userRepository.delete(Objects.requireNonNull(userEntity));
-            log.info("Hard deleted user: {} (user had no message history) by {}", targetUsername, requesterUsername);
+            log.info("Admin '{}' hard-deleted user '{}'", requesterUsername, targetUsername);
         }
-        log.info("Delete user");
     }
 
     @Override
@@ -337,7 +335,6 @@ public class AdminServiceImpl implements AdminService {
                         () -> new ResourceNotFoundException(
                                 Translator.tolocale(ERROR_USER_TARGET_NOT_FOUND_WITH_STRING, targetUsername)));
 
-        log.info("Get all address for user by admin");
         return user.getAddresses().stream()
                 .map(userMapper::toAddressResponse)
                 .toList();
@@ -357,7 +354,6 @@ public class AdminServiceImpl implements AdminService {
                 .orElseThrow(() -> new AccessForbiddenException(
                         Translator.tolocale(ERROR_ADMIN_ADDRESS_NOT_OWNED_STRING)));
 
-        log.info("Get address with id for user");
         return userMapper.toAddressResponse(address);
     }
 
@@ -379,7 +375,7 @@ public class AdminServiceImpl implements AdminService {
         userMapper.updateAddressFromRequest(request, addressToUpdate);
 
         userRepository.save(user);
-        log.info("Admin updated address {} for user: {}", addressId, targetUsername);
+        log.info("Admin updated address id={} for user '{}'", addressId, targetUsername);
         return userMapper.toUserDetailResponse(user);
     }
 
@@ -401,7 +397,7 @@ public class AdminServiceImpl implements AdminService {
         user.removeAddress(addressToDelete);
 
         userRepository.save(user);
-        log.info("Admin deleted address {} for user: {}", addressId, targetUsername);
+        log.info("Admin deleted address id={} for user '{}'", addressId, targetUsername);
     }
 
 }

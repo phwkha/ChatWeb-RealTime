@@ -56,6 +56,6 @@ public class CuckooFilterService {
                 new GenericToStringSerializer<>(Long.class),
                 Objects.requireNonNull(Collections.singletonList(key)),
                 item);
-        log.info("Deleted item '{}' from filter '{}'", item, key);
+        log.debug("Deleted item '{}' from Cuckoo filter '{}'", item, key);
     }
 }

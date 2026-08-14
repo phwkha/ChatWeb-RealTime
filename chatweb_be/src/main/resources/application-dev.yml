@@ -117,3 +117,10 @@ app:
     max-size-image: 20971520
   admin:
     default-password: ${APP_ADMIN_DEFAULT_PASSWORD:Admin@123Seeder!}
+
+logging:
+  level:
+    root: INFO
+    com.web.backend: DEBUG
+    org.springframework.web: INFO
+    org.springframework.kafka: INFO

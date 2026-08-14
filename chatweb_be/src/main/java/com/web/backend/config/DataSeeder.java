@@ -62,7 +62,7 @@ public class DataSeeder implements CommandLineRunner {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void run(String... args) throws Exception {
-        log.info("import data start");
+        log.info("Database seeding started...");
         // Admin permissions to match AdminController
         PermissionEntity pAdminView = createPermissionIfNotFound("ADMIN_VIEW", "Xem quyền quản trị");
         PermissionEntity pAdminCreate = createPermissionIfNotFound("ADMIN_CREATE", "Tạo quyền quản trị");
@@ -108,16 +108,16 @@ public class DataSeeder implements CommandLineRunner {
 
             userRepository.save(admin);
         }
-        log.info("import data end");
+        log.info("Database seeding completed successfully");
 
         if (!Boolean.TRUE.equals(redisTemplate.hasKey(FILTER_EMAILS_STRING))) {
-            log.info("Initializing Cuckoo Filter...");
+            log.info("Initializing Cuckoo filter in Redis...");
             List<UserEntity> allUsers = userRepository.findAll();
             for (UserEntity u : allUsers) {
                 cuckooFilterService.add(FILTER_EMAILS_STRING, u.getEmail());
                 cuckooFilterService.add(FILTER_USERNAMES_STRING, u.getUsername());
             }
-            log.info("Cuckoo Filter initialized with {} users", allUsers.size());
+            log.info("Cuckoo filter initialized with {} existing users", allUsers.size());
         }
 
     }
@@ -163,7 +163,7 @@ public class DataSeeder implements CommandLineRunner {
             if (Boolean.TRUE.equals(redisTemplate.hasKey(onlineUsersCountKey))) {
                 redisTemplate.delete(onlineUsersCountKey);
             }
-            log.info(">>> CLEANUP: Reset Online Users state in Redis to avoid phantom data.");
+            log.info("Reset online user states in Redis to prevent phantom data");
         };
     }
 }

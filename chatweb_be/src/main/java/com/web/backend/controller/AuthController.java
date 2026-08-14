@@ -84,7 +84,7 @@ public class AuthController {
                                                         Translator.tolocale(ERROR_AUTH_TOO_MANY_ATTEMPTS_STRING)));
                 }
 
-                log.info("Login with user: {}", loginRequest.getUsername());
+                log.debug("Login request received for user '{}'", loginRequest.getUsername());
 
                 LoginResponse loginResponse = authenticationService.login(loginRequest);
 
@@ -105,7 +105,7 @@ public class AuthController {
         @PostMapping("/register")
         public ResponseEntity<ApiResponse<UserResponse>> registerUser(
                         @RequestBody @Valid CreateUserRequest createUserRequest) {
-                log.info("Registering new user: {}", createUserRequest.getUsername());
+                log.debug("Registration request received for new user '{}'", createUserRequest.getUsername());
 
                 UserResponse newUser = authenticationService.createUser(createUserRequest);
 
@@ -117,7 +117,7 @@ public class AuthController {
         @Operation(summary = "Verify otp", description = "API endpoint for verify otp")
         @PostMapping("/verify-account")
         public ResponseEntity<ApiResponse<Void>> verifyOtp(@RequestBody @Valid VerifyOtpRequest request) {
-                log.info("Verify Otp Request: {}", request);
+                log.debug("Verifying account for email '{}'", request.getEmail());
                 authenticationService.verifyUser(request);
                 return ResponseEntity
                                 .ok(ApiResponse.success(HttpStatus.OK.value(),
@@ -127,7 +127,7 @@ public class AuthController {
         @Operation(summary = "Resend otp", description = "API endpoint for resend otp")
         @PostMapping("/resend-otp")
         public ResponseEntity<ApiResponse<Void>> resendOtp(@RequestParam String email) {
-                log.info("Resend Otp Request: {}", email);
+                log.debug("Resending verification OTP for email '{}'", email);
                 authenticationService.resendOtp(email);
                 return ResponseEntity
                                 .ok(ApiResponse.success(HttpStatus.OK.value(),
@@ -139,7 +139,7 @@ public class AuthController {
         public ResponseEntity<ApiResponse<String>> refreshToken(
                         @CookieValue(name = REFRESHTOKEN, required = false) String refreshToken) {
 
-                log.info("Refresh token with user");
+                log.debug("Refreshing authentication token");
                 TokenResponse newTokenResponse = authenticationService.refreshToken(refreshToken);
 
                 ResponseCookie newAccessCookie = buildCookie(ACCESSTOKEN, newTokenResponse.getAccessToken(),
@@ -159,7 +159,7 @@ public class AuthController {
         @Operation(summary = "Forgot password", description = "API endpoint for forgot password")
         @PostMapping("/forgot-password")
         public ResponseEntity<ApiResponse<Void>> forgotPassword(@RequestBody @Valid ForgotPasswordRequest request) {
-                log.info("Password reset initiated for email");
+                log.debug("Password reset request received for email '{}'", request.getEmail());
                 authenticationService.initiateForgotPassword(request.getEmail());
                 return ResponseEntity
                                 .ok(ApiResponse.success(HttpStatus.OK.value(),
@@ -169,7 +169,7 @@ public class AuthController {
         @Operation(summary = "Reset password", description = "API endpoint for reset password")
         @PostMapping("/reset-password")
         public ResponseEntity<ApiResponse<Void>> resetPassword(@RequestBody @Valid ResetPasswordRequest request) {
-                log.info("Password reset successfully for user");
+                log.debug("Password reset verification request received for email '{}'", request.getEmail());
                 authenticationService.verifyPasswordReset(request.getEmail(), request.getOtp(),
                                 request.getNewPassword());
                 return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(),
@@ -189,7 +189,7 @@ public class AuthController {
         @PostMapping("/logout")
         public ResponseEntity<ApiResponse<String>> logout(Authentication authentication, HttpServletRequest request) {
                 UserEntity userEntityPrincipal = (UserEntity) authentication.getPrincipal();
-                log.info("User logout {}", userEntityPrincipal.getUsername());
+                log.debug("User '{}' logging out", userEntityPrincipal.getUsername());
                 clearTokens(request);
 
                 ResponseCookie deleteAccess = buildCookie(ACCESSTOKEN, EMPTY_STRING, PATH_STRING, 0);
@@ -206,7 +206,7 @@ public class AuthController {
         public ResponseEntity<ApiResponse<String>> logoutAllDevices(Authentication authentication,
                         HttpServletRequest request) {
                 UserEntity userEntityPrincipal = (UserEntity) authentication.getPrincipal();
-                log.info("User logout all devices {}", userEntityPrincipal.getUsername());
+                log.debug("User '{}' logging out from all devices", userEntityPrincipal.getUsername());
 
                 authenticationService.logoutAllDevices(userEntityPrincipal.getUsername());
 

@@ -48,7 +48,6 @@ public class UserController {
         @GetMapping("/me")
         public ResponseEntity<ApiResponse<UserResponse>> getMe(Authentication authentication) {
                 UserEntity userEntityPrincipal = (UserEntity) authentication.getPrincipal();
-                log.info("Get current user: {}", userEntityPrincipal.getUsername());
                 return ResponseEntity
                                 .ok(ApiResponse.success(HttpStatus.OK.value(),
                                                 Translator.tolocale(SUCCESS_USER_GET_INFO_STRING),
@@ -59,7 +58,6 @@ public class UserController {
         @GetMapping("/profile")
         public ResponseEntity<ApiResponse<UserDetailResponse>> getProfileUser(Authentication authentication) {
                 UserEntity userEntityPrincipal = (UserEntity) authentication.getPrincipal();
-                log.info("Get profile user: {}", userEntityPrincipal.getUsername());
                 return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(),
                                 Translator.tolocale(SUCCESS_USER_GET_INFO_STRING),
                                 userService.getProfileUser(userEntityPrincipal.getUsername())));
@@ -74,7 +72,7 @@ public class UserController {
                 UserEntity userEntityPrincipal = (UserEntity) authentication.getPrincipal();
                 String username = userEntityPrincipal.getUsername();
 
-                log.info("Updating profile for user: {}", username);
+                log.debug("User '{}' updating profile", username);
 
                 UserDetailResponse updatedUser = userService.updateUser(username, updateUserRequest);
                 return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(),
@@ -88,6 +86,7 @@ public class UserController {
                         Authentication authentication) {
 
                 UserEntity userEntity = (UserEntity) authentication.getPrincipal();
+                log.debug("User '{}' updating avatar", userEntity.getUsername());
 
                 String urlAvatar = userService.updateAvatar(userEntity.getUsername(), avatarFile);
 
@@ -102,7 +101,7 @@ public class UserController {
                         Authentication authentication) {
 
                 UserEntity userEntityPrincipal = (UserEntity) authentication.getPrincipal();
-                log.info("User {} changed password successfully", userEntityPrincipal.getUsername());
+                log.debug("User '{}' changing password", userEntityPrincipal.getUsername());
                 userService.changePassword(userEntityPrincipal.getUsername(), request.getCurrentPassword(),
                                 request.getNewPassword());
 
@@ -118,7 +117,7 @@ public class UserController {
 
                 String username = userEntityPrincipal.getUsername();
 
-                log.warn("User {} is deleting their account", username);
+                log.warn("User '{}' requested account deletion", username);
                 userService.deleteUser(username);
 
                 return ResponseEntity
@@ -133,7 +132,7 @@ public class UserController {
                         @RequestBody @Valid AddressRequest addressRequest) {
 
                 UserEntity currentUser = (UserEntity) authentication.getPrincipal();
-                log.info("Adding address for user: {}", currentUser.getUsername());
+                log.debug("User '{}' adding new address", currentUser.getUsername());
                 UserDetailResponse result = userService.addAddress(currentUser.getUsername(), addressRequest);
 
                 return ResponseEntity.status(HttpStatus.CREATED)
@@ -150,7 +149,7 @@ public class UserController {
                         @RequestBody @Valid AddressRequest addressRequest) {
 
                 UserEntity currentUser = (UserEntity) authentication.getPrincipal();
-                log.info("Updating address {} for user {}", addressId, currentUser.getUsername());
+                log.debug("User '{}' updating address id={}", currentUser.getUsername(), addressId);
                 UserDetailResponse result = userService.updateAddress(currentUser.getUsername(), addressId,
                                 addressRequest);
 
@@ -166,7 +165,7 @@ public class UserController {
                         @PathVariable Long addressId) {
 
                 UserEntity currentUser = (UserEntity) authentication.getPrincipal();
-                log.info("Deleting address {} for user {}", addressId, currentUser.getUsername());
+                log.debug("User '{}' deleting address id={}", currentUser.getUsername(), addressId);
                 UserDetailResponse result = userService.deleteAddress(currentUser.getUsername(), addressId);
 
                 return ResponseEntity.ok(
@@ -178,7 +177,6 @@ public class UserController {
         @GetMapping("/addresses")
         public ResponseEntity<ApiResponse<List<AddressResponse>>> getAllAddresses(Authentication authentication) {
                 UserEntity currentUser = (UserEntity) authentication.getPrincipal();
-                log.info("Get all address for user: {}", currentUser.getUsername());
                 List<AddressResponse> addresses = userService.getAllAddresses(currentUser.getUsername());
                 return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(),
                                 Translator.tolocale(SUCCESS_USER_GET_ADDRESSES_STRING), addresses));
@@ -190,7 +188,6 @@ public class UserController {
                         Authentication authentication,
                         @PathVariable Long addressId) {
                 UserEntity currentUser = (UserEntity) authentication.getPrincipal();
-                log.info("Get address for user: {}", currentUser.getUsername());
                 AddressResponse address = userService.getAddressById(currentUser.getUsername(), addressId);
                 return ResponseEntity.ok(
                                 ApiResponse.success(HttpStatus.OK.value(),
@@ -204,7 +201,7 @@ public class UserController {
                         @RequestBody @Valid InitiateEmailChangeRequest request) {
 
                 UserEntity user = (UserEntity) authentication.getPrincipal();
-                log.info("Email change initiated for user: {}", user.getUsername());
+                log.debug("User '{}' initiating email change to '{}'", user.getUsername(), request.getNewEmail());
                 userService.initiateEmailChange(user.getUsername(), request.getNewEmail(),
                                 request.getCurrentPassword());
 
@@ -220,7 +217,7 @@ public class UserController {
                         @RequestBody @Valid VerifyOtpRequest request) {
 
                 UserEntity user = (UserEntity) authentication.getPrincipal();
-                log.info("Email changed successfully for user: {}", user.getUsername());
+                log.debug("User '{}' verifying email change", user.getUsername());
                 userService.verifyEmailChange(user.getUsername(), request.getOtp());
 
                 return ResponseEntity
@@ -232,7 +229,7 @@ public class UserController {
         @PostMapping("/resend-email-verification")
         public ResponseEntity<ApiResponse<Void>> resendEmailVerification(Authentication authentication) {
                 UserEntity user = (UserEntity) authentication.getPrincipal();
-                log.info("Resent Email Change OTP for user {}", user.getUsername());
+                log.debug("Resending email change verification for user '{}'", user.getUsername());
                 userService.resendEmailChangeOtp(user.getUsername());
 
                 return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(),
@@ -246,7 +243,7 @@ public class UserController {
                         @RequestBody @Valid InitiatePhoneChangeRequest request) {
 
                 UserEntity user = (UserEntity) authentication.getPrincipal();
-                log.info("Phone change initiated for user: {}", user.getUsername());
+                log.debug("User '{}' initiating phone change", user.getUsername());
                 userService.initiatePhoneChange(user.getUsername(), request.getNewPhone(),
                                 request.getCurrentPassword());
 
@@ -261,7 +258,7 @@ public class UserController {
                         @RequestBody @Valid VerifyOtpRequest request) {
 
                 UserEntity user = (UserEntity) authentication.getPrincipal();
-                log.info("Phone changed successfully for user: {}", user.getUsername());
+                log.debug("User '{}' verifying phone change", user.getUsername());
                 userService.verifyPhoneChange(user.getUsername(), request.getOtp());
 
                 return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(),
@@ -274,7 +271,7 @@ public class UserController {
                 UserEntity user = (UserEntity) authentication.getPrincipal();
 
                 userService.resendPhoneChangeOtp(user.getUsername());
-                log.info("Resent Phone Change OTP for user: {}", user.getUsername());
+                log.debug("Resending phone change verification for user '{}'", user.getUsername());
                 return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(),
                                 Translator.tolocale(SUCCESS_USER_OTP_PHONE_RESENT_STRING), null));
         }

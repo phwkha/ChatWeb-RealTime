@@ -34,7 +34,7 @@ public class ChatUploadController {
     @Operation(summary = "Upload chat image", description = "API endpoint for upload chat image")
     @PostMapping(value = "/image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<String>> uploadChatImage(@RequestParam(IMAGE_STRING) MultipartFile file) {
-        log.info("upload image");
+        log.debug("Uploading chat image: name='{}', size={} bytes", file.getOriginalFilename(), file.getSize());
         String url = storageService.upLoadImage(file);
         return ResponseEntity
                 .ok(ApiResponse.success(HttpStatus.OK.value(), Translator.tolocale(SUCCESS_CHAT_UPLOAD_STRING), url));
@@ -43,7 +43,7 @@ public class ChatUploadController {
     @Operation(summary = "Upload chat video", description = "API endpoint for upload chat video")
     @PostMapping(value = "/video", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<String>> uploadChatVideo(@RequestParam(VIDEO_STRING) MultipartFile file) {
-        log.info("upload video");
+        log.debug("Uploading chat video: name='{}', size={} bytes", file.getOriginalFilename(), file.getSize());
         String url = storageService.uploadVideo(file);
         return ResponseEntity
                 .ok(ApiResponse.success(HttpStatus.OK.value(), Translator.tolocale(SUCCESS_CHAT_UPLOAD_STRING), url));

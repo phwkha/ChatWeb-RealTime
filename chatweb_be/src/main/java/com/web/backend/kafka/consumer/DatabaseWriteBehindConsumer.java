@@ -38,12 +38,13 @@ public class DatabaseWriteBehindConsumer {
         if (messagesToSave.isEmpty()) {
             return;
         }
-        log.info("Kafka Consumer: Writing batch of {} messages to Database...", messagesToSave.size());
+        log.debug("Persisting write-behind batch of {} chat messages to MongoDB...", messagesToSave.size());
         try {
             messageRepository.saveAll(messagesToSave);
-            log.info("Successfully saved {} messages.", messagesToSave.size());
+            log.info("Persisted batch of {} chat messages to MongoDB successfully", messagesToSave.size());
         } catch (Exception e) {
-            log.error("Error save DB! Kafka auto Retry...");
+            log.error("Failed to persist batch of {} chat messages to MongoDB. Triggering Kafka retry...",
+                    messagesToSave.size(), e);
             throw e;
         }
         sendAcknowledgements(messagesToSave);
@@ -57,8 +58,11 @@ public class DatabaseWriteBehindConsumer {
                         ChatMessageResponse messageResponse = messageMapper.toResponse(msg);
                         messageResponse.setLocalId(msg.getLocalId());
                         webSocketRoutingService.routeMessage(msg.getSender(), QUEUE_MESSAGES_STRING, messageResponse);
+                        log.debug("Dispatched persistence ACK to sender '{}' for message '{}'", msg.getSender(),
+                                msg.getId());
                     } catch (Exception ex) {
-                        log.error("Error sending ACK to sender: {}", ex.getMessage());
+                        log.error("Failed to route persistence ACK to sender '{}' for message '{}'", msg.getSender(),
+                                msg.getId(), ex);
                     }
                 });
             }

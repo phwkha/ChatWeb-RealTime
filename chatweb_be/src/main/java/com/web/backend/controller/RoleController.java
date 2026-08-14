@@ -39,9 +39,7 @@ public class RoleController {
     @Operation(summary = "Get all roles", description = "API endpoint for get all roles")
     @GetMapping
     @PreAuthorize("hasAuthority('ROLE_VIEW_ALL')")
-    public ResponseEntity<ApiResponse<List<RoleResponse>>> getAllRoles(Authentication authentication) {
-        UserEntity userEntityPrincipal = (UserEntity) authentication.getPrincipal();
-        log.info("Get all roles: {}", userEntityPrincipal.getUsername());
+    public ResponseEntity<ApiResponse<List<RoleResponse>>> getAllRoles() {
         return ResponseEntity.ok(ApiResponse.success(
                 HttpStatus.OK.value(),
                 Translator.tolocale(SUCCESS_ROLE_GET_LIST_STRING),
@@ -51,9 +49,7 @@ public class RoleController {
     @Operation(summary = "Get all permissions", description = "API endpoint for get all permissions")
     @GetMapping("/permissions")
     @PreAuthorize("hasAuthority('ROLE_VIEW_ALL_PERMISSION')")
-    public ResponseEntity<ApiResponse<List<PermissionResponse>>> getAllPermissions(Authentication authentication) {
-        UserEntity userEntityPrincipal = (UserEntity) authentication.getPrincipal();
-        log.info("Get all permission: {}", userEntityPrincipal.getUsername());
+    public ResponseEntity<ApiResponse<List<PermissionResponse>>> getAllPermissions() {
         return ResponseEntity.ok(ApiResponse.success(
                 HttpStatus.OK.value(),
                 Translator.tolocale(SUCCESS_ROLE_GET_PERMISSIONS_STRING),
@@ -66,7 +62,7 @@ public class RoleController {
     public ResponseEntity<ApiResponse<RoleResponse>> createRole(@RequestBody @Valid RoleRequest request,
             Authentication authentication) {
         UserEntity userEntityPrincipal = (UserEntity) authentication.getPrincipal();
-        log.info("Create role: {}", userEntityPrincipal.getUsername());
+        log.debug("User '{}' creating new role '{}'", userEntityPrincipal.getUsername(), request.getName());
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(
                 HttpStatus.CREATED.value(),
                 Translator.tolocale(SUCCESS_ROLE_CREATE_STRING),
@@ -79,7 +75,7 @@ public class RoleController {
     public ResponseEntity<ApiResponse<RoleResponse>> updateRole(@PathVariable @NonNull Long id,
             @RequestBody @Valid RoleRequest request, Authentication authentication) {
         UserEntity userEntityPrincipal = (UserEntity) authentication.getPrincipal();
-        log.info("Update role: {}", userEntityPrincipal.getUsername());
+        log.debug("User '{}' updating role id={}", userEntityPrincipal.getUsername(), id);
         return ResponseEntity.ok(ApiResponse.success(
                 HttpStatus.OK.value(),
                 Translator.tolocale(SUCCESS_ROLE_UPDATE_STRING),
@@ -91,7 +87,7 @@ public class RoleController {
     @PreAuthorize("hasAuthority('ROLE_DELETE')")
     public ResponseEntity<ApiResponse<Void>> deleteRole(@PathVariable @NonNull Long id, Authentication authentication) {
         UserEntity userEntityPrincipal = (UserEntity) authentication.getPrincipal();
-        log.info("Delete role: {}", userEntityPrincipal.getUsername());
+        log.debug("User '{}' deleting role id={}", userEntityPrincipal.getUsername(), id);
         roleService.deleteRole(id);
         return ResponseEntity.ok(ApiResponse.success(
                 HttpStatus.NO_CONTENT.value(),

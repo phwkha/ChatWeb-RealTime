@@ -59,11 +59,11 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
         String email = oAuth2User.getAttribute(EMAIL_STRING);
 
         if (email == null || email.isEmpty()) {
-            log.error("OAuth2 login failed: Provider returned empty email for providerId {}", providerId);
+            log.error("OAuth2 authentication failed: Provider returned empty email [providerId={}]", providerId);
             throw new OAuth2AuthenticationException(ERROR_OAUTH2_EMAIL_MISSING_STRING);
         }
 
-        log.info("Processing OAuth2 login for user email: {}", email);
+        log.info("Processing OAuth2 login for user '{}'", email);
         UserEntity user = processOAuth2User(userRequest, oAuth2User, providerId, email);
         return new CustomOAuth2User(user, oAuth2User.getAttributes());
     }
@@ -88,17 +88,17 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
         Optional<UserEntity> userByProviderId = userRepository.findByProviderId(providerId);
 
         if (userByProviderId.isPresent()) {
-            log.info("User found by providerId: {}", providerId);
+            log.debug("Found existing user by OAuth2 providerId '{}'", providerId);
             return userByProviderId.get();
         }
 
         Optional<UserEntity> userByEmail = userRepository.findByEmail(email);
         if (userByEmail.isPresent()) {
-            log.warn("OAuth2 login failed: Email {} is already registered with another method.", email);
+            log.warn("OAuth2 login conflict: Email '{}' is already registered with another auth provider", email);
             throw new OAuth2AuthenticationException(ERROR_OAUTH2_EMAIL_ALREADY_EXISTS_STRING);
         }
 
-        log.info("User not found. Registering new user with email: {}", email);
+        log.info("Registering new OAuth2 user with email '{}'", email);
         return registerNewUser(userRequest, oAuth2User, providerId, email);
     }
 
@@ -122,7 +122,7 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
 
         newUser.setRole(roleRepository.findByName(USER_STRING)
                 .orElseThrow(() -> {
-                    log.error("Failed to assign role: Default role 'USER' not found in database");
+                    log.error("Failed to assign default role: Role 'USER' not found in database");
                     return new OAuth2AuthenticationException(ERROR_ROLE_NOT_FOUND_STRING);
                 }));
 

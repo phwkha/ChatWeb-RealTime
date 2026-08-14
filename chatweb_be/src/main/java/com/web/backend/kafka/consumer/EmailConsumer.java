@@ -34,7 +34,7 @@ public class EmailConsumer {
     @RetryableTopic(attempts = "4", backoff = @Backoff(delay = 2000, multiplier = 2.0, maxDelay = 10000), autoCreateTopics = "true", topicSuffixingStrategy = TopicSuffixingStrategy.SUFFIX_WITH_INDEX_VALUE)
     @KafkaListener(topics = "${spring.kafka.topic.email.email-topic}", groupId = "${spring.kafka.topic.email.group-id}", containerFactory = EMAILKAFKALISTENERCONTAINERFACTORY_STRING)
     public void consumeEmailTask(EmailPayload event, Acknowledgment ack) {
-        log.info("Kafka Consumer received email task of type {} for: {}", event.type(), event.to());
+        log.debug("Consumed email task: type='{}', recipient='{}'", event.type(), event.to());
 
         if (OTP_STRING.equals(event.type())) {
             emailService.sendOtpEmail(event.to(), event.name(), event.otp());
@@ -43,10 +43,11 @@ public class EmailConsumer {
         }
 
         ack.acknowledge();
+        log.info("Email task processed successfully for recipient '{}' [type={}]", event.to(), event.type());
     }
 
     @DltHandler
     public void handleEmailDlt(EmailPayload event, @Header(KafkaHeaders.RECEIVED_TOPIC) String topic) {
-        log.error("🚨 Send mail error for user: {}. topic: {}", event.to(), topic);
+        log.error("Dead Letter Topic: Failed to process email task for recipient '{}' [topic={}]", event.to(), topic);
     }
 }

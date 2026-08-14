@@ -111,7 +111,6 @@ public class UserServiceImpl implements UserService {
             throw new ResourceNotFoundException(Translator.tolocale(ERROR_USER_NOT_FOUND_WITH_STRING, username));
         }
 
-        log.info("Get current user");
         return userMapper.toUserResponse(user);
     }
 
@@ -125,7 +124,6 @@ public class UserServiceImpl implements UserService {
             throw new ResourceNotFoundException(Translator.tolocale(ERROR_USER_NOT_FOUND_WITH_STRING, username));
         }
 
-        log.info("Get profile user");
         return userMapper.toUserDetailResponse(user);
     }
 
@@ -140,7 +138,7 @@ public class UserServiceImpl implements UserService {
         userMapper.updateUserFromRequest(request, userEntity);
 
         UserEntity updatedUser = userRepository.save(Objects.requireNonNull(userEntity));
-        log.info("User updated profile");
+        log.info("User '{}' updated profile", username);
         return userMapper.toUserDetailResponse(updatedUser);
     }
 
@@ -156,11 +154,11 @@ public class UserServiceImpl implements UserService {
             try {
                 storageService.delete(oldAvatar, AVATARS_STRING);
             } catch (Exception e) {
-                log.warn("Failed to delete old image, but continuing update");
+                log.warn("Failed to delete old avatar image from storage: '{}'", oldAvatar, e);
             }
         }
         userEntity.setAvatar(newUrl);
-        log.info("User update avatar");
+        log.info("User '{}' updated avatar", username);
         return userRepository.save(userEntity).getAvatar();
     }
 
@@ -197,7 +195,7 @@ public class UserServiceImpl implements UserService {
 
         generateAndSenResponseToken(user, OtpType.EMAIL_CHANGE, newEmail, newEmail);
 
-        log.info("Email change initiated for user");
+        log.info("User '{}' initiated email change to '{}'", username, newEmail);
     }
 
     @Override
@@ -216,7 +214,7 @@ public class UserServiceImpl implements UserService {
 
         generateAndSenResponseToken(user, OtpType.PHONE_CHANGE, newPhone, user.getEmail());
 
-        log.info("Phone change initiated for user");
+        log.info("User '{}' initiated phone change", username);
     }
 
     @Override
@@ -230,7 +228,7 @@ public class UserServiceImpl implements UserService {
         user.addAddress(newAddress);
 
         userRepository.save(user);
-        log.info("Add address for user");
+        log.info("User '{}' added new address", username);
         return userMapper.toUserDetailResponse(user);
     }
 
@@ -251,7 +249,7 @@ public class UserServiceImpl implements UserService {
         userMapper.updateAddressFromRequest(request, addressToUpdate);
 
         userRepository.save(user);
-        log.info("Update address for user");
+        log.info("User '{}' updated address id={}", username, addressId);
         return userMapper.toUserDetailResponse(user);
     }
 
@@ -272,7 +270,7 @@ public class UserServiceImpl implements UserService {
         user.removeAddress(addressToDelete);
 
         userRepository.save(user);
-        log.info("Delete address for user");
+        log.info("User '{}' deleted address id={}", username, addressId);
         return userMapper.toUserDetailResponse(user);
     }
 
@@ -283,7 +281,6 @@ public class UserServiceImpl implements UserService {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         Translator.tolocale(ERROR_USER_NOT_FOUND_WITH_STRING, username)));
 
-        log.info("Get all address for user");
         return user.getAddresses().stream()
                 .map(userMapper::toAddressResponse)
                 .toList();
@@ -301,7 +298,6 @@ public class UserServiceImpl implements UserService {
                 .findFirst()
                 .orElseThrow(
                         () -> new AccessForbiddenException(Translator.tolocale(ERROR_USER_ADDRESS_NOT_OWNED_STRING)));
-        log.info("Get address for user");
         return userMapper.toAddressResponse(address);
     }
 
@@ -323,10 +319,10 @@ public class UserServiceImpl implements UserService {
             userEntity.setLastName(Translator.tolocale(SYS_DELETED_STRING));
             userEntity.setAvatar(null);
             userRepository.save(userEntity);
-            log.info("Soft deleted user: {} (user has message history)", username);
+            log.info("Soft-deleted user '{}' (retaining chat history)", username);
         } else {
             userRepository.delete(Objects.requireNonNull(userEntity));
-            log.info("Hard deleted user: {} (user had no message history)", username);
+            log.info("Hard-deleted user '{}' (no chat history)", username);
         }
     }
 
@@ -356,7 +352,7 @@ public class UserServiceImpl implements UserService {
         userEntity.setTokenVersion(currentVersion + 1);
 
         userRepository.save(userEntity);
-        log.info("User {} changed password successfully", username);
+        log.info("User '{}' changed password successfully", username);
     }
 
     public boolean userExists(String username) {
@@ -368,7 +364,7 @@ public class UserServiceImpl implements UserService {
     @Async
     public void setUserOnlineStatus(String username, boolean isOnline) {
         userRepository.updateOnlineStatus(username, isOnline);
-        log.info("Set user online status");
+        log.debug("Updated online status for user '{}': isOnline={}", username, isOnline);
 
         List<String> friends = friendshipRepository.findAllFriendUsernamesByUsername(username);
 
@@ -400,7 +396,7 @@ public class UserServiceImpl implements UserService {
 
         cuckooFilterService.delete(EMAIL_FILTER_KEY, oldEmail);
         cuckooFilterService.add(EMAIL_FILTER_KEY, newEmail);
-        log.info("Email changed successfully via Redis OTP for user: {}", username);
+        log.info("User '{}' verified email change successfully", username);
     }
 
     @Override
@@ -417,7 +413,7 @@ public class UserServiceImpl implements UserService {
 
         user.setPhone(newPhone);
         userRepository.save(user);
-        log.info("Phone changed successfully via Redis OTP for user: {}", username);
+        log.info("User '{}' verified phone change successfully", username);
     }
 
     @Override
@@ -515,6 +511,6 @@ public class UserServiceImpl implements UserService {
         }
         redisTemplate.opsForValue().set(cooldownKey, "1", 60, TimeUnit.SECONDS);
         emailService.sendOtpEmail(emailToSend, usernameForMail, newOtp);
-        log.info("Resent {} OTP to {}", type, emailToSend);
+        log.info("Resent {} OTP to '{}'", type, emailToSend);
     }
 }
