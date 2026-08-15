@@ -32,7 +32,14 @@ import jakarta.servlet.http.Cookie;
 
 import java.util.Collections;
 
+import org.springframework.boot.autoconfigure.aop.AopAutoConfiguration;
+import org.springframework.context.annotation.EnableAspectJAutoProxy;
+import org.springframework.context.annotation.Import;
+import com.web.backend.ratelimit.RateLimitAspect;
+
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -50,6 +57,8 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 }, excludeFilters = {
                 @ComponentScan.Filter(type = FilterType.ASSIGNABLE_TYPE, classes = JwtAuthenticationFilter.class)
 })
+@EnableAspectJAutoProxy
+@Import({RateLimitAspect.class, AopAutoConfiguration.class})
 class AuthControllerTest {
 
         @Autowired
@@ -91,6 +100,8 @@ class AuthControllerTest {
                 mockUser.setEmail("test@gmail.com");
 
                 mockAuth = new UsernamePasswordAuthenticationToken(mockUser, null, Collections.emptyList());
+
+                when(rateLimitingService.isAllowed(any(), anyInt(), anyLong())).thenReturn(true);
         }
 
         @Test
@@ -108,7 +119,7 @@ class AuthControllerTest {
                                 .userResponse(userResponse)
                                 .build();
 
-                when(rateLimitingService.allowRequest(any(), eq("login"), eq(5), eq(60))).thenReturn(true);
+                when(rateLimitingService.isAllowed(any(), eq(5), eq(60L))).thenReturn(true);
                 when(authenticationService.login(any(LoginRequest.class))).thenReturn(loginResponse);
 
                 mockMvc.perform(post("/api/auth/login")
@@ -126,7 +137,7 @@ class AuthControllerTest {
                 request.setUsername("testuser");
                 request.setPassword("password123");
 
-                when(rateLimitingService.allowRequest(any(), eq("login"), eq(5), eq(60))).thenReturn(false);
+                when(rateLimitingService.isAllowed(any(), eq(5), eq(60L))).thenReturn(false);
 
                 mockMvc.perform(post("/api/auth/login")
                                 .contentType(MediaType.APPLICATION_JSON)

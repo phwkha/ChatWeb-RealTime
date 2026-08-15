@@ -6,8 +6,9 @@ import com.web.backend.controller.response.LoginResponse;
 import com.web.backend.controller.response.TokenResponse;
 import com.web.backend.controller.response.UserResponse;
 import com.web.backend.model.UserEntity;
+import com.web.backend.ratelimit.LimitType;
+import com.web.backend.ratelimit.RateLimit;
 import com.web.backend.service.AuthenticationService;
-import com.web.backend.service.RateLimitingService;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -38,12 +39,8 @@ public class AuthController {
 
         private final AuthenticationService authenticationService;
 
-        private final RateLimitingService rateLimitingService;
-
         private static final String PATH_STRING = "/";
         private static final String EMPTY_STRING = "";
-
-        private static final String ACTION_LOGI_STRING = "login";
 
         private static final String API_AUTH_REFRESH_TOKEN_STRING = "/api/auth/refresh-token";
 
@@ -59,8 +56,6 @@ public class AuthController {
         private static final String ACCESSTOKEN = "accessToken";
         private static final String REFRESHTOKEN = "refreshToken";
 
-        private static final String ERROR_AUTH_TOO_MANY_ATTEMPTS_STRING = "error.auth.too_many_attempts";
-
         private static final String SUCCESS_AUTH_ACTIVATED_STRING = "success.auth.activated";
         private static final String SUCCESS_AUTH_CODE_RESENT_STRING = "success.auth.code_resent";
         private static final String SUCCESS_AUTH_CODE_SENT_STRING = "success.auth.code_sent";
@@ -72,17 +67,9 @@ public class AuthController {
         private static final String SUCCESS_AUTH_TOKEN_REFRESHED_STRING = "success.auth.token_refreshed";
 
         @Operation(summary = "Login", description = "API endpoint for login")
+        @RateLimit(key = "login", limit = 5, period = 60, type = LimitType.IP)
         @PostMapping("/login")
-        public ResponseEntity<ApiResponse<UserResponse>> login(@RequestBody @Valid LoginRequest loginRequest,
-                        HttpServletRequest request) {
-
-                String ip = request.getRemoteAddr();
-
-                if (!rateLimitingService.allowRequest(ip, ACTION_LOGI_STRING, 5, 60)) {
-                        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
-                                        .body(ApiResponse.error(429,
-                                                        Translator.tolocale(ERROR_AUTH_TOO_MANY_ATTEMPTS_STRING)));
-                }
+        public ResponseEntity<ApiResponse<UserResponse>> login(@RequestBody @Valid LoginRequest loginRequest) {
 
                 log.debug("Login request received for user '{}'", loginRequest.getUsername());
 
@@ -102,6 +89,7 @@ public class AuthController {
         }
 
         @Operation(summary = "Register user", description = "API endpoint for register user")
+        @RateLimit(key = "register", limit = 3, period = 60, type = LimitType.IP)
         @PostMapping("/register")
         public ResponseEntity<ApiResponse<UserResponse>> registerUser(
                         @RequestBody @Valid CreateUserRequest createUserRequest) {
@@ -115,6 +103,7 @@ public class AuthController {
         }
 
         @Operation(summary = "Verify otp", description = "API endpoint for verify otp")
+        @RateLimit(key = "verify_account", limit = 5, period = 60, type = LimitType.IP)
         @PostMapping("/verify-account")
         public ResponseEntity<ApiResponse<Void>> verifyOtp(@RequestBody @Valid VerifyOtpRequest request) {
                 log.debug("Verifying account for email '{}'", request.getEmail());
@@ -125,6 +114,7 @@ public class AuthController {
         }
 
         @Operation(summary = "Resend otp", description = "API endpoint for resend otp")
+        @RateLimit(key = "resend_otp", limit = 3, period = 60, type = LimitType.IP)
         @PostMapping("/resend-otp")
         public ResponseEntity<ApiResponse<Void>> resendOtp(@RequestParam String email) {
                 log.debug("Resending verification OTP for email '{}'", email);
@@ -157,6 +147,7 @@ public class AuthController {
         }
 
         @Operation(summary = "Forgot password", description = "API endpoint for forgot password")
+        @RateLimit(key = "forgot_pwd", limit = 3, period = 60, type = LimitType.IP)
         @PostMapping("/forgot-password")
         public ResponseEntity<ApiResponse<Void>> forgotPassword(@RequestBody @Valid ForgotPasswordRequest request) {
                 log.debug("Password reset request received for email '{}'", request.getEmail());
@@ -167,6 +158,7 @@ public class AuthController {
         }
 
         @Operation(summary = "Reset password", description = "API endpoint for reset password")
+        @RateLimit(key = "reset_pwd", limit = 5, period = 60, type = LimitType.IP)
         @PostMapping("/reset-password")
         public ResponseEntity<ApiResponse<Void>> resetPassword(@RequestBody @Valid ResetPasswordRequest request) {
                 log.debug("Password reset verification request received for email '{}'", request.getEmail());
@@ -177,6 +169,7 @@ public class AuthController {
         }
 
         @Operation(summary = "Resend forgot password", description = "API endpoint for resend forgot password")
+        @RateLimit(key = "resend_forgot_pwd", limit = 3, period = 60, type = LimitType.IP)
         @PostMapping("/resend-forgot-password")
         public ResponseEntity<ApiResponse<Void>> resendForgotPassword(@RequestParam String email) {
                 authenticationService.resendForgotPasswordOtp(email);
