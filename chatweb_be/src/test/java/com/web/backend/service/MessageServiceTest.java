@@ -29,6 +29,7 @@ import com.web.backend.controller.request.RevokeMessageRequest;
 import com.web.backend.exception.WebSocketErrorHandler;
 import com.web.backend.exception.custom.AccessForbiddenException;
 import com.web.backend.exception.custom.ResourceNotFoundException;
+import com.web.backend.kafka.payload.ChatMessagePayload;
 import com.web.backend.mapper.MessageMapper;
 import com.web.backend.model.ChatMessage;
 import com.web.backend.model.SystemMessage;
@@ -102,6 +103,20 @@ class MessageServiceTest {
         lenient().when(redisTemplate.opsForHash()).thenReturn(hashOperations);
         lenient().when(redisTemplate.opsForZSet()).thenReturn(zSetOperations);
         lenient().when(redisTemplate.opsForList()).thenReturn(listOperations);
+        lenient().when(messageMapper.toPayload(any())).thenAnswer(inv -> {
+            ChatMessage entity = inv.getArgument(0);
+            ChatMessagePayload payload = new ChatMessagePayload();
+            if (entity != null) {
+                payload.setId(entity.getId());
+                payload.setContent(entity.getContent());
+                payload.setSender(entity.getSender());
+                payload.setRecipient(entity.getRecipient());
+                payload.setMessageType(entity.getMessageType());
+                payload.setContentType(entity.getContentType());
+                payload.setTimestamp(entity.getTimestamp());
+            }
+            return payload;
+        });
 
     }
 
@@ -127,6 +142,17 @@ class MessageServiceTest {
     }
 
     @Test
+    void testSendPrivateMessage_RecipientLocked() {
+        recipientUser.setUserStatus(UserStatus.LOCKED);
+        when(userRepository.findByUsername("recipient")).thenReturn(Optional.of(recipientUser));
+
+        ChatMessageRequest request = new ChatMessageRequest();
+        request.setRecipient("recipient");
+
+        assertThrows(AccessForbiddenException.class, () -> messageService.sendPrivateMessage("sender", request));
+    }
+
+    @Test
     void testSendPrivateMessage_NotFriends() {
         when(userRepository.findByUsername("recipient")).thenReturn(Optional.of(recipientUser));
         when(friendService.isFriend("sender", "recipient")).thenReturn(false);
@@ -139,6 +165,7 @@ class MessageServiceTest {
 
     @Test
     void testSendPrivateMessage_Success() {
+        // Arrange
         when(userRepository.findByUsername("recipient")).thenReturn(Optional.of(recipientUser));
         when(friendService.isFriend("sender", "recipient")).thenReturn(true);
 
@@ -169,7 +196,7 @@ class MessageServiceTest {
         messageService.sendPrivateMessage("sender", request);
 
         // Assert
-        verify(chatProducer).sendChatMessage(chatMessage);
+        verify(chatProducer).sendChatMessage(any(ChatMessagePayload.class));
 
 
     }
@@ -536,7 +563,7 @@ class MessageServiceTest {
 
         messageService.sendPrivateMessage("sender", request);
         // Should execute null-checks and set defaults
-        verify(chatProducer).sendChatMessage(argThat((ChatMessage msg) -> 
+        verify(chatProducer).sendChatMessage(argThat((ChatMessagePayload msg) -> 
             msg.getTimestamp() != null && 
             "".equals(msg.getContent()) && 
             msg.getContentType() == com.web.backend.common.ContentType.TEXT

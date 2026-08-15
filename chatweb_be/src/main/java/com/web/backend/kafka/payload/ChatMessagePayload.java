@@ -1,38 +1,33 @@
-package com.web.backend.model;
+package com.web.backend.kafka.payload;
 
 import com.web.backend.common.ContentType;
 import com.web.backend.common.MessageType;
 import com.web.backend.common.MessageStatus;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
-import org.springframework.data.annotation.Id;
-import org.springframework.data.mongodb.core.index.CompoundIndex;
-import org.springframework.data.mongodb.core.index.Indexed;
-import org.springframework.data.mongodb.core.mapping.Document;
+import lombok.NoArgsConstructor;
 
+import java.io.Serializable;
 import java.time.LocalDateTime;
 import java.util.Map;
 
-@Document("messages")
 @Data
-@CompoundIndex(name = "unread_msg_idx", def = "{'recipient': 1, 'status': 1, 'messageType': 1}")
-public class ChatMessage {
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class ChatMessagePayload implements Serializable {
 
-    @Id
     private String id;
-
-    @Indexed
+    private String localId;
     private String conversationId;
-
-    @Indexed
     private String sender;
-    @Indexed
     private String recipient;
 
     private String content;
     private ContentType contentType;
     private MessageType messageType;
     private String color;
-
     private String replyToId;
 
     private String fileUrl;
@@ -40,13 +35,11 @@ public class ChatMessage {
     private Long fileSize;
 
     private LocalDateTime timestamp;
-
     private MessageStatus status;
 
     private boolean isEdited;
     private boolean isDeleted;
     private boolean isReacted;
-
     private Map<String, String> reactions;
 
     private String iv;

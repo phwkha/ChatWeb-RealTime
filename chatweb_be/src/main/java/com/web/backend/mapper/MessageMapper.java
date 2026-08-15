@@ -3,6 +3,7 @@ package com.web.backend.mapper;
 import com.web.backend.controller.request.ChatMessageRequest;
 import com.web.backend.controller.response.ChatMessageResponse;
 import com.web.backend.controller.response.MessageSystemResponse;
+import com.web.backend.kafka.payload.ChatMessagePayload;
 import com.web.backend.model.ChatMessage;
 import com.web.backend.model.SystemMessage;
 import org.mapstruct.Mapper;
@@ -19,4 +20,11 @@ public interface MessageMapper {
     ChatMessageResponse toResponse(ChatMessage entity);
 
     MessageSystemResponse systemMessageToResponse(SystemMessage entity);
+
+    @Mapping(target = "localId", ignore = true)
+    ChatMessagePayload toPayload(ChatMessage entity);
+
+    ChatMessage toEntity(ChatMessagePayload payload);
+
+    ChatMessageResponse payloadToResponse(ChatMessagePayload payload);
 }

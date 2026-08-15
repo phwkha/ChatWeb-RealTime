@@ -22,6 +22,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.redis.core.RedisTemplate;
 
+import com.web.backend.kafka.payload.ChatMessagePayload;
 import com.web.backend.kafka.payload.UpdateMessagePayload;
 import com.web.backend.kafka.producer.ChatProducer;
 import org.springframework.stereotype.Service;
@@ -106,12 +107,14 @@ public class MessageServiceImpl implements MessageService {
 
         String convId = generateConversationId(sender, request.getRecipient());
         ChatMessage chatMsg = buildChatMessage(sender, request, convId);
+        ChatMessagePayload payload = messageMapper.toPayload(chatMsg);
+        payload.setLocalId(request.getLocalId());
 
         try {
             if (chatMsg.getMessageType() == MessageType.CHAT) {
                 cacheMessageToRedis(chatMsg);
             }
-            chatProducer.sendChatMessage(chatMsg).whenComplete((result, ex) -> {
+            chatProducer.sendChatMessage(payload).whenComplete((result, ex) -> {
                 if (ex != null) {
                     if (chatMsg.getMessageType() == MessageType.CHAT) {
                         log.error("Failed to publish message '{}' to Kafka", chatMsg.getId(), ex);
@@ -162,7 +165,6 @@ public class MessageServiceImpl implements MessageService {
         chatMsg.setSender(sender);
         chatMsg.setId(new ObjectId().toHexString());
         chatMsg.setStatus(MessageStatus.SENDING);
-        chatMsg.setLocalId(request.getLocalId());
         if (chatMsg.getTimestamp() == null) {
             chatMsg.setTimestamp(LocalDateTime.now(ZoneId.systemDefault()));
         }

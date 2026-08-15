@@ -10,6 +10,8 @@ import org.springframework.stereotype.Component;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 
+import com.web.backend.kafka.payload.ChatMessagePayload;
+
 @Component
 @Slf4j(topic = "CHAT-KAFKA-PRODUCER")
 @RequiredArgsConstructor
@@ -26,7 +28,7 @@ public class ChatProducer {
     @Value("${spring.kafka.topic.update-message.update}")
     private String chatTopicUpdate;
 
-    public CompletableFuture<SendResult<String, Object>> sendChatMessage(Object messageChat) {
+    public CompletableFuture<SendResult<String, Object>> sendChatMessage(ChatMessagePayload messageChat) {
         return sendSafely(chatTopic, messageChat, "Chat Message");
     }
 

@@ -6,7 +6,7 @@ import org.springframework.stereotype.Component;
 import com.web.backend.controller.response.ChatMessageResponse;
 import com.web.backend.controller.response.MessageSystemResponse;
 import com.web.backend.mapper.MessageMapper;
-import com.web.backend.model.ChatMessage;
+import com.web.backend.kafka.payload.ChatMessagePayload;
 import com.web.backend.model.SystemMessage;
 import com.web.backend.service.WebSocketRoutingService;
 
@@ -29,7 +29,7 @@ public class ChatConsumer {
     private static final String TOPIC_PUBLIC_STRING = "/topic/public";
 
     @KafkaListener(topics = "${spring.kafka.topic.chat.messages}", groupId = "${spring.kafka.topic.chat.messages-group-id}")
-    public void listenChatMessages(ChatMessage message) {
+    public void listenChatMessages(ChatMessagePayload message) {
         if (message == null) {
             return;
         }
@@ -37,8 +37,7 @@ public class ChatConsumer {
         String sender = message.getSender();
         log.debug("Consumed chat message: sender='{}', recipient='{}'", sender, recipient);
         try {
-            ChatMessageResponse messageResponse = messageMapper.toResponse(message);
-            messageResponse.setLocalId(message.getLocalId());
+            ChatMessageResponse messageResponse = messageMapper.payloadToResponse(message);
 
             webSocketRoutingService.routeMessage(recipient, QUEUE_MESSAGES_STRING, messageResponse);
 
