@@ -33,21 +33,22 @@ public class EmailConsumer {
 
     @RetryableTopic(attempts = "4", backoff = @Backoff(delay = 2000, multiplier = 2.0, maxDelay = 10000), autoCreateTopics = "true", topicSuffixingStrategy = TopicSuffixingStrategy.SUFFIX_WITH_INDEX_VALUE)
     @KafkaListener(topics = "${spring.kafka.topic.email.email-topic}", groupId = "${spring.kafka.topic.email.group-id}", containerFactory = EMAILKAFKALISTENERCONTAINERFACTORY_STRING)
-    public void consumeEmailTask(EmailPayload event, Acknowledgment ack) {
-        log.debug("Consumed email task: type='{}', recipient='{}'", event.type(), event.to());
+    public void consumeEmailTask(EmailPayload emailEvent, Acknowledgment ack) {
+        log.debug("Consumed email task: type='{}', recipient='{}'", emailEvent.type(), emailEvent.to());
 
-        if (OTP_STRING.equals(event.type())) {
-            emailService.sendOtpEmail(event.to(), event.name(), event.otp());
-        } else if (TEXT_STRING.equals(event.type())) {
-            emailService.sendTextEmail(event.to(), event.subject(), event.content());
+        if (OTP_STRING.equals(emailEvent.type())) {
+            emailService.sendOtpEmail(emailEvent.to(), emailEvent.name(), emailEvent.otp());
+        } else if (TEXT_STRING.equals(emailEvent.type())) {
+            emailService.sendTextEmail(emailEvent.to(), emailEvent.subject(), emailEvent.content());
         }
 
         ack.acknowledge();
-        log.info("Email task processed successfully for recipient '{}' [type={}]", event.to(), event.type());
+        log.info("Email task processed successfully for recipient '{}' [type={}]", emailEvent.to(), emailEvent.type());
     }
 
     @DltHandler
-    public void handleEmailDlt(EmailPayload event, @Header(KafkaHeaders.RECEIVED_TOPIC) String topic) {
-        log.error("Dead Letter Topic: Failed to process email task for recipient '{}' [topic={}]", event.to(), topic);
+    public void handleEmailDlt(EmailPayload emailEvent, @Header(KafkaHeaders.RECEIVED_TOPIC) String topic) {
+        log.error("Dead Letter Topic: Failed to process email task for recipient '{}' [topic={}]", emailEvent.to(),
+                topic);
     }
 }

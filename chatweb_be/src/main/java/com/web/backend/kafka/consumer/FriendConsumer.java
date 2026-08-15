@@ -34,22 +34,22 @@ public class FriendConsumer {
     private static final String SYS_MSG_USER_OFFLINE_STRING = "sys.msg.user_offline";
 
     @KafkaListener(topics = "${spring.kafka.topic.friend.friend-topic}", groupId = "${spring.kafka.topic.friend.friend-group-id}")
-    public void listenFriendNotifications(FriendPayload payload) {
-        if (payload == null) {
+    public void listenFriendNotifications(FriendPayload friendEvent) {
+        if (friendEvent == null) {
             return;
         }
 
-        String recipient = payload.recipientUsername();
-        List<String> recipients = payload.recipientUsernames();
-        String sender = payload.senderUsername();
+        String recipient = friendEvent.recipientUsername();
+        List<String> recipients = friendEvent.recipientUsernames();
+        String sender = friendEvent.senderUsername();
         log.debug("Consumed friend notification event: sender='{}', recipient='{}', type='{}'", sender, recipient,
-                payload.recipientType());
+                friendEvent.recipientType());
 
         try {
-            NotificationResponse<?> recipientResp = buildResponse(payload.recipientType(),
-                    payload.senderDisplayName());
-            NotificationResponse<?> senderResp = buildResponse(payload.senderType(),
-                    payload.recipientDisplayName());
+            NotificationResponse<?> recipientResp = buildResponse(friendEvent.recipientType(),
+                    friendEvent.senderDisplayName());
+            NotificationResponse<?> senderResp = buildResponse(friendEvent.senderType(),
+                    friendEvent.recipientDisplayName());
 
             if (recipients != null && !recipients.isEmpty() && recipientResp != null) {
                 for (String r : recipients) {
