@@ -8,6 +8,7 @@ import org.springframework.kafka.annotation.RetryableTopic;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.stereotype.Component;
 
+import com.web.backend.common.MessageStatus;
 import com.web.backend.common.MessageType;
 import com.web.backend.kafka.avro.ChatMessageAvro;
 import com.web.backend.model.ChatMessage;
@@ -39,8 +40,9 @@ public class DatabaseWriteBehindConsumer {
         if (payloadsToSave.isEmpty()) {
             return;
         }
+        payloadsToSave.forEach(msg -> msg.setStatus(MessageStatus.SENT.name()));
         log.debug("Persisting write-behind batch of {} chat messages (Avro) to MongoDB...", payloadsToSave.size());
-        
+
         List<ChatMessage> entitiesToSave = payloadsToSave.stream()
                 .map(messageMapper::toEntity)
                 .toList();
@@ -62,11 +64,13 @@ public class DatabaseWriteBehindConsumer {
                 executor.submit(() -> {
                     try {
                         ChatMessageResponse messageResponse = messageMapper.avroToResponse(payload);
-                        webSocketRoutingService.routeMessage(payload.getSender(), QUEUE_MESSAGES_STRING, messageResponse);
+                        webSocketRoutingService.routeMessage(payload.getSender(), QUEUE_MESSAGES_STRING,
+                                messageResponse);
                         log.debug("Dispatched persistence ACK to sender '{}' for message '{}'", payload.getSender(),
                                 payload.getId());
                     } catch (Exception ex) {
-                        log.error("Failed to route persistence ACK to sender '{}' for message '{}'", payload.getSender(),
+                        log.error("Failed to route persistence ACK to sender '{}' for message '{}'",
+                                payload.getSender(),
                                 payload.getId(), ex);
                     }
                 });

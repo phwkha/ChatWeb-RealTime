@@ -6,6 +6,7 @@ import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
+import com.web.backend.common.MessageStatus;
 import com.web.backend.controller.response.ChatMessageResponse;
 import com.web.backend.controller.response.MessageSystemResponse;
 import com.web.backend.kafka.avro.ChatMessageAvro;
@@ -42,6 +43,7 @@ public class ChatConsumer {
         String sender = message.getSender();
         log.debug("Consumed chat message (Avro) [key='{}']: sender='{}', recipient='{}'", conversationKey, sender, recipient);
         try {
+            message.setStatus(MessageStatus.SENT.name());
             ChatMessageResponse messageResponse = messageMapper.avroToResponse(message);
 
             webSocketRoutingService.routeMessage(recipient, QUEUE_MESSAGES_STRING, messageResponse);

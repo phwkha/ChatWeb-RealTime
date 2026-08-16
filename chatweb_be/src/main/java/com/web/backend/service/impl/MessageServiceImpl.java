@@ -210,7 +210,8 @@ public class MessageServiceImpl implements MessageService {
         Map<String, String> oldReactions = msg.getReactions() == null ? null : new HashMap<>(msg.getReactions());
         boolean oldIsReacted = msg.isReacted();
 
-        updateMessageInRedisCache(convId, request.getMessageId(), m -> applyReactionToMessage(m, senderUsername, request));
+        updateMessageInRedisCache(convId, request.getMessageId(),
+                m -> applyReactionToMessage(m, senderUsername, request));
         applyReactionToMessage(msg, senderUsername, request);
 
         chatProducer.sendReaction(
@@ -330,7 +331,8 @@ public class MessageServiceImpl implements MessageService {
                         .type(UpdateMessageType.EDIT).updateEvent(msg).build())
                 .whenComplete((result, ex) -> {
                     if (ex != null) {
-                        log.error("Failed to publish edit update to Kafka for message '{}'", request.getMessageId(), ex);
+                        log.error("Failed to publish edit update to Kafka for message '{}'", request.getMessageId(),
+                                ex);
                         updateMessageInRedisCache(convId, request.getMessageId(), m -> {
                             m.setContent(oldContent);
                             m.setEdited(oldIsEdited);
