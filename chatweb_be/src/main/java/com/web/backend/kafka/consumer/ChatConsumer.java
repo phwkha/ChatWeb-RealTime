@@ -1,12 +1,15 @@
 package com.web.backend.kafka.consumer;
 
 import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.support.KafkaHeaders;
+import org.springframework.messaging.handler.annotation.Header;
+import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
 import com.web.backend.controller.response.ChatMessageResponse;
 import com.web.backend.controller.response.MessageSystemResponse;
+import com.web.backend.kafka.avro.ChatMessageAvro;
 import com.web.backend.mapper.MessageMapper;
-import com.web.backend.kafka.payload.ChatMessagePayload;
 import com.web.backend.model.SystemMessage;
 import com.web.backend.service.WebSocketRoutingService;
 
@@ -28,16 +31,18 @@ public class ChatConsumer {
 
     private static final String TOPIC_PUBLIC_STRING = "/topic/public";
 
-    @KafkaListener(topics = "${spring.kafka.topic.chat.messages}", groupId = "${spring.kafka.topic.chat.messages-group-id}")
-    public void listenChatMessages(ChatMessagePayload message) {
+    @KafkaListener(topics = "${spring.kafka.topic.chat.messages}", groupId = "${spring.kafka.topic.chat.messages-group-id}", containerFactory = "chatAvroListenerContainerFactory")
+    public void listenChatMessages(
+            @Payload ChatMessageAvro message,
+            @Header(name = KafkaHeaders.RECEIVED_KEY, required = false) String conversationKey) {
         if (message == null) {
             return;
         }
         String recipient = message.getRecipient();
         String sender = message.getSender();
-        log.debug("Consumed chat message: sender='{}', recipient='{}'", sender, recipient);
+        log.debug("Consumed chat message (Avro) [key='{}']: sender='{}', recipient='{}'", conversationKey, sender, recipient);
         try {
-            ChatMessageResponse messageResponse = messageMapper.payloadToResponse(message);
+            ChatMessageResponse messageResponse = messageMapper.avroToResponse(message);
 
             webSocketRoutingService.routeMessage(recipient, QUEUE_MESSAGES_STRING, messageResponse);
 

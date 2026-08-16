@@ -66,6 +66,22 @@ services:
       - kafka_data:/var/lib/kafka/data
       - kafka_secrets:/etc/kafka/secrets
 
+  # --- SCHEMA REGISTRY ---
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.7.0
+    container_name: schema-registry
+    restart: always
+    ports:
+      - "127.0.0.1:8081:8081"
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka:9092
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+    networks:
+      - default
+    depends_on:
+      - kafka
+
   # --- FILEBEAT ---
   filebeat:
     image: docker.elastic.co/beats/filebeat:8.10.4
@@ -210,6 +226,7 @@ services:
       CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET}
 
       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+      SCHEMA_REGISTRY_URL: ${SCHEMA_REGISTRY_URL:-http://schema-registry:8081}
       CLUSTER_ID: ${CLUSTER_ID}
 
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
@@ -235,6 +252,7 @@ services:
       - cw_postgres
       - cw_redis
       - kafka
+      - schema-registry
 
   # --- REACT FRONTEND ---
   cw_frontend:

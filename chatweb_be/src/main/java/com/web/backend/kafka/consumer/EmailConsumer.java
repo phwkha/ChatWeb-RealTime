@@ -25,14 +25,12 @@ public class EmailConsumer {
 
     private final EmailService emailService;
 
-    private static final String EMAILKAFKALISTENERCONTAINERFACTORY_STRING = "emailKafkaListenerContainerFactory";
-
     private static final String OTP_STRING = "OTP";
 
     private static final String TEXT_STRING = "TEXT";
 
     @RetryableTopic(attempts = "4", backoff = @Backoff(delay = 2000, multiplier = 2.0, maxDelay = 10000), autoCreateTopics = "true", topicSuffixingStrategy = TopicSuffixingStrategy.SUFFIX_WITH_INDEX_VALUE)
-    @KafkaListener(topics = "${spring.kafka.topic.email.email-topic}", groupId = "${spring.kafka.topic.email.group-id}", containerFactory = EMAILKAFKALISTENERCONTAINERFACTORY_STRING)
+    @KafkaListener(topics = "${spring.kafka.topic.email.email-topic}", groupId = "${spring.kafka.topic.email.group-id}", containerFactory = "emailKafkaListenerContainerFactory")
     public void consumeEmailTask(EmailPayload emailEvent, Acknowledgment ack) {
         log.debug("Consumed email task: type='{}', recipient='{}'", emailEvent.type(), emailEvent.to());
 

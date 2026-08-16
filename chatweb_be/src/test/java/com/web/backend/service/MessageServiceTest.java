@@ -29,7 +29,7 @@ import com.web.backend.controller.request.RevokeMessageRequest;
 import com.web.backend.exception.WebSocketErrorHandler;
 import com.web.backend.exception.custom.AccessForbiddenException;
 import com.web.backend.exception.custom.ResourceNotFoundException;
-import com.web.backend.kafka.payload.ChatMessagePayload;
+import com.web.backend.kafka.avro.ChatMessageAvro;
 import com.web.backend.mapper.MessageMapper;
 import com.web.backend.model.ChatMessage;
 import com.web.backend.model.SystemMessage;
@@ -103,17 +103,17 @@ class MessageServiceTest {
         lenient().when(redisTemplate.opsForHash()).thenReturn(hashOperations);
         lenient().when(redisTemplate.opsForZSet()).thenReturn(zSetOperations);
         lenient().when(redisTemplate.opsForList()).thenReturn(listOperations);
-        lenient().when(messageMapper.toPayload(any())).thenAnswer(inv -> {
+        lenient().when(messageMapper.toAvro(any())).thenAnswer(inv -> {
             ChatMessage entity = inv.getArgument(0);
-            ChatMessagePayload payload = new ChatMessagePayload();
+            ChatMessageAvro payload = new ChatMessageAvro();
             if (entity != null) {
                 payload.setId(entity.getId());
                 payload.setContent(entity.getContent());
                 payload.setSender(entity.getSender());
                 payload.setRecipient(entity.getRecipient());
-                payload.setMessageType(entity.getMessageType());
-                payload.setContentType(entity.getContentType());
-                payload.setTimestamp(entity.getTimestamp());
+                payload.setMessageType(entity.getMessageType() != null ? entity.getMessageType().name() : null);
+                payload.setContentType(entity.getContentType() != null ? entity.getContentType().name() : null);
+                payload.setTimestamp(entity.getTimestamp() != null ? entity.getTimestamp().toString() : null);
             }
             return payload;
         });
@@ -184,7 +184,7 @@ class MessageServiceTest {
         when(messageMapper.toEntity(request)).thenReturn(chatMessage);
 
         // Mock Kafka future (asynchronous callback)
-        CompletableFuture<SendResult<String, Object>> future = CompletableFuture
+        CompletableFuture<SendResult<String, ChatMessageAvro>> future = CompletableFuture
                 .completedFuture(mock(SendResult.class, RETURNS_DEEP_STUBS));
         when(chatProducer.sendChatMessage(any())).thenReturn(future);
 
@@ -196,7 +196,7 @@ class MessageServiceTest {
         messageService.sendPrivateMessage("sender", request);
 
         // Assert
-        verify(chatProducer).sendChatMessage(any(ChatMessagePayload.class));
+        verify(chatProducer).sendChatMessage(any(ChatMessageAvro.class));
 
 
     }
@@ -472,7 +472,7 @@ class MessageServiceTest {
         chatMessage.setMessageType(com.web.backend.common.MessageType.CHAT);
         when(messageMapper.toEntity(request)).thenReturn(chatMessage);
 
-        CompletableFuture<SendResult<String, Object>> future = new CompletableFuture<>();
+        CompletableFuture<SendResult<String, ChatMessageAvro>> future = new CompletableFuture<>();
         future.completeExceptionally(new RuntimeException("Kafka error"));
         when(chatProducer.sendChatMessage(any())).thenReturn(future);
 
@@ -557,16 +557,16 @@ class MessageServiceTest {
         ChatMessage chatMessage = new ChatMessage();
         // timestamp, content, and contentType are null
         when(messageMapper.toEntity(request)).thenReturn(chatMessage);
-        CompletableFuture<SendResult<String, Object>> future = CompletableFuture
+        CompletableFuture<SendResult<String, ChatMessageAvro>> future = CompletableFuture
                 .completedFuture(mock(SendResult.class, RETURNS_DEEP_STUBS));
         when(chatProducer.sendChatMessage(any())).thenReturn(future);
 
         messageService.sendPrivateMessage("sender", request);
         // Should execute null-checks and set defaults
-        verify(chatProducer).sendChatMessage(argThat((ChatMessagePayload msg) -> 
+        verify(chatProducer).sendChatMessage(argThat((ChatMessageAvro msg) -> 
             msg.getTimestamp() != null && 
             "".equals(msg.getContent()) && 
-            msg.getContentType() == com.web.backend.common.ContentType.TEXT
+            com.web.backend.common.ContentType.TEXT.name().equals(msg.getContentType())
         ));
     }
 

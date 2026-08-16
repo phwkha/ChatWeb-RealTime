@@ -37,6 +37,8 @@ spring:
       email:
         email-topic: dummy
         group-id: dummy
+    properties:
+      schema.registry.url: mock://test-schema-registry
 
 cloudinary:
   cloud-name: dummy

@@ -22,7 +22,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.redis.core.RedisTemplate;
 
-import com.web.backend.kafka.payload.ChatMessagePayload;
+import com.web.backend.kafka.avro.ChatMessageAvro;
 import com.web.backend.kafka.payload.UpdateMessagePayload;
 import com.web.backend.kafka.producer.ChatProducer;
 import org.springframework.stereotype.Service;
@@ -107,7 +107,7 @@ public class MessageServiceImpl implements MessageService {
 
         String convId = generateConversationId(sender, request.getRecipient());
         ChatMessage chatMsg = buildChatMessage(sender, request, convId);
-        ChatMessagePayload payload = messageMapper.toPayload(chatMsg);
+        ChatMessageAvro payload = messageMapper.toAvro(chatMsg);
         payload.setLocalId(request.getLocalId());
 
         try {

@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 
-import com.web.backend.kafka.payload.ChatMessagePayload;
+import com.web.backend.kafka.avro.ChatMessageAvro;
 
 @Component
 @Slf4j(topic = "CHAT-KAFKA-PRODUCER")
@@ -18,6 +18,7 @@ import com.web.backend.kafka.payload.ChatMessagePayload;
 public class ChatProducer {
 
     private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final KafkaTemplate<String, ChatMessageAvro> avroChatKafkaTemplate;
 
     @Value("${spring.kafka.topic.chat.messages}")
     private String chatTopic;
@@ -28,8 +29,20 @@ public class ChatProducer {
     @Value("${spring.kafka.topic.update-message.update}")
     private String chatTopicUpdate;
 
-    public CompletableFuture<SendResult<String, Object>> sendChatMessage(ChatMessagePayload messageChat) {
-        return sendSafely(chatTopic, messageChat, "Chat Message");
+    public CompletableFuture<SendResult<String, ChatMessageAvro>> sendChatMessage(ChatMessageAvro messageChat) {
+        CompletableFuture<SendResult<String, ChatMessageAvro>> future = avroChatKafkaTemplate.send(
+                Objects.requireNonNull(chatTopic),
+                messageChat.getConversationId(),
+                messageChat);
+        future.whenComplete((result, ex) -> {
+            if (ex != null) {
+                log.error("Failed to publish Chat Message (Avro) to Kafka topic '{}'", chatTopic, ex);
+            } else {
+                log.debug("Published Chat Message (Avro) to Kafka topic '{}' [partition={}, offset={}]",
+                        chatTopic, result.getRecordMetadata().partition(), result.getRecordMetadata().offset());
+            }
+        });
+        return future;
     }
 
     public CompletableFuture<SendResult<String, Object>> sendSystemMessage(Object messageSystem) {
@@ -53,8 +66,8 @@ public class ChatProducer {
     }
 
     private CompletableFuture<SendResult<String, Object>> sendSafely(String topic, Object payload, String actionName) {
-        CompletableFuture<SendResult<String, Object>> future = kafkaTemplate.send(Objects.requireNonNull(topic),
-                payload);
+        CompletableFuture<SendResult<String, Object>> future = kafkaTemplate.send(
+                Objects.requireNonNull(topic), payload);
         future.whenComplete((result, ex) -> {
             if (ex != null) {
                 log.error("Failed to publish {} to Kafka topic '{}'", actionName, topic, ex);

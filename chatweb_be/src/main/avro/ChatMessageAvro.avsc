@@ -1,0 +1,123 @@
+{
+  "namespace": "com.web.backend.kafka.avro",
+  "type": "record",
+  "name": "ChatMessageAvro",
+  "fields": [
+    {
+      "name": "id",
+      "type": ["null", "string"],
+      "default": null
+    },
+    {
+      "name": "localId",
+      "type": ["null", "string"],
+      "default": null
+    },
+    {
+      "name": "conversationId",
+      "type": ["null", "string"],
+      "default": null
+    },
+    {
+      "name": "sender",
+      "type": ["null", "string"],
+      "default": null
+    },
+    {
+      "name": "recipient",
+      "type": ["null", "string"],
+      "default": null
+    },
+    {
+      "name": "content",
+      "type": ["null", "string"],
+      "default": null
+    },
+    {
+      "name": "contentType",
+      "type": ["null", "string"],
+      "default": null
+    },
+    {
+      "name": "messageType",
+      "type": ["null", "string"],
+      "default": null
+    },
+    {
+      "name": "color",
+      "type": ["null", "string"],
+      "default": null
+    },
+    {
+      "name": "replyToId",
+      "type": ["null", "string"],
+      "default": null
+    },
+    {
+      "name": "fileUrl",
+      "type": ["null", "string"],
+      "default": null
+    },
+    {
+      "name": "fileName",
+      "type": ["null", "string"],
+      "default": null
+    },
+    {
+      "name": "fileSize",
+      "type": ["null", "long"],
+      "default": null
+    },
+    {
+      "name": "timestamp",
+      "type": ["null", "string"],
+      "default": null
+    },
+    {
+      "name": "status",
+      "type": ["null", "string"],
+      "default": null
+    },
+    {
+      "name": "isEdited",
+      "type": "boolean",
+      "default": false
+    },
+    {
+      "name": "isDeleted",
+      "type": "boolean",
+      "default": false
+    },
+    {
+      "name": "isReacted",
+      "type": "boolean",
+      "default": false
+    },
+    {
+      "name": "reactions",
+      "type": [
+        "null",
+        {
+          "type": "map",
+          "values": "string"
+        }
+      ],
+      "default": null
+    },
+    {
+      "name": "iv",
+      "type": ["null", "string"],
+      "default": null
+    },
+    {
+      "name": "wrappedKeyRecipient",
+      "type": ["null", "string"],
+      "default": null
+    },
+    {
+      "name": "wrappedKeySender",
+      "type": ["null", "string"],
+      "default": null
+    }
+  ]
+}
