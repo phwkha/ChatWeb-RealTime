@@ -42,6 +42,8 @@ public class DataSeeder implements CommandLineRunner {
 
     private final RedisTemplate<String, Object> redisTemplate;
 
+    private final org.springframework.data.mongodb.core.MongoTemplate mongoTemplate;
+
     @Value("${app.admin.default-password}")
     private String adminPassword;
 
@@ -164,6 +166,19 @@ public class DataSeeder implements CommandLineRunner {
                 redisTemplate.delete(onlineUsersCountKey);
             }
             log.info("Reset online user states in Redis to prevent phantom data");
+
+            try {
+                var indexOps = mongoTemplate.indexOps(com.web.backend.model.ChatMessage.class);
+                List<org.springframework.data.mongodb.core.index.IndexInfo> indexInfoList = indexOps.getIndexInfo();
+                for (org.springframework.data.mongodb.core.index.IndexInfo indexInfo : indexInfoList) {
+                    if ("recipient_1".equals(indexInfo.getName()) || "conversationId_1".equals(indexInfo.getName())) {
+                        indexOps.dropIndex(indexInfo.getName());
+                        log.info("Dropped legacy redundant MongoDB index '{}' on ChatMessage", indexInfo.getName());
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Could not check/drop legacy MongoDB indexes on ChatMessage: {}", e.getMessage());
+            }
         };
     }
 }

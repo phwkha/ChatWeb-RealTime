@@ -14,18 +14,17 @@ import java.util.Map;
 
 @Document("messages")
 @Data
+@CompoundIndex(name = "conv_msg_time_idx", def = "{'conversationId': 1, 'messageType': 1, 'timestamp': -1}")
 @CompoundIndex(name = "unread_msg_idx", def = "{'recipient': 1, 'status': 1, 'messageType': 1}")
 public class ChatMessage {
 
     @Id
     private String id;
 
-    @Indexed
     private String conversationId;
 
     @Indexed
     private String sender;
-    @Indexed
     private String recipient;
 
     private String content;
