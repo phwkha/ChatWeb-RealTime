@@ -19,6 +19,7 @@ import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
+import org.springframework.data.redis.core.RedisTemplate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import lombok.RequiredArgsConstructor;
@@ -32,9 +33,11 @@ public class ChatUpdateConsunmer {
     private final MessageMapper messageMapper;
     private final WebSocketRoutingService webSocketRoutingService;
     private final MongoTemplate mongoTemplate;
+    private final RedisTemplate<String, Object> redisTemplate;
     private final ObjectMapper objectMapper;
 
     private static final String QUEUE_NOTIFICATIONS_STRING = "/queue/notifications";
+    private static final String CHAT_RECENT_HASH_STRING = "chat:recent:hash:";
     
     private static final String SYS_MSG_EDIT_MESSAGE_STRING = "sys.msg.edit_message";
     private static final String SYS_MSG_REVOKE_MESSAGE_STRING = "sys.msg.revoke_message";
@@ -52,13 +55,36 @@ public class ChatUpdateConsunmer {
     }
 
     private void processContentUpdate(UpdateMessagePayload updateEvent) {
-        ChatMessage msg = (updateEvent.updateEvent() instanceof ChatMessage chatMessage)
-                ? chatMessage
-                : objectMapper.convertValue(updateEvent.updateEvent(), ChatMessage.class);
+        ChatMessage msg = extractChatMessage(updateEvent);
 
         Query query = new Query(Criteria.where("id").is(msg.getId()));
-        Update update = new Update();
+        if (updateEvent.type() == UpdateMessageType.EDIT) {
+            query.addCriteria(Criteria.where("isDeleted").is(false));
+        }
 
+        Update update = buildMongoUpdate(updateEvent, msg);
+        FindAndModifyOptions options = new FindAndModifyOptions().returnNew(true);
+        ChatMessage updatedMsg = mongoTemplate.findAndModify(query, update, options, ChatMessage.class);
+
+        if (updatedMsg == null) {
+            handleMissingMessage(updateEvent, msg.getId());
+            return;
+        }
+
+        log.debug("Updated message '{}' in MongoDB [type={}]", updatedMsg.getId(), updateEvent.type());
+        syncMessageToRedis(updatedMsg);
+        dispatchUpdateNotifications(updateEvent, updatedMsg);
+    }
+
+    private ChatMessage extractChatMessage(UpdateMessagePayload updateEvent) {
+        if (updateEvent.updateEvent() instanceof ChatMessage chatMessage) {
+            return chatMessage;
+        }
+        return objectMapper.convertValue(updateEvent.updateEvent(), ChatMessage.class);
+    }
+
+    private Update buildMongoUpdate(UpdateMessagePayload updateEvent, ChatMessage msg) {
+        Update update = new Update();
         switch (updateEvent.type()) {
             case EDIT:
                 update.set("content", msg.getContent());
@@ -73,20 +99,36 @@ public class ChatUpdateConsunmer {
                 update.set("isDeleted", true);
                 break;
             case REACT:
-                update.set("reactions", msg.getReactions());
+                applyReactionUpdate(update, updateEvent.relatedUsername(), msg);
                 break;
             default:
                 break;
         }
+        return update;
+    }
 
-        FindAndModifyOptions options = new FindAndModifyOptions().returnNew(true);
-        ChatMessage updatedMsg = mongoTemplate.findAndModify(query, update, options, ChatMessage.class);
-
-        if (updatedMsg == null) {
-            throw new IllegalStateException("Original message not found in DB yet, retrying update...");
+    private void applyReactionUpdate(Update update, String reactor, ChatMessage msg) {
+        String reactionType = (msg.getReactions() != null) ? msg.getReactions().get(reactor) : null;
+        if (reactionType != null) {
+            update.set("reactions." + reactor, reactionType);
+            update.set("isReacted", true);
+        } else {
+            update.unset("reactions." + reactor);
         }
+    }
 
-        log.debug("Updated message '{}' in MongoDB [type={}]", updatedMsg.getId(), updateEvent.type());
+    private void handleMissingMessage(UpdateMessagePayload updateEvent, String messageId) {
+        if (updateEvent.type() == UpdateMessageType.EDIT) {
+            ChatMessage existing = mongoTemplate.findById(messageId, ChatMessage.class);
+            if (existing != null && existing.isDeleted()) {
+                log.warn("Ignoring edit on already revoked message '{}'", messageId);
+                return;
+            }
+        }
+        throw new IllegalStateException("Original message not found in DB yet, retrying update...");
+    }
+
+    private void dispatchUpdateNotifications(UpdateMessagePayload updateEvent, ChatMessage updatedMsg) {
         try {
             NotificationResponse<?> response = buildResponse(updateEvent.relatedUsername(), updateEvent.type(),
                     updatedMsg);
@@ -140,6 +182,22 @@ public class ChatUpdateConsunmer {
         } else {
             return NotificationResponse.notificationData(NotificationsType.STATUS_MESSAGE, relatedUsername, 
                     Translator.tolocale(SYS_MSG_STATUS_MESSAGE_STRING));
+        }
+    }
+
+    private void syncMessageToRedis(ChatMessage updatedMsg) {
+        if (updatedMsg == null || updatedMsg.getConversationId() == null) {
+            return;
+        }
+        try {
+            String hashKey = CHAT_RECENT_HASH_STRING + updatedMsg.getConversationId();
+            Boolean hasKey = redisTemplate.hasKey(hashKey);
+            if (Boolean.TRUE.equals(hasKey)) {
+                redisTemplate.opsForHash().put(hashKey, updatedMsg.getId(), updatedMsg);
+                log.debug("Synced updated message '{}' to Redis cache", updatedMsg.getId());
+            }
+        } catch (Exception e) {
+            log.warn("Failed to sync updated message '{}' to Redis cache", updatedMsg.getId(), e);
         }
     }
 

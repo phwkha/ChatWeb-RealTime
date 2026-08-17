@@ -12,10 +12,12 @@ import com.web.backend.common.MessageStatus;
 import com.web.backend.common.MessageType;
 import com.web.backend.kafka.avro.ChatMessageAvro;
 import com.web.backend.model.ChatMessage;
-import com.web.backend.repository.MessageRepository;
 import com.web.backend.service.WebSocketRoutingService;
 import com.web.backend.controller.response.ChatMessageResponse;
 import com.web.backend.mapper.MessageMapper;
+
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.dao.DuplicateKeyException;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,7 +27,7 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j(topic = "DATABASE-WRITE-BEHIND-CONSUMER")
 public class DatabaseWriteBehindConsumer {
 
-    private final MessageRepository messageRepository;
+    private final MongoTemplate mongoTemplate;
     private final MessageMapper messageMapper;
     private final WebSocketRoutingService webSocketRoutingService;
 
@@ -48,8 +50,10 @@ public class DatabaseWriteBehindConsumer {
                 .toList();
 
         try {
-            messageRepository.saveAll(entitiesToSave);
+            mongoTemplate.insertAll(entitiesToSave);
             log.info("Persisted batch of {} chat messages to MongoDB successfully", entitiesToSave.size());
+        } catch (DuplicateKeyException e) {
+            log.warn("Batch contains messages already persisted to MongoDB, skipping duplicates: {}", e.getMessage());
         } catch (Exception e) {
             log.error("Failed to persist batch of {} chat messages to MongoDB. Triggering Kafka retry...",
                     payloadsToSave.size(), e);

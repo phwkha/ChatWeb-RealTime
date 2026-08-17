@@ -7,10 +7,8 @@ import org.springframework.data.mongodb.repository.Aggregation;
 import org.springframework.data.mongodb.repository.MongoRepository;
 import org.springframework.data.mongodb.repository.Query;
 
-
 import java.time.LocalDateTime;
 import java.util.List;
-
 
 public interface MessageRepository extends MongoRepository<ChatMessage, String> {
 
@@ -18,10 +16,8 @@ public interface MessageRepository extends MongoRepository<ChatMessage, String> 
     List<ChatMessage> findByConversationId(String conversationId, Pageable pageable);
 
     @Query("{ 'conversationId': ?0, 'messageType': 'CHAT', 'timestamp': { '$lt': ?1 } }")
-    List<ChatMessage> findByConversationIdAndTimestampBefore(String conversationId, LocalDateTime cursor, Pageable pageable);
-
-    @Query("{ 'recipient': ?0, 'sender': ?1, 'status': 'SENT', 'messageType': 'CHAT' }")
-    List<ChatMessage> findUnreadMessagesFromSender(String recipient, String sender);
+    List<ChatMessage> findByConversationIdAndTimestampBefore(String conversationId, LocalDateTime cursor,
+            Pageable pageable);
 
     @Query(value = "{ $or: [ { 'sender': ?0 }, { 'recipient': ?0 } ] }", exists = true)
     boolean existsBySenderOrRecipient(String username);

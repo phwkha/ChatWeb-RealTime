@@ -28,6 +28,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.util.List;
 import java.util.Optional;
@@ -99,7 +100,13 @@ public class FriendServiceImpl implements FriendService {
                 friendship.setRequester(requester);
                 friendship.setAddressee(addressee);
                 friendship.setStatus(FriendshipStatus.PENDING);
-                friendshipRepository.save(friendship);
+                try {
+                        friendshipRepository.save(friendship);
+                } catch (DataIntegrityViolationException ex) {
+                        log.warn("Concurrent friend request detected between '{}' and '{}'", requesterUsername,
+                                        addresseeUsername);
+                        throw new ResourceConflictException(Translator.tolocale(ERROR_FRIEND_INVITE_EXISTS_STRING));
+                }
 
                 eventPublisher.publishEvent(FriendPayload.builder()
                                 .senderUsername(requesterUsername)

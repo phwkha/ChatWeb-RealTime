@@ -15,6 +15,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.support.ResourceBundleMessageSource;
 import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
+import com.mongodb.client.result.UpdateResult;
 import org.springframework.data.redis.core.ListOperations;
 import org.springframework.data.redis.core.HashOperations;
 import org.springframework.data.redis.core.ZSetOperations;
@@ -28,6 +31,7 @@ import com.web.backend.controller.request.EditMessageRequest;
 import com.web.backend.controller.request.RevokeMessageRequest;
 import com.web.backend.exception.WebSocketErrorHandler;
 import com.web.backend.exception.custom.AccessForbiddenException;
+import com.web.backend.exception.custom.InvalidDataException;
 import com.web.backend.exception.custom.ResourceNotFoundException;
 import com.web.backend.kafka.avro.ChatMessageAvro;
 import com.web.backend.mapper.MessageMapper;
@@ -307,6 +311,23 @@ class MessageServiceTest {
     }
 
     @Test
+    void testEditMessage_AlreadyDeleted() {
+        EditMessageRequest request = new EditMessageRequest();
+        request.setMessageId("msg1");
+        request.setRecipient("recipient");
+        request.setNewContent("New text");
+
+        ChatMessage message = new ChatMessage();
+        message.setId("msg1");
+        message.setSender("sender");
+        message.setDeleted(true);
+
+        when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
+
+        assertThrows(InvalidDataException.class, () -> messageService.editMessage("sender", request));
+    }
+
+    @Test
     void testRevokeMessage_Success() {
         RevokeMessageRequest request = new RevokeMessageRequest();
         request.setMessageId("msg1");
@@ -361,12 +382,10 @@ class MessageServiceTest {
 
     @Test
     void testMarkMessagesAsRead_Success() {
-        ChatMessage msg1 = new ChatMessage();
-        msg1.setStatus(MessageStatus.SENT);
-
-        when(messageRepository.findUnreadMessagesFromSender("recipient", "sender"))
-                .thenReturn(List.of(msg1));
         when(redisTemplate.opsForHash()).thenReturn(hashOperations);
+        when(redisTemplate.opsForZSet()).thenReturn(zSetOperations);
+        when(mongoTemplate.updateMulti(any(Query.class), any(Update.class), eq(ChatMessage.class)))
+                .thenReturn(mock(UpdateResult.class));
 
         CompletableFuture<SendResult<String, Object>> future = CompletableFuture
                 .completedFuture(mock(SendResult.class, RETURNS_DEEP_STUBS));
@@ -374,8 +393,7 @@ class MessageServiceTest {
 
         messageService.markMessagesAsRead("recipient", "sender");
 
-        assertEquals(MessageStatus.READ, msg1.getStatus());
-        verify(messageRepository).saveAll(anyList());
+        verify(mongoTemplate).updateMulti(any(Query.class), any(Update.class), eq(ChatMessage.class));
         verify(hashOperations).delete("unread_counts:recipient", "sender");
         verify(chatProducer, times(1)).sendStatusMessage(any());
     }

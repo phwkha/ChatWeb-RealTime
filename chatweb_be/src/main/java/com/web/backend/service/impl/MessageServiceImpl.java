@@ -42,6 +42,7 @@ import com.web.backend.controller.response.CursorResponse;
 import com.web.backend.controller.response.MessageSystemResponse;
 import com.web.backend.controller.response.UnreadCountsResponse;
 import com.web.backend.exception.custom.AccessForbiddenException;
+import com.web.backend.exception.custom.InvalidDataException;
 import com.web.backend.exception.custom.ResourceNotFoundException;
 import com.web.backend.exception.custom.SystemOverloadException;
 import com.web.backend.mapper.MessageMapper;
@@ -52,6 +53,11 @@ import com.web.backend.repository.MessageRepository;
 import com.web.backend.repository.SystemMessageRepository;
 import com.web.backend.repository.UserRepository;
 import com.web.backend.repository.projection.UnreadCountProjection;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
+
 import com.web.backend.service.FriendService;
 import com.web.backend.service.MessageService;
 
@@ -67,6 +73,8 @@ import java.util.function.Consumer;
 public class MessageServiceImpl implements MessageService {
 
     private final MessageRepository messageRepository;
+
+    private final MongoTemplate mongoTemplate;
 
     private final UserRepository userRepository;
 
@@ -96,6 +104,7 @@ public class MessageServiceImpl implements MessageService {
     private static final String ERROR_MSG_SYSTEM_OVERLOAD_STRING = "error.msg.system_overload";
     private static final String ERROR_MSG_EDIT_FORBIDDEN_STRING = "error.msg.edit_forbidden";
     private static final String ERROR_MSG_DELETE_FORBIDDEN_STRING = "error.msg.delete_forbidden";
+    private static final String ERROR_MSG_EDIT_DELETED_STRING = "error.msg.edit_deleted";
 
     private String generateConversationId(String user1, String user2) {
         return (user1.compareTo(user2) < 0) ? user1 + "_" + user2 : user2 + "_" + user1;
@@ -315,6 +324,10 @@ public class MessageServiceImpl implements MessageService {
             throw new AccessForbiddenException(Translator.tolocale(ERROR_MSG_EDIT_FORBIDDEN_STRING));
         }
 
+        if (msg.isDeleted()) {
+            throw new InvalidDataException(Translator.tolocale(ERROR_MSG_EDIT_DELETED_STRING));
+        }
+
         String oldContent = msg.getContent();
         boolean oldIsEdited = msg.isEdited();
 
@@ -471,15 +484,34 @@ public class MessageServiceImpl implements MessageService {
 
     @Override
     public void markMessagesAsRead(String recipientUsername, String senderUsername) {
-        List<ChatMessage> messages = messageRepository.findUnreadMessagesFromSender(recipientUsername, senderUsername);
-        if (!messages.isEmpty()) {
-            String convId = generateConversationId(recipientUsername, senderUsername);
-            messages.forEach(msg -> {
-                msg.setStatus(MessageStatus.READ);
-                updateMessageInRedisCache(convId, msg.getId(), m -> m.setStatus(MessageStatus.READ));
-            });
-            messageRepository.saveAll(messages);
+        String convId = generateConversationId(recipientUsername, senderUsername);
+
+        Query query = new Query(Criteria.where("recipient").is(recipientUsername)
+                .and("sender").is(senderUsername)
+                .and("status").is(MessageStatus.SENT)
+                .and("messageType").is(MessageType.CHAT));
+
+        Update update = new Update().set("status", MessageStatus.READ);
+        mongoTemplate.updateMulti(query, update, ChatMessage.class);
+
+        String hashKey = CHAT_RECENT_HASH_STRING + convId;
+        String zsetKey = CHAT_RECENT_ZSET_STRING + convId;
+        try {
+            Set<Object> messageIds = redisTemplate.opsForZSet().range(zsetKey, 0, -1);
+            if (messageIds != null && !messageIds.isEmpty()) {
+                List<Object> cachedObjects = redisTemplate.opsForHash().multiGet(hashKey, messageIds);
+                for (Object obj : cachedObjects) {
+                    if (obj instanceof ChatMessage msg && senderUsername.equals(msg.getSender())
+                            && msg.getStatus() != MessageStatus.READ) {
+                        msg.setStatus(MessageStatus.READ);
+                        redisTemplate.opsForHash().put(hashKey, msg.getId(), msg);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to update read status in Redis cache for conversation '{}'", convId, e);
         }
+
         String key = UNREAD_COUNTS_STRING + recipientUsername;
         redisTemplate.opsForHash().delete(key, senderUsername);
 

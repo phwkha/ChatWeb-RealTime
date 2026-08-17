@@ -104,6 +104,17 @@ class FriendServiceTest {
         verify(eventPublisher).publishEvent(any(FriendPayload.class));
     }
 
+    @Test
+    void testSendFriendRequest_DataIntegrityViolation() {
+        when(userRepository.findByUsername("userA")).thenReturn(Optional.of(userA));
+        when(userRepository.findByUsername("userB")).thenReturn(Optional.of(userB));
+        when(friendshipRepository.findByUsers(userA, userB)).thenReturn(Optional.empty());
+        when(friendshipRepository.save(any(FriendshipEntity.class)))
+                .thenThrow(new org.springframework.dao.DataIntegrityViolationException("Duplicate key"));
+
+        assertThrows(ResourceConflictException.class, () -> friendService.sendFriendRequest("userA", "userB"));
+    }
+
     // =====================================
     // ACCEPT FRIEND REQUEST
     // =====================================
