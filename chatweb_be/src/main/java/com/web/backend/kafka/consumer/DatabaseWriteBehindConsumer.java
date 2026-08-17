@@ -33,7 +33,7 @@ public class DatabaseWriteBehindConsumer {
 
     private static final String QUEUE_MESSAGES_STRING = "/queue/messages";
 
-    @RetryableTopic(kafkaTemplate = "avroChatKafkaTemplate", attempts = "Integer.MAX_VALUE", backoff = @Backoff(delay = 300000, maxDelay = 300000), autoCreateTopics = "true")
+    @RetryableTopic(kafkaTemplate = "avroChatKafkaTemplate", attempts = "Integer.MAX_VALUE", backoff = @Backoff(delay = 5000, multiplier = 2.0, maxDelay = 300000, random = true), autoCreateTopics = "true")
     @KafkaListener(topics = "${spring.kafka.topic.chat.messages}", groupId = "${spring.kafka.topic.chat.messages-save-group-id}", containerFactory = "batchChatAvroListenerContainerFactory")
     public void handleDbPersistence(List<ChatMessageAvro> messagePayloads) {
         List<ChatMessageAvro> payloadsToSave = messagePayloads.stream()

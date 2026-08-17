@@ -1,5 +1,6 @@
 package com.web.backend.service.impl;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -12,7 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
 import org.bson.types.ObjectId;
@@ -475,7 +476,7 @@ public class MessageServiceImpl implements MessageService {
         }
 
         redisTemplate.opsForHash().putAll(key, redisMap);
-        redisTemplate.expire(key, 7, TimeUnit.DAYS);
+        redisTemplate.expire(key, getRandomTtl(7 * 24 * 3600L, 12 * 3600L));
 
         return UnreadCountsResponse.builder()
                 .unreadCounts(resultMap)
@@ -548,14 +549,20 @@ public class MessageServiceImpl implements MessageService {
                 redisTemplate.opsForZSet().removeRange(zsetKey, 0, -51);
             }
 
-            redisTemplate.expire(hashKey, java.time.Duration.ofMinutes(5));
-            redisTemplate.expire(zsetKey, java.time.Duration.ofMinutes(5));
+            Duration chatTtl = getRandomTtl(300, 30);
+            redisTemplate.expire(hashKey, chatTtl);
+            redisTemplate.expire(zsetKey, chatTtl);
 
             String key = UNREAD_COUNTS_STRING + chatMsg.getRecipient();
             redisTemplate.opsForHash().increment(key, chatMsg.getSender(), 1);
         } catch (Exception e) {
             log.error("Failed to cache message '{}' to Redis", chatMsg.getId(), e);
         }
+    }
+
+    private Duration getRandomTtl(long baseSeconds, long jitterSeconds) {
+        long jitter = ThreadLocalRandom.current().nextLong(-jitterSeconds, jitterSeconds + 1);
+        return Duration.ofSeconds(Math.max(10, baseSeconds + jitter));
     }
 
     private CursorResponse<ChatMessageResponse> buildCursorResponse(List<ChatMessage> messages, int size) {

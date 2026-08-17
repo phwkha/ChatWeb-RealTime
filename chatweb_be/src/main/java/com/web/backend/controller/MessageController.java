@@ -10,6 +10,8 @@ import com.web.backend.controller.response.ChatMessageResponse;
 import com.web.backend.controller.response.CursorResponse;
 import com.web.backend.controller.response.UnreadCountsResponse;
 import com.web.backend.model.UserEntity;
+import com.web.backend.ratelimit.LimitType;
+import com.web.backend.ratelimit.RateLimit;
 import com.web.backend.service.MessageService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -39,6 +41,7 @@ public class MessageController {
         private static final String SUCCESS_MSG_REVOKE_STRING = "success.msg.revoke";
 
         @Operation(summary = "Get private message", description = "API endpoint for get private message")
+        @RateLimit(key = "msg_private", limit = 45, period = 60, type = LimitType.USER)
         @GetMapping("/private")
         public ResponseEntity<ApiResponse<CursorResponse<ChatMessageResponse>>> getPrivateMessage(
                         @RequestParam String user1,
@@ -54,6 +57,7 @@ public class MessageController {
         }
 
         @Operation(summary = "Get unread counts", description = "API endpoint for get unread counts")
+        @RateLimit(key = "msg_unread_counts", limit = 30, period = 60, type = LimitType.USER)
         @GetMapping("/unread-counts")
         public ResponseEntity<ApiResponse<UnreadCountsResponse>> getUnreadCounts(Authentication auth) {
                 UserEntity user = (UserEntity) auth.getPrincipal();
@@ -65,6 +69,7 @@ public class MessageController {
         }
 
         @Operation(summary = "Mark as read", description = "API endpoint for mark as read")
+        @RateLimit(key = "msg_mark_read", limit = 30, period = 60, type = LimitType.USER)
         @PostMapping("/mark-as-read")
         public ResponseEntity<ApiResponse<Void>> markAsRead(
                         Authentication auth,
@@ -82,6 +87,7 @@ public class MessageController {
         }
 
         @Operation(summary = "Get message by ID", description = "API endpoint to fetch a specific message by its ID")
+        @RateLimit(key = "msg_get_id", limit = 60, period = 60, type = LimitType.USER)
         @GetMapping("/{id}")
         public ResponseEntity<ApiResponse<ChatMessageResponse>> getMessageById(
                         @PathVariable String id,
@@ -96,6 +102,7 @@ public class MessageController {
         }
 
         @Operation(summary = "React to a message", description = "API endpoint for reacting to a message")
+        @RateLimit(key = "msg_reaction", limit = 30, period = 60, type = LimitType.USER)
         @PostMapping("/reaction")
         public ResponseEntity<ApiResponse<Void>> reactToMessage(
                         Authentication auth,
@@ -113,6 +120,7 @@ public class MessageController {
         }
 
         @Operation(summary = "Edit a message", description = "API endpoint to edit an existing message")
+        @RateLimit(key = "msg_edit", limit = 20, period = 60, type = LimitType.USER)
         @PostMapping("/edit")
         public ResponseEntity<ApiResponse<Void>> editMessage(
                         Authentication auth,
@@ -130,6 +138,7 @@ public class MessageController {
         }
 
         @Operation(summary = "Revoke a message", description = "API endpoint to revoke a message")
+        @RateLimit(key = "msg_revoke", limit = 20, period = 60, type = LimitType.USER)
         @PostMapping("/revoke")
         public ResponseEntity<ApiResponse<Void>> revokeMessage(
                         Authentication auth,
