@@ -1,10 +1,13 @@
 package com.web.backend.kafka.consumer;
 
+import org.springframework.kafka.annotation.DltHandler;
 import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.annotation.RetryableTopic;
 import org.springframework.kafka.support.KafkaHeaders;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.retry.annotation.Backoff;
 import org.springframework.stereotype.Component;
 import com.web.backend.common.MessageStatus;
 import com.web.backend.controller.response.ChatMessageResponse;
@@ -32,6 +35,7 @@ public class ChatConsumer {
 
     private static final String TOPIC_PUBLIC_STRING = "/topic/public";
 
+    @RetryableTopic(kafkaTemplate = "avroChatKafkaTemplate", attempts = "4", backoff = @Backoff(delay = 1000, multiplier = 2.0, maxDelay = 10000, random = true), autoCreateTopics = "true")
     @KafkaListener(topics = "${spring.kafka.topic.chat.messages}", groupId = "${spring.kafka.topic.chat.messages-group-id}", containerFactory = "chatAvroListenerContainerFactory")
     public void listenChatMessages(
             @Payload ChatMessageAvro message,
@@ -51,10 +55,18 @@ public class ChatConsumer {
             log.debug("Dispatched chat message to WebSocket recipient '{}'", recipient);
         } catch (Exception e) {
             log.error("Failed to route WebSocket chat message to recipient '{}'", recipient, e);
+            throw new RuntimeException(e);
         }
     }
 
-    @KafkaListener(topics = "${spring.kafka.topic.chat.system-messages}", groupId = "${spring.kafka.topic.chat.system-messages-group-id}-${random.uuid}")
+    @DltHandler
+    public void handleChatDlt(ChatMessageAvro message) {
+        log.error("Dead Letter Topic: Failed to deliver real-time WebSocket chat from '{}' to '{}'",
+                message.getSender(), message.getRecipient());
+    }
+
+    @RetryableTopic(attempts = "4", backoff = @Backoff(delay = 1000, multiplier = 2.0, maxDelay = 10000, random = true), autoCreateTopics = "true")
+    @KafkaListener(topics = "${spring.kafka.topic.chat.system-messages}", groupId = "${spring.kafka.topic.chat.system-messages-group-id}-${random.uuid}", containerFactory = "jsonKafkaListenerContainerFactory")
     public void listenSystemMessages(SystemMessage systemMessage) {
         if (systemMessage == null)
             return;
@@ -68,6 +80,13 @@ public class ChatConsumer {
             log.debug("Broadcasted system message to topic '{}'", TOPIC_PUBLIC_STRING);
         } catch (Exception e) {
             log.error("Failed to broadcast system message to '{}'", TOPIC_PUBLIC_STRING, e);
+            throw new RuntimeException(e);
         }
+    }
+
+    @DltHandler
+    public void handleSystemMessageDlt(SystemMessage systemMessage) {
+        log.error("Dead Letter Topic: Failed to broadcast system message from '{}'",
+                systemMessage.getSender());
     }
 }

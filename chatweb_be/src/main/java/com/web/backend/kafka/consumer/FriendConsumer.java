@@ -1,6 +1,9 @@
 package com.web.backend.kafka.consumer;
 
+import org.springframework.kafka.annotation.DltHandler;
 import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.annotation.RetryableTopic;
+import org.springframework.retry.annotation.Backoff;
 import org.springframework.stereotype.Component;
 
 import com.web.backend.common.NotificationsType;
@@ -33,7 +36,8 @@ public class FriendConsumer {
     private static final String SYS_MSG_USER_ONLINE_STRING = "sys.msg.user_online";
     private static final String SYS_MSG_USER_OFFLINE_STRING = "sys.msg.user_offline";
 
-    @KafkaListener(topics = "${spring.kafka.topic.friend.friend-topic}", groupId = "${spring.kafka.topic.friend.friend-group-id}")
+    @RetryableTopic(attempts = "4", backoff = @Backoff(delay = 2000, multiplier = 2.0, maxDelay = 10000, random = true), autoCreateTopics = "true")
+    @KafkaListener(topics = "${spring.kafka.topic.friend.friend-topic}", groupId = "${spring.kafka.topic.friend.friend-group-id}", containerFactory = "jsonKafkaListenerContainerFactory")
     public void listenFriendNotifications(FriendPayload friendEvent) {
         if (friendEvent == null) {
             return;
@@ -65,6 +69,7 @@ public class FriendConsumer {
         } catch (Exception e) {
             log.error("Failed to route WebSocket friend notification: sender='{}', recipient='{}'", sender, recipient,
                     e);
+            throw new RuntimeException(e);
         }
     }
 
@@ -108,5 +113,11 @@ public class FriendConsumer {
         }
 
         return NotificationResponse.notificationData(type, relatedUsername, Translator.tolocale(translationKey));
+    }
+
+    @DltHandler
+    public void handleFriendDlt(FriendPayload friendEvent) {
+        log.error("Dead Letter Topic: Failed to process friend notification from '{}' to '{}' [type={}]",
+                friendEvent.senderUsername(), friendEvent.recipientUsername(), friendEvent.recipientType());
     }
 }

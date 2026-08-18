@@ -58,18 +58,6 @@ spring:
       friend:
         friend-topic: friend-notifications
         friend-group-id: friend-websocket-group
-    producer:
-      key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
-      compression-type: "snappy"
-    consumer:
-      max-poll-records: 100
-      fetch-max-wait-ms: 500
-      auto-offset-reset: latest
-      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
-      properties:
-        spring.json.trusted.packages: "*"
     properties:
       schema.registry.url: ${SCHEMA_REGISTRY_URL:http://localhost:8081}
   security:

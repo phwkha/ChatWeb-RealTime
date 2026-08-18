@@ -45,7 +45,7 @@ public class ChatUpdateConsunmer {
     private static final String SYS_MSG_STATUS_MESSAGE_STRING = "sys.msg.status_message";
 
     @RetryableTopic(attempts = "Integer.MAX_VALUE", backoff = @Backoff(delay = 1000, multiplier = 2.0, maxDelay = 30000, random = true), autoCreateTopics = "true")
-    @KafkaListener(topics = "${spring.kafka.topic.update-message.update}", groupId = "${spring.kafka.topic.update-message.group-id}")
+    @KafkaListener(topics = "${spring.kafka.topic.update-message.update}", groupId = "${spring.kafka.topic.update-message.group-id}", containerFactory = "jsonKafkaListenerContainerFactory")
     public void handleMessageUpdates(UpdateMessagePayload updateEvent) {
         if (updateEvent.type() != UpdateMessageType.STATUS && updateEvent.updateEvent() != null) {
             processContentUpdate(updateEvent);
