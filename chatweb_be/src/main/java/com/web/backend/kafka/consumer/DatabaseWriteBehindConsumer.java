@@ -4,8 +4,9 @@ import java.util.List;
 import java.util.concurrent.Executors;
 
 import org.springframework.kafka.annotation.KafkaListener;
-import org.springframework.kafka.annotation.RetryableTopic;
-import org.springframework.retry.annotation.Backoff;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.support.KafkaHeaders;
+import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Component;
 
 import com.web.backend.common.MessageStatus;
@@ -30,18 +31,33 @@ public class DatabaseWriteBehindConsumer {
     private final MongoTemplate mongoTemplate;
     private final MessageMapper messageMapper;
     private final WebSocketRoutingService webSocketRoutingService;
+    private final KafkaTemplate<String, ChatMessageAvro> avroChatKafkaTemplate;
 
     private static final String QUEUE_MESSAGES_STRING = "/queue/messages";
+    private static final long MAX_RETRY_DURATION_MS = 240_000L;
+    private static final String DLT_TOPIC = "chat.messages.dlt";
 
-    @RetryableTopic(kafkaTemplate = "avroChatKafkaTemplate", attempts = "Integer.MAX_VALUE", backoff = @Backoff(delay = 5000, multiplier = 2.0, maxDelay = 300000, random = true), autoCreateTopics = "true")
     @KafkaListener(topics = "${spring.kafka.topic.chat.messages}", groupId = "${spring.kafka.topic.chat.messages-save-group-id}", containerFactory = "batchChatAvroListenerContainerFactory")
-    public void handleDbPersistence(List<ChatMessageAvro> messagePayloads) {
+    public void handleDbPersistence(List<ChatMessageAvro> messagePayloads,
+            @Header(KafkaHeaders.RECEIVED_TIMESTAMP) List<Long> timestamps) {
         List<ChatMessageAvro> payloadsToSave = messagePayloads.stream()
                 .filter(msg -> MessageType.CHAT.name().equalsIgnoreCase(msg.getMessageType()))
                 .toList();
         if (payloadsToSave.isEmpty()) {
             return;
         }
+
+        long oldestKafkaTimestamp = timestamps.stream().min(Long::compareTo).orElse(System.currentTimeMillis());
+        long ageMillis = System.currentTimeMillis() - oldestKafkaTimestamp;
+
+        if (ageMillis >= MAX_RETRY_DURATION_MS) {
+            log.warn("Batch is older than 4 minutes (age: {} ms). Routing to DLT topic '{}'", ageMillis, DLT_TOPIC);
+            for (ChatMessageAvro msg : payloadsToSave) {
+                avroChatKafkaTemplate.send(DLT_TOPIC, msg.getConversationId(), msg);
+            }
+            return;
+        }
+
         payloadsToSave.forEach(msg -> msg.setStatus(MessageStatus.SENT.name()));
         log.debug("Persisting write-behind batch of {} chat messages (Avro) to MongoDB...", payloadsToSave.size());
 
