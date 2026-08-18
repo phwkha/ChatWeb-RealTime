@@ -25,7 +25,7 @@ public class KafkaTopicConfig {
     public NewTopic chatMessagesTopicBean() {
         return TopicBuilder.name(chatMessagesTopic)
                 .partitions(12)
-                .replicas(1)
+                .replicas(2)
                 .build();
     }
 
@@ -33,7 +33,7 @@ public class KafkaTopicConfig {
     public NewTopic systemMessagesTopicBean() {
         return TopicBuilder.name(systemMessagesTopic)
                 .partitions(6)
-                .replicas(1)
+                .replicas(2)
                 .build();
     }
 
@@ -41,7 +41,7 @@ public class KafkaTopicConfig {
     public NewTopic friendTopicBean() {
         return TopicBuilder.name(friendTopic)
                 .partitions(6)
-                .replicas(1)
+                .replicas(2)
                 .build();
     }
 
@@ -49,7 +49,7 @@ public class KafkaTopicConfig {
     public NewTopic emailTopicBean() {
         return TopicBuilder.name(emailTopic)
                 .partitions(3)
-                .replicas(1)
+                .replicas(2)
                 .build();
     }
 }

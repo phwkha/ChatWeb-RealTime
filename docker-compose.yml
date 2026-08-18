@@ -45,10 +45,10 @@ services:
     networks:
       - default
 
-  # --- KAFKA ---
+  # --- KAFKA BROKER 1 ---
   kafka:
     image: confluentinc/cp-kafka:latest
-    container_name: chat-kafka
+    container_name: chat-kafka-1
     ports:
       - "127.0.0.1:9092:9092"
     environment:
@@ -58,13 +58,34 @@ services:
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@127.0.0.1:9093
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093,2@kafka2:9093
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       CLUSTER_ID: ${CLUSTER_ID}
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 2
     volumes:
       - kafka_data:/var/lib/kafka/data
       - kafka_secrets:/etc/kafka/secrets
+
+  # --- KAFKA BROKER 2 ---
+  kafka2:
+    image: confluentinc/cp-kafka:latest
+    container_name: chat-kafka-2
+    ports:
+      - "127.0.0.1:9094:9092"
+    environment:
+      KAFKA_NODE_ID: 2
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka2:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093,2@kafka2:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      CLUSTER_ID: ${CLUSTER_ID}
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 2
+    volumes:
+      - kafka2_data:/var/lib/kafka/data
+      - kafka2_secrets:/etc/kafka/secrets
 
   # --- SCHEMA REGISTRY ---
   schema-registry:
@@ -75,15 +96,17 @@ services:
       - "127.0.0.1:8081:8081"
     environment:
       SCHEMA_REGISTRY_HOST_NAME: schema-registry
-      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka:9092
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka:9092,kafka2:9092
       SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
     networks:
       - default
     depends_on:
       - kafka
+      - kafka2
 
   # --- FILEBEAT ---
   filebeat:
+    profiles: ["monitoring"]
     image: docker.elastic.co/beats/filebeat:8.10.4
     container_name: filebeat
     user: root
@@ -98,6 +121,7 @@ services:
 
   # --- ELASTICSEARCH ---
   elasticsearch:
+    profiles: ["monitoring"]
     image: docker.elastic.co/elasticsearch/elasticsearch:8.10.4
     container_name: elasticsearch
     environment:
@@ -112,6 +136,7 @@ services:
 
   # --- LOGSTASH ---
   logstash:
+    profiles: ["monitoring"]
     image: docker.elastic.co/logstash/logstash:8.10.4
     container_name: logstash
     ports:
@@ -129,6 +154,7 @@ services:
 
   # --- KIBANA ---
   kibana:
+    profiles: ["monitoring"]
     image: docker.elastic.co/kibana/kibana:8.10.4
     container_name: kibana
     ports:
@@ -146,6 +172,7 @@ services:
 
   # --- PROMETHEUS ---
   prometheus:
+    profiles: ["monitoring"]
     image: prom/prometheus:latest
     container_name: prometheus
     ports:
@@ -160,6 +187,7 @@ services:
 
   # --- GRAFANA ---
   grafana:
+    profiles: ["monitoring"]
     image: grafana/grafana:latest
     container_name: grafana
     ports:
@@ -252,6 +280,7 @@ services:
       - cw_postgres
       - cw_redis
       - kafka
+      - kafka2
       - schema-registry
 
   # --- REACT FRONTEND ---
@@ -276,5 +305,7 @@ volumes:
   redis_data:
   kafka_data:
   kafka_secrets:
+  kafka2_data:
+  kafka2_secrets:
   prometheus_data:
   grafana_data:
