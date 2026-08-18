@@ -35,6 +35,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -147,7 +148,7 @@ class MessageControllerTest {
                                 .andExpect(status().isOk())
                                 .andExpect(jsonPath("$.code").value(200));
 
-                verify(messageService).markMessagesAsRead("testuser", "otheruser");
+                verify(messageService).markMessagesAsRead(eq("testuser"), any(MarkReadRequest.class));
         }
 
         @Test

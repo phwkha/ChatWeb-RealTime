@@ -4,6 +4,7 @@ import com.web.backend.controller.request.ChatMessageRequest;
 import com.web.backend.controller.request.MessageSystemRequest;
 import com.web.backend.controller.request.ReactionRequest;
 import com.web.backend.controller.request.EditMessageRequest;
+import com.web.backend.controller.request.MarkReadRequest;
 import com.web.backend.controller.request.RevokeMessageRequest;
 import com.web.backend.controller.response.ChatMessageResponse;
 import com.web.backend.controller.response.CursorResponse;
@@ -22,7 +23,7 @@ public interface MessageService {
 
     UnreadCountsResponse getUnreadMessageCounts(String recipientUsername);
 
-    void markMessagesAsRead(String recipientUsername, String senderUsername);
+    void markMessagesAsRead(String recipientUsername, MarkReadRequest request);
 
     void reactToMessage(String senderUsername, ReactionRequest request);
 

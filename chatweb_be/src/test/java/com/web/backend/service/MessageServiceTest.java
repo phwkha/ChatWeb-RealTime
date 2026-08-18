@@ -28,6 +28,7 @@ import com.web.backend.common.UserStatus;
 import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.request.ChatMessageRequest;
 import com.web.backend.controller.request.EditMessageRequest;
+import com.web.backend.controller.request.MarkReadRequest;
 import com.web.backend.controller.request.RevokeMessageRequest;
 import com.web.backend.exception.WebSocketErrorHandler;
 import com.web.backend.exception.custom.AccessForbiddenException;
@@ -250,8 +251,9 @@ class MessageServiceTest {
         ChatMessage message = new ChatMessage();
         message.setId("msg123");
         message.setSender("sender");
+        message.setRecipient("recipient");
+        message.setConversationId("recipient_sender");
         when(messageRepository.findById("msg123")).thenReturn(Optional.of(message));
-
 
         CompletableFuture<SendResult<String, Object>> future = CompletableFuture
                 .completedFuture(mock(SendResult.class, RETURNS_DEEP_STUBS));
@@ -259,14 +261,50 @@ class MessageServiceTest {
 
         messageService.reactToMessage("sender", request);
 
-        // Verify MongoDB update
-        
-
         // Verify Redis updated
         verify(redisTemplate, atLeastOnce()).opsForHash();
 
         // Verify Kafka push
         verify(chatProducer).sendReaction(any());
+    }
+
+    @Test
+    void testReactToMessage_Forbidden_DifferentConversation() {
+        com.web.backend.controller.request.ReactionRequest request = new com.web.backend.controller.request.ReactionRequest();
+        request.setRecipient("recipient");
+        request.setMessageId("msg123");
+        request.setReactionType(com.web.backend.common.ReactionType.HEART);
+
+        when(friendService.isFriend("sender", "recipient")).thenReturn(true);
+
+        ChatMessage message = new ChatMessage();
+        message.setId("msg123");
+        message.setSender("other1");
+        message.setRecipient("other2");
+        message.setConversationId("other1_other2");
+        when(messageRepository.findById("msg123")).thenReturn(Optional.of(message));
+
+        assertThrows(AccessForbiddenException.class, () -> messageService.reactToMessage("sender", request));
+    }
+
+    @Test
+    void testReactToMessage_AlreadyDeleted() {
+        com.web.backend.controller.request.ReactionRequest request = new com.web.backend.controller.request.ReactionRequest();
+        request.setRecipient("recipient");
+        request.setMessageId("msg123");
+        request.setReactionType(com.web.backend.common.ReactionType.HEART);
+
+        when(friendService.isFriend("sender", "recipient")).thenReturn(true);
+
+        ChatMessage message = new ChatMessage();
+        message.setId("msg123");
+        message.setSender("sender");
+        message.setRecipient("recipient");
+        message.setConversationId("recipient_sender");
+        message.setDeleted(true);
+        when(messageRepository.findById("msg123")).thenReturn(Optional.of(message));
+
+        assertThrows(InvalidDataException.class, () -> messageService.reactToMessage("sender", request));
     }
 
     // ==========================================
@@ -283,6 +321,8 @@ class MessageServiceTest {
         ChatMessage message = new ChatMessage();
         message.setId("msg1");
         message.setSender("sender");
+        message.setRecipient("recipient");
+        message.setConversationId("recipient_sender");
 
         when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
         CompletableFuture<SendResult<String, Object>> future = CompletableFuture
@@ -304,6 +344,8 @@ class MessageServiceTest {
 
         ChatMessage message = new ChatMessage();
         message.setSender("otherUser");
+        message.setRecipient("recipient");
+        message.setConversationId("recipient_sender");
 
         when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
 
@@ -320,6 +362,8 @@ class MessageServiceTest {
         ChatMessage message = new ChatMessage();
         message.setId("msg1");
         message.setSender("sender");
+        message.setRecipient("recipient");
+        message.setConversationId("recipient_sender");
         message.setDeleted(true);
 
         when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
@@ -336,8 +380,11 @@ class MessageServiceTest {
         ChatMessage message = new ChatMessage();
         message.setId("msg1");
         message.setSender("sender");
+        message.setRecipient("recipient");
+        message.setConversationId("recipient_sender");
         message.setContent("Secret");
         message.setFileUrl("url");
+        message.setStatus(MessageStatus.SENT);
 
         when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
         CompletableFuture<SendResult<String, Object>> future = CompletableFuture
@@ -349,7 +396,28 @@ class MessageServiceTest {
         assertTrue(message.isDeleted());
         assertEquals("", message.getContent());
         assertNull(message.getFileUrl());
+        verify(hashOperations).increment(eq("unread_counts:recipient"), eq("sender"), eq(-1L));
         verify(chatProducer).sendRevokeMessage(any());
+    }
+
+    @Test
+    void testRevokeMessage_AlreadyDeleted_Idempotent() {
+        RevokeMessageRequest request = new RevokeMessageRequest();
+        request.setMessageId("msg1");
+        request.setRecipient("recipient");
+
+        ChatMessage message = new ChatMessage();
+        message.setId("msg1");
+        message.setSender("sender");
+        message.setRecipient("recipient");
+        message.setConversationId("recipient_sender");
+        message.setDeleted(true);
+
+        when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
+
+        messageService.revokeMessage("sender", request);
+
+        verify(chatProducer, never()).sendRevokeMessage(any());
     }
 
     @Test
@@ -384,18 +452,37 @@ class MessageServiceTest {
     void testMarkMessagesAsRead_Success() {
         when(redisTemplate.opsForHash()).thenReturn(hashOperations);
         when(redisTemplate.opsForZSet()).thenReturn(zSetOperations);
-        when(mongoTemplate.updateMulti(any(Query.class), any(Update.class), eq(ChatMessage.class)))
-                .thenReturn(mock(UpdateResult.class));
 
         CompletableFuture<SendResult<String, Object>> future = CompletableFuture
                 .completedFuture(mock(SendResult.class, RETURNS_DEEP_STUBS));
         when(chatProducer.sendStatusMessage(any())).thenReturn(future);
 
-        messageService.markMessagesAsRead("recipient", "sender");
+        MarkReadRequest request = new MarkReadRequest();
+        request.setSender("sender");
 
-        verify(mongoTemplate).updateMulti(any(Query.class), any(Update.class), eq(ChatMessage.class));
+        messageService.markMessagesAsRead("recipient", request);
+
         verify(hashOperations).delete("unread_counts:recipient", "sender");
         verify(chatProducer, times(1)).sendStatusMessage(any());
+    }
+
+    @Test
+    void testMarkMessagesAsRead_KafkaFailure_Rollback() {
+        when(redisTemplate.opsForHash()).thenReturn(hashOperations);
+        when(redisTemplate.opsForZSet()).thenReturn(zSetOperations);
+        when(hashOperations.get("unread_counts:recipient", "sender")).thenReturn("3");
+
+        CompletableFuture<SendResult<String, Object>> future = CompletableFuture
+                .failedFuture(new RuntimeException("Kafka error"));
+        when(chatProducer.sendStatusMessage(any())).thenReturn(future);
+
+        MarkReadRequest request = new MarkReadRequest();
+        request.setSender("sender");
+
+        messageService.markMessagesAsRead("recipient", request);
+
+        verify(hashOperations).put("unread_counts:recipient", "sender", "3");
+        verify(webSocketErrorHandler).handleChatError(eq("recipient"), eq(request), anyString());
     }
 
     @Test
@@ -525,6 +612,8 @@ class MessageServiceTest {
         ChatMessage message = new ChatMessage();
         message.setId("msg1");
         message.setSender("sender");
+        message.setRecipient("recipient");
+        message.setConversationId("recipient_sender");
         when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
 
 

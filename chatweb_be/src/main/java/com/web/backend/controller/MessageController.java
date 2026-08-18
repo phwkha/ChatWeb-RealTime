@@ -79,7 +79,7 @@ public class MessageController {
 
                 log.debug("User '{}' marked messages from '{}' as read", user.getUsername(), request.getSender());
 
-                messageService.markMessagesAsRead(user.getUsername(), request.getSender());
+                messageService.markMessagesAsRead(user.getUsername(), request);
 
                 return ResponseEntity.ok(
                                 ApiResponse.success(HttpStatus.OK.value(),

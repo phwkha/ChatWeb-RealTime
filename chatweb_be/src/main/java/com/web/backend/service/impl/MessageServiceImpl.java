@@ -35,6 +35,7 @@ import com.web.backend.common.UserStatus;
 import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.request.ChatMessageRequest;
 import com.web.backend.controller.request.EditMessageRequest;
+import com.web.backend.controller.request.MarkReadRequest;
 import com.web.backend.controller.request.MessageSystemRequest;
 import com.web.backend.controller.request.ReactionRequest;
 import com.web.backend.controller.request.RevokeMessageRequest;
@@ -54,11 +55,6 @@ import com.web.backend.repository.MessageRepository;
 import com.web.backend.repository.SystemMessageRepository;
 import com.web.backend.repository.UserRepository;
 import com.web.backend.repository.projection.UnreadCountProjection;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.core.query.Update;
-
 import com.web.backend.service.FriendService;
 import com.web.backend.service.MessageService;
 
@@ -74,8 +70,6 @@ import java.util.function.Consumer;
 public class MessageServiceImpl implements MessageService {
 
     private final MessageRepository messageRepository;
-
-    private final MongoTemplate mongoTemplate;
 
     private final UserRepository userRepository;
 
@@ -217,6 +211,14 @@ public class MessageServiceImpl implements MessageService {
 
         ChatMessage msg = getMessageFromDbOrRedis(request.getMessageId(), convId);
 
+        if (!convId.equals(msg.getConversationId())) {
+            throw new AccessForbiddenException(Translator.tolocale(ERROR_MSG_EDIT_FORBIDDEN_STRING));
+        }
+
+        if (msg.isDeleted()) {
+            throw new InvalidDataException(Translator.tolocale(ERROR_MSG_EDIT_DELETED_STRING));
+        }
+
         Map<String, String> oldReactions = msg.getReactions() == null ? null : new HashMap<>(msg.getReactions());
         boolean oldIsReacted = msg.isReacted();
 
@@ -321,7 +323,7 @@ public class MessageServiceImpl implements MessageService {
 
         ChatMessage msg = getMessageFromDbOrRedis(request.getMessageId(), convId);
 
-        if (!msg.getSender().equals(senderUsername)) {
+        if (!msg.getSender().equals(senderUsername) || !convId.equals(msg.getConversationId())) {
             throw new AccessForbiddenException(Translator.tolocale(ERROR_MSG_EDIT_FORBIDDEN_STRING));
         }
 
@@ -363,8 +365,21 @@ public class MessageServiceImpl implements MessageService {
 
         ChatMessage msg = getMessageFromDbOrRedis(request.getMessageId(), convId);
 
-        if (!msg.getSender().equals(senderUsername)) {
+        if (!msg.getSender().equals(senderUsername) || !convId.equals(msg.getConversationId())) {
             throw new AccessForbiddenException(Translator.tolocale(ERROR_MSG_DELETE_FORBIDDEN_STRING));
+        }
+
+        if (msg.isDeleted()) {
+            return;
+        }
+
+        if (msg.getStatus() != MessageStatus.READ && msg.getRecipient() != null) {
+            String unreadKey = UNREAD_COUNTS_STRING + msg.getRecipient();
+            try {
+                redisTemplate.opsForHash().increment(unreadKey, senderUsername, -1);
+            } catch (Exception e) {
+                log.warn("Failed to decrement unread count for recipient '{}'", msg.getRecipient(), e);
+            }
         }
 
         String oldContent = msg.getContent();
@@ -484,46 +499,77 @@ public class MessageServiceImpl implements MessageService {
     }
 
     @Override
-    public void markMessagesAsRead(String recipientUsername, String senderUsername) {
+    public void markMessagesAsRead(String recipientUsername, MarkReadRequest request) {
+        String senderUsername = request.getSender();
         String convId = generateConversationId(recipientUsername, senderUsername);
+        String unreadKey = UNREAD_COUNTS_STRING + recipientUsername;
 
-        Query query = new Query(Criteria.where("recipient").is(recipientUsername)
-                .and("sender").is(senderUsername)
-                .and("status").is(MessageStatus.SENT)
-                .and("messageType").is(MessageType.CHAT));
-
-        Update update = new Update().set("status", MessageStatus.READ);
-        mongoTemplate.updateMulti(query, update, ChatMessage.class);
-
-        String hashKey = CHAT_RECENT_HASH_STRING + convId;
-        String zsetKey = CHAT_RECENT_ZSET_STRING + convId;
-        try {
-            Set<Object> messageIds = redisTemplate.opsForZSet().range(zsetKey, 0, -1);
-            if (messageIds != null && !messageIds.isEmpty()) {
-                List<Object> cachedObjects = redisTemplate.opsForHash().multiGet(hashKey, messageIds);
-                for (Object obj : cachedObjects) {
-                    if (obj instanceof ChatMessage msg && senderUsername.equals(msg.getSender())
-                            && msg.getStatus() != MessageStatus.READ) {
-                        msg.setStatus(MessageStatus.READ);
-                        redisTemplate.opsForHash().put(hashKey, msg.getId(), msg);
-                    }
-                }
-            }
-        } catch (Exception e) {
-            log.warn("Failed to update read status in Redis cache for conversation '{}'", convId, e);
-        }
-
-        String key = UNREAD_COUNTS_STRING + recipientUsername;
-        redisTemplate.opsForHash().delete(key, senderUsername);
+        Map<String, MessageStatus> oldStatuses = new HashMap<>();
+        Object oldUnreadCount = markRecentMessagesAsReadInRedis(convId, senderUsername, unreadKey, oldStatuses);
 
         chatProducer.sendStatusMessage(UpdateMessagePayload.builder().relatedUsername(recipientUsername)
-                .type(UpdateMessageType.STATUS).updateEvent(senderUsername).build())
+                .type(UpdateMessageType.STATUS).updateEvent(request.getSender()).build())
                 .whenComplete((result, ex) -> {
                     if (ex != null) {
                         log.error("Failed to publish read status update to Kafka: reader='{}', sender='{}'",
-                                recipientUsername, senderUsername, ex);
+                                recipientUsername, request.getSender(), ex);
+                        rollbackMarkAsReadInRedis(convId, unreadKey, request.getSender(), oldStatuses, oldUnreadCount);
+                        webSocketErrorHandler.handleChatError(recipientUsername, request,
+                                Translator.tolocale(ERROR_MSG_SYSTEM_OVERLOAD_STRING));
                     }
                 });
+    }
+
+    private Object markRecentMessagesAsReadInRedis(String convId, String senderUsername, String unreadKey,
+            Map<String, MessageStatus> oldStatuses) {
+        String hashKey = CHAT_RECENT_HASH_STRING + convId;
+        String zsetKey = CHAT_RECENT_ZSET_STRING + convId;
+        Object oldUnreadCount = null;
+
+        try {
+            oldUnreadCount = redisTemplate.opsForHash().get(unreadKey, senderUsername);
+            updateCachedMessagesToRead(senderUsername, hashKey, zsetKey, oldStatuses);
+            redisTemplate.opsForHash().delete(unreadKey, senderUsername);
+        } catch (Exception e) {
+            log.warn("Failed to update read status in Redis cache for conversation '{}'", convId, e);
+        }
+        return oldUnreadCount;
+    }
+
+    private void updateCachedMessagesToRead(String senderUsername, String hashKey, String zsetKey,
+            Map<String, MessageStatus> oldStatuses) {
+        Set<Object> messageIds = redisTemplate.opsForZSet().range(zsetKey, 0, -1);
+        if (messageIds == null || messageIds.isEmpty()) {
+            return;
+        }
+
+        List<Object> cachedObjects = redisTemplate.opsForHash().multiGet(hashKey, messageIds);
+        Map<String, Object> updates = new HashMap<>();
+        for (Object obj : cachedObjects) {
+            if (obj instanceof ChatMessage msg && senderUsername.equals(msg.getSender())
+                    && msg.getStatus() != MessageStatus.READ) {
+                oldStatuses.put(msg.getId(), msg.getStatus());
+                msg.setStatus(MessageStatus.READ);
+                updates.put(msg.getId(), msg);
+            }
+        }
+        if (!updates.isEmpty()) {
+            redisTemplate.opsForHash().putAll(hashKey, updates);
+        }
+    }
+
+    private void rollbackMarkAsReadInRedis(String convId, String unreadKey, String senderUsername,
+            Map<String, MessageStatus> oldStatuses, Object oldUnreadCount) {
+        try {
+            for (Map.Entry<String, MessageStatus> entry : oldStatuses.entrySet()) {
+                updateMessageInRedisCache(convId, entry.getKey(), m -> m.setStatus(entry.getValue()));
+            }
+            if (oldUnreadCount != null) {
+                redisTemplate.opsForHash().put(unreadKey, senderUsername, oldUnreadCount);
+            }
+        } catch (Exception rollbackEx) {
+            log.error("Failed to rollback Redis cache on markAsRead failure for conv '{}'", convId, rollbackEx);
+        }
     }
 
     private void cacheMessageToRedis(ChatMessage chatMsg) {
@@ -625,6 +671,6 @@ public class MessageServiceImpl implements MessageService {
         } else {
             reactions.remove(senderUsername);
         }
-        message.setReacted(true);
+        message.setReacted(!reactions.isEmpty());
     }
 }
