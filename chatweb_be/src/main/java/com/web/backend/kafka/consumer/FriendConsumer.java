@@ -4,6 +4,7 @@ import org.springframework.kafka.annotation.DltHandler;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.annotation.RetryableTopic;
 import org.springframework.retry.annotation.Backoff;
+import org.springframework.kafka.retrytopic.SameIntervalTopicReuseStrategy;
 import org.springframework.stereotype.Component;
 
 import com.web.backend.common.NotificationsType;
@@ -36,7 +37,7 @@ public class FriendConsumer {
     private static final String SYS_MSG_USER_ONLINE_STRING = "sys.msg.user_online";
     private static final String SYS_MSG_USER_OFFLINE_STRING = "sys.msg.user_offline";
 
-    @RetryableTopic(attempts = "4", backoff = @Backoff(delay = 2000, multiplier = 2.0, maxDelay = 10000, random = true), autoCreateTopics = "true")
+    @RetryableTopic(attempts = "5", backoff = @Backoff(delay = 15000), sameIntervalTopicReuseStrategy = SameIntervalTopicReuseStrategy.SINGLE_TOPIC, autoCreateTopics = "true")
     @KafkaListener(topics = "${spring.kafka.topic.friend.friend-topic}", groupId = "${spring.kafka.topic.friend.friend-group-id}", containerFactory = "jsonKafkaListenerContainerFactory")
     public void listenFriendNotifications(FriendPayload friendEvent) {
         if (friendEvent == null) {
