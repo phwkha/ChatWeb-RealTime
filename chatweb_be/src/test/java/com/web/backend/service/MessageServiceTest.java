@@ -337,6 +337,38 @@ class MessageServiceTest {
     }
 
     @Test
+    void testEditMessage_Success_WithE2EE() {
+        EditMessageRequest request = new EditMessageRequest();
+        request.setMessageId("msg1");
+        request.setNewContent("Encrypted text");
+        request.setRecipient("recipient");
+        request.setIv("new_iv");
+        request.setWrappedKeyRecipient("new_wrapped_recipient");
+        request.setWrappedKeySender("new_wrapped_sender");
+
+        ChatMessage message = new ChatMessage();
+        message.setId("msg1");
+        message.setSender("sender");
+        message.setRecipient("recipient");
+        message.setConversationId("recipient_sender");
+        message.setIv("old_iv");
+
+        when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
+        CompletableFuture<SendResult<String, Object>> future = CompletableFuture
+                .completedFuture(mock(SendResult.class, RETURNS_DEEP_STUBS));
+        when(chatProducer.sendEditMessage(any())).thenReturn(future);
+
+        messageService.editMessage("sender", request);
+
+        assertTrue(message.isEdited());
+        assertEquals("Encrypted text", message.getContent());
+        assertEquals("new_iv", message.getIv());
+        assertEquals("new_wrapped_recipient", message.getWrappedKeyRecipient());
+        assertEquals("new_wrapped_sender", message.getWrappedKeySender());
+        verify(chatProducer).sendEditMessage(any());
+    }
+
+    @Test
     void testEditMessage_Forbidden() {
         EditMessageRequest request = new EditMessageRequest();
         request.setMessageId("msg1");
@@ -384,6 +416,9 @@ class MessageServiceTest {
         message.setConversationId("recipient_sender");
         message.setContent("Secret");
         message.setFileUrl("url");
+        message.setIv("iv123");
+        message.setWrappedKeyRecipient("key_r");
+        message.setWrappedKeySender("key_s");
         message.setStatus(MessageStatus.SENT);
 
         when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
@@ -396,6 +431,9 @@ class MessageServiceTest {
         assertTrue(message.isDeleted());
         assertEquals("", message.getContent());
         assertNull(message.getFileUrl());
+        assertNull(message.getIv());
+        assertNull(message.getWrappedKeyRecipient());
+        assertNull(message.getWrappedKeySender());
         verify(hashOperations).increment(eq("unread_counts:recipient"), eq("sender"), eq(-1L));
         verify(chatProducer).sendRevokeMessage(any());
     }
@@ -424,6 +462,8 @@ class MessageServiceTest {
     void testGetMessageById_Success() {
         ChatMessage message = new ChatMessage();
         message.setId("msg1");
+        message.setSender("sender");
+        message.setRecipient("userB");
         message.setConversationId("sender_userB");
 
         when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
@@ -437,11 +477,26 @@ class MessageServiceTest {
     @Test
     void testGetMessageById_Forbidden() {
         ChatMessage message = new ChatMessage();
+        message.setSender("userB");
+        message.setRecipient("userC");
         message.setConversationId("userB_userC");
 
         when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
 
         assertThrows(AccessForbiddenException.class, () -> messageService.getMessageById("msg1", "sender"));
+    }
+
+    @Test
+    void testGetMessageById_Forbidden_SubstringMatch() {
+        // User 'an' should NOT be able to view message between 'anh' and 'hoang'
+        ChatMessage message = new ChatMessage();
+        message.setSender("anh");
+        message.setRecipient("hoang");
+        message.setConversationId("anh_hoang");
+
+        when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
+
+        assertThrows(AccessForbiddenException.class, () -> messageService.getMessageById("msg1", "an"));
     }
 
     // ==========================================
