@@ -85,6 +85,8 @@ public class MessageServiceImpl implements MessageService {
 
     private final WebSocketErrorHandler webSocketErrorHandler;
 
+    private final com.web.backend.service.WebSocketRoutingService webSocketRoutingService;
+
     private static final String TIMESTAMP_STRING = "timestamp";
 
     private static final String CHAT_RECENT_HASH_STRING = "chat:recent:hash:";
@@ -141,6 +143,15 @@ public class MessageServiceImpl implements MessageService {
                 } else if (chatMsg.getMessageType() == MessageType.CHAT) {
                     log.debug("Published message '{}' to Kafka successfully", chatMsg.getId());
                     updateMessageInRedisCache(convId, chatMsg.getId(), m -> m.setStatus(MessageStatus.SENT));
+                    try {
+                        ChatMessageResponse messageResponse = messageMapper.toResponse(chatMsg);
+                        messageResponse.setStatus(MessageStatus.SENT);
+                        webSocketRoutingService.routeMessage(sender, "/queue/messages", messageResponse);
+                        log.debug("Dispatched ACK to sender '{}' for message '{}'", sender, chatMsg.getId());
+                    } catch (Exception routeEx) {
+                        log.error("Failed to route ACK to sender '{}' for message '{}'", sender, chatMsg.getId(),
+                                routeEx);
+                    }
                 }
             });
         } catch (Exception syncEx) {
