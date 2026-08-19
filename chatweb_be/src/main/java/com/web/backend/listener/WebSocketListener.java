@@ -35,7 +35,7 @@ public class WebSocketListener {
 
     private static final String ONLINE_USERS_COUNT_KEY = "online_users_count";
 
-    private static final String WS_ROUTING_STRING = "ws:routing:";
+    private static final String WS_ROUTING_SERVERS_KEY = "ws:routing:servers:";
 
     @EventListener
     public void handleWebSocketConnectListener(SessionConnectedEvent event) {
@@ -63,8 +63,8 @@ public class WebSocketListener {
             log.debug("User '{}' opened additional session [totalSessions={}]", username, count);
         }
 
-        redisTemplate.opsForValue().set(WS_ROUTING_STRING + username, ServerIdentity.SERVER_ID);
-        log.debug("Mapped user '{}' to server node '{}'", username, ServerIdentity.SERVER_ID);
+        redisTemplate.opsForHash().increment(WS_ROUTING_SERVERS_KEY + username, ServerIdentity.SERVER_ID, 1);
+        log.debug("Mapped user '{}' session to server node '{}'", username, ServerIdentity.SERVER_ID);
     }
 
     @EventListener
@@ -86,6 +86,11 @@ public class WebSocketListener {
             count = 0L;
         }
 
+        Long nodeSessions = redisTemplate.opsForHash().increment(WS_ROUTING_SERVERS_KEY + username, ServerIdentity.SERVER_ID, -1);
+        if (nodeSessions != null && nodeSessions <= 0) {
+            redisTemplate.opsForHash().delete(WS_ROUTING_SERVERS_KEY + username, ServerIdentity.SERVER_ID);
+        }
+
         if (count != null && count <= 0) {
             log.debug("User session count <= 0. Scheduling offline debounce for user '{}'", username);
             scheduler.schedule(() -> processOfflineDebounce(username), 5, TimeUnit.SECONDS);
@@ -101,7 +106,7 @@ public class WebSocketListener {
             if (currentCount <= 0) {
                 redisTemplate.opsForZSet().remove(ONLINE_USERS_KEY, username);
                 redisTemplate.opsForHash().delete(ONLINE_USERS_COUNT_KEY, username);
-                redisTemplate.delete(WS_ROUTING_STRING + username);
+                redisTemplate.delete(WS_ROUTING_SERVERS_KEY + username);
                 userService.setUserOnlineStatus(username, false);
                 log.info("User '{}' disconnected completely (All sessions closed)", username);
             } else {

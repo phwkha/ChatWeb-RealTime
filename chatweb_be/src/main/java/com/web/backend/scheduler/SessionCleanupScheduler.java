@@ -39,7 +39,7 @@ public class SessionCleanupScheduler {
                         String username = (String) userObj;
                         redisTemplate.opsForZSet().remove(ONLINE_USERS_KEY, username);
                         redisTemplate.opsForHash().delete(ONLINE_USERS_COUNT_KEY, username);
-                        redisTemplate.delete("ws:routing:" + username);
+                        redisTemplate.delete("ws:routing:servers:" + username);
                         userService.setUserOnlineStatus(username, false);
                         log.debug("Cleaned up zombie session for user '{}'", username);
                     }
