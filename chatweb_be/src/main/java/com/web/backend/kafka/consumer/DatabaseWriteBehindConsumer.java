@@ -17,6 +17,8 @@ import com.web.backend.service.WebSocketRoutingService;
 import com.web.backend.controller.response.ChatMessageResponse;
 import com.web.backend.mapper.MessageMapper;
 
+import org.springframework.data.mongodb.core.BulkOperations;
+import org.springframework.data.mongodb.BulkOperationException;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.dao.DuplicateKeyException;
 
@@ -47,14 +49,7 @@ public class DatabaseWriteBehindConsumer {
             return;
         }
 
-        long oldestKafkaTimestamp = timestamps.stream().min(Long::compareTo).orElse(System.currentTimeMillis());
-        long ageMillis = System.currentTimeMillis() - oldestKafkaTimestamp;
-
-        if (ageMillis >= MAX_RETRY_DURATION_MS) {
-            log.warn("Batch is older than 4 minutes (age: {} ms). Routing to DLT topic '{}'", ageMillis, DLT_TOPIC);
-            for (ChatMessageAvro msg : payloadsToSave) {
-                avroChatKafkaTemplate.send(DLT_TOPIC, msg.getConversationId(), msg);
-            }
+        if (isBatchExpiredAndRoutedToDlt(timestamps, payloadsToSave)) {
             return;
         }
 
@@ -65,17 +60,39 @@ public class DatabaseWriteBehindConsumer {
                 .map(messageMapper::toEntity)
                 .toList();
 
+        saveBatchToMongo(entitiesToSave, payloadsToSave.size());
+        sendAcknowledgements(payloadsToSave);
+    }
+
+    private boolean isBatchExpiredAndRoutedToDlt(List<Long> timestamps, List<ChatMessageAvro> payloadsToSave) {
+        long oldestKafkaTimestamp = timestamps.stream().min(Long::compareTo).orElse(System.currentTimeMillis());
+        long ageMillis = System.currentTimeMillis() - oldestKafkaTimestamp;
+
+        if (ageMillis >= MAX_RETRY_DURATION_MS) {
+            log.warn("Batch is older than 4 minutes (age: {} ms). Routing to DLT topic '{}'", ageMillis, DLT_TOPIC);
+            for (ChatMessageAvro msg : payloadsToSave) {
+                avroChatKafkaTemplate.send(DLT_TOPIC, msg.getConversationId(), msg);
+            }
+            return true;
+        }
+        return false;
+    }
+
+    private void saveBatchToMongo(List<ChatMessage> entitiesToSave, int batchSize) {
         try {
-            mongoTemplate.insertAll(entitiesToSave);
+            BulkOperations bulkOps = mongoTemplate.bulkOps(BulkOperations.BulkMode.UNORDERED, ChatMessage.class);
+            bulkOps.insert(entitiesToSave);
+            bulkOps.execute();
             log.info("Persisted batch of {} chat messages to MongoDB successfully", entitiesToSave.size());
+        } catch (BulkOperationException e) {
+            log.warn("Batch bulk insert encountered duplicate keys or partial failure, valid items still persisted: {}", e.getMessage());
         } catch (DuplicateKeyException e) {
             log.warn("Batch contains messages already persisted to MongoDB, skipping duplicates: {}", e.getMessage());
         } catch (Exception e) {
             log.error("Failed to persist batch of {} chat messages to MongoDB. Triggering Kafka retry...",
-                    payloadsToSave.size(), e);
+                    batchSize, e);
             throw e;
         }
-        sendAcknowledgements(payloadsToSave);
     }
 
     private void sendAcknowledgements(List<ChatMessageAvro> payloadsToSave) {

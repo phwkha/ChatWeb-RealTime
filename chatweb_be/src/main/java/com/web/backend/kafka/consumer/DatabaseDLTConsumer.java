@@ -14,6 +14,8 @@ import com.web.backend.common.MessageType;
 import com.web.backend.kafka.avro.ChatMessageAvro;
 import com.web.backend.model.ChatMessage;
 import com.web.backend.mapper.MessageMapper;
+import org.springframework.data.mongodb.core.BulkOperations;
+import org.springframework.data.mongodb.BulkOperationException;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.dao.DuplicateKeyException;
 
@@ -73,8 +75,12 @@ public class DatabaseDLTConsumer {
         List<ChatMessage> entitiesToSave = payloadsToSave.stream().map(messageMapper::toEntity).toList();
 
         try {
-            mongoTemplate.insertAll(entitiesToSave);
+            BulkOperations bulkOps = mongoTemplate.bulkOps(BulkOperations.BulkMode.UNORDERED, ChatMessage.class);
+            bulkOps.insert(entitiesToSave);
+            bulkOps.execute();
             log.info("DLT: Persisted batch of {} chat messages to MongoDB successfully", entitiesToSave.size());
+        } catch (BulkOperationException e) {
+            log.warn("DLT: Batch bulk insert encountered duplicate keys or partial failure, valid items still persisted: {}", e.getMessage());
         } catch (DuplicateKeyException e) {
             log.warn("DLT: Batch contains messages already persisted to MongoDB, skipping.");
         } catch (Exception e) {
