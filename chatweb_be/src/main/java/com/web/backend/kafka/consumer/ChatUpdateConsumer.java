@@ -2,9 +2,12 @@ package com.web.backend.kafka.consumer;
 
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.annotation.RetryableTopic;
+import org.springframework.kafka.retrytopic.SameIntervalTopicReuseStrategy;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.stereotype.Component;
 
+import com.web.backend.common.MessageStatus;
+import com.web.backend.common.MessageType;
 import com.web.backend.common.NotificationsType;
 import com.web.backend.common.UpdateMessageType;
 import com.web.backend.controller.response.ChatMessageResponse;
@@ -22,13 +25,16 @@ import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.data.redis.core.RedisTemplate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import java.sql.SQLException;
+import java.net.SocketTimeoutException;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 @Component
 @RequiredArgsConstructor
 @Slf4j(topic = "CHAT-UPDATE-CONSUMER")
-public class ChatUpdateConsunmer {
+public class ChatUpdateConsumer {
 
     private final MessageMapper messageMapper;
     private final WebSocketRoutingService webSocketRoutingService;
@@ -38,13 +44,14 @@ public class ChatUpdateConsunmer {
 
     private static final String QUEUE_NOTIFICATIONS_STRING = "/queue/notifications";
     private static final String CHAT_RECENT_HASH_STRING = "chat:recent:hash:";
-    
+
     private static final String SYS_MSG_EDIT_MESSAGE_STRING = "sys.msg.edit_message";
     private static final String SYS_MSG_REVOKE_MESSAGE_STRING = "sys.msg.revoke_message";
     private static final String SYS_MSG_REACT_MESSAGE_STRING = "sys.msg.react_message";
     private static final String SYS_MSG_STATUS_MESSAGE_STRING = "sys.msg.status_message";
 
-    @RetryableTopic(attempts = "Integer.MAX_VALUE", backoff = @Backoff(delay = 1000, multiplier = 2.0, maxDelay = 30000, random = true), autoCreateTopics = "true")
+    @RetryableTopic(attempts = "-1", backoff = @Backoff(delay = 5000), sameIntervalTopicReuseStrategy = SameIntervalTopicReuseStrategy.SINGLE_TOPIC, include = {
+            SQLException.class, SocketTimeoutException.class, IllegalStateException.class })
     @KafkaListener(topics = "${spring.kafka.topic.update-message.update}", groupId = "${spring.kafka.topic.update-message.group-id}", containerFactory = "jsonKafkaListenerContainerFactory")
     public void handleMessageUpdates(UpdateMessagePayload updateEvent) {
         if (updateEvent.type() != UpdateMessageType.STATUS && updateEvent.updateEvent() != null) {
@@ -89,6 +96,15 @@ public class ChatUpdateConsunmer {
             case EDIT:
                 update.set("content", msg.getContent());
                 update.set("isEdited", true);
+                if (msg.getIv() != null) {
+                    update.set("iv", msg.getIv());
+                }
+                if (msg.getWrappedKeyRecipient() != null) {
+                    update.set("wrappedKeyRecipient", msg.getWrappedKeyRecipient());
+                }
+                if (msg.getWrappedKeySender() != null) {
+                    update.set("wrappedKeySender", msg.getWrappedKeySender());
+                }
                 break;
             case REVOKE:
                 update.set("content", "");
@@ -96,6 +112,9 @@ public class ChatUpdateConsunmer {
                 update.set("fileName", null);
                 update.set("fileSize", null);
                 update.set("reactions", null);
+                update.set("iv", null);
+                update.set("wrappedKeyRecipient", null);
+                update.set("wrappedKeySender", null);
                 update.set("isDeleted", true);
                 break;
             case REACT:
@@ -114,6 +133,9 @@ public class ChatUpdateConsunmer {
             update.set("isReacted", true);
         } else {
             update.unset("reactions." + reactor);
+            if (msg.getReactions() == null || msg.getReactions().isEmpty()) {
+                update.set("isReacted", false);
+            }
         }
     }
 
@@ -143,16 +165,29 @@ public class ChatUpdateConsunmer {
 
     private void processStatusUpdate(UpdateMessagePayload updateEvent) {
         String reader = updateEvent.relatedUsername();
-        String receiver = (updateEvent.updateEvent() instanceof String r) ? r : null;
+        String sender = (updateEvent.updateEvent() instanceof String r) ? r : null;
+        if (reader == null || sender == null) {
+            return;
+        }
+
         try {
-            if (receiver != null) {
-                NotificationResponse<?> response = buildResponse(reader, updateEvent.type(), null);
-                webSocketRoutingService.routeMessage(receiver, QUEUE_NOTIFICATIONS_STRING, response);
-                log.debug("Dispatched read status notification from '{}' to receiver '{}'", reader, receiver);
-            }
+            Query query = new Query(Criteria.where("recipient").is(reader)
+                    .and("sender").is(sender)
+                    .and("status").is(MessageStatus.SENT)
+                    .and("messageType").is(MessageType.CHAT));
+
+            Update update = new Update().set("status", MessageStatus.READ);
+            mongoTemplate.updateMulti(query, update, ChatMessage.class);
+
+            log.debug("Updated read status in MongoDB for reader '{}' and sender '{}'", reader, sender);
+
+            NotificationResponse<?> response = buildResponse(reader, updateEvent.type(), null);
+            webSocketRoutingService.routeMessage(sender, QUEUE_NOTIFICATIONS_STRING, response);
+            webSocketRoutingService.routeMessage(reader, QUEUE_NOTIFICATIONS_STRING, response);
+            log.debug("Dispatched read status notifications for reader '{}' and sender '{}'", reader, sender);
         } catch (Exception e) {
-            log.error("Failed to route WebSocket read status notification from '{}' to receiver '{}'", reader,
-                    receiver, e);
+            log.error("Failed to process read status update for reader '{}' and sender '{}'", reader,
+                    sender, e);
         }
     }
 
@@ -180,7 +215,7 @@ public class ChatUpdateConsunmer {
             response.setData(messageMapper.toResponse(chatMessage));
             return response;
         } else {
-            return NotificationResponse.notificationData(NotificationsType.STATUS_MESSAGE, relatedUsername, 
+            return NotificationResponse.notificationData(NotificationsType.STATUS_MESSAGE, relatedUsername,
                     Translator.tolocale(SYS_MSG_STATUS_MESSAGE_STRING));
         }
     }
