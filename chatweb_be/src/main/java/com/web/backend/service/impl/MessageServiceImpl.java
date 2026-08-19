@@ -115,6 +115,7 @@ public class MessageServiceImpl implements MessageService {
         String convId = generateConversationId(sender, request.getRecipient());
         ChatMessage chatMsg = buildChatMessage(sender, request, convId);
         ChatMessageAvro payload = messageMapper.toAvro(chatMsg);
+        payload.setStatus(MessageStatus.SENT.name());
         payload.setLocalId(request.getLocalId());
 
         try {
