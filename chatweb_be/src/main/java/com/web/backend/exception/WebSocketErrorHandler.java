@@ -3,30 +3,35 @@ package com.web.backend.exception;
 import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.response.ErrorSocketResponse;
 
+import com.web.backend.service.WebSocketRoutingService;
+
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.messaging.handler.annotation.MessageExceptionHandler;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.messaging.converter.MessageConversionException;
 import org.springframework.security.core.Authentication;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.validation.BindingResult;
-import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
-import org.springframework.messaging.simp.SimpMessageType;
 import org.springframework.messaging.handler.annotation.support.MethodArgumentNotValidException;
 import org.springframework.messaging.handler.annotation.Header;
 import com.web.backend.exception.custom.AccessForbiddenException;
+import com.web.backend.exception.custom.AuthenticationFailedException;
 import com.web.backend.exception.custom.InvalidDataException;
 import com.web.backend.exception.custom.ResourceNotFoundException;
 import com.web.backend.exception.custom.ResourceConflictException;
 import com.web.backend.exception.custom.SystemOverloadException;
+import com.web.backend.exception.custom.TooManyRequestsException;
 import org.springframework.security.access.AccessDeniedException;
+import jakarta.validation.ConstraintViolationException;
 
 @ControllerAdvice
 @RequiredArgsConstructor
+@Slf4j(topic = "WEBSOCKET-ERROR-HANDLE")
 public class WebSocketErrorHandler {
 
-    private final SimpMessagingTemplate simpMessagingTemplate;
+    private final WebSocketRoutingService webSocketRoutingService;
 
     private static final String QUEUE_ERRORS_STRING = "/queue/errors";
 
@@ -35,25 +40,29 @@ public class WebSocketErrorHandler {
     private static final String ERROR_SYS_BUSY_STRING = "error.sys.busy";
 
     public void handleChatError(String username, Object request, String message) {
-        simpMessagingTemplate.convertAndSendToUser(
-                username,
-                QUEUE_ERRORS_STRING,
-                ErrorSocketResponse.builder().message(message).request(request).build());
+        try {
+            webSocketRoutingService.routeMessage(username,
+                    QUEUE_ERRORS_STRING,
+                    ErrorSocketResponse.builder().message(message).request(request).build());
+            log.debug("Dispatched WebSocket error to user '{}': {}", username, message);
+        } catch (Exception e) {
+            log.error("Push error message to user '{}' failed: {}", username, message, e);
+        }
     }
 
     public void handleChatError(Authentication authentication, String sessionId, Object request, String message) {
+        ErrorSocketResponse errorResponse = ErrorSocketResponse.builder().message(message).request(request).build();
         if (authentication != null && authentication.getName() != null) {
-            handleChatError(authentication.getName(), request, message);
+            try {
+                webSocketRoutingService.routeMessage(authentication.getName(), QUEUE_ERRORS_STRING, errorResponse);
+                log.debug("Dispatched WebSocket error to user '{}': {}", authentication.getName(), message);
+            } catch (Exception e) {
+                log.error("Push error message to user '{}' failed: {}", authentication.getName(), message, e);
+            }
         } else if (sessionId != null) {
-            SimpMessageHeaderAccessor headerAccessor = SimpMessageHeaderAccessor
-                    .create(SimpMessageType.MESSAGE);
-            headerAccessor.setSessionId(sessionId);
-            headerAccessor.setLeaveMutable(true);
-            simpMessagingTemplate.convertAndSendToUser(
-                    sessionId,
-                    QUEUE_ERRORS_STRING,
-                    ErrorSocketResponse.builder().message(message).request(request).build(),
-                    headerAccessor.getMessageHeaders());
+            webSocketRoutingService.routeMessageToSession(sessionId, QUEUE_ERRORS_STRING, errorResponse);
+        } else {
+            log.warn("Unable to route WebSocket error (both authentication and sessionId are null): {}", message);
         }
     }
 
@@ -138,12 +147,54 @@ public class WebSocketErrorHandler {
         this.handleChatError(authentication, sessionId, ex.getRequestData(), ex.getMessage());
     }
 
+    @MessageExceptionHandler(TooManyRequestsException.class)
+    public void handleTooManyRequestsException(
+            TooManyRequestsException ex,
+            Authentication authentication,
+            @Header(value = "simpSessionId", required = false) String sessionId) {
+        String message = Translator.tolocale(ex.getMessageKey());
+        this.handleChatError(authentication, sessionId, null, message);
+    }
+
+    @MessageExceptionHandler(AuthenticationFailedException.class)
+    public void handleAuthenticationFailedException(
+            AuthenticationFailedException ex,
+            Authentication authentication,
+            @Header(value = "simpSessionId", required = false) String sessionId) {
+        this.handleChatError(authentication, sessionId, null, ex.getMessage());
+    }
+
+    @MessageExceptionHandler(ConstraintViolationException.class)
+    public void handleConstraintViolationException(
+            ConstraintViolationException ex,
+            Authentication authentication,
+            @Header(value = "simpSessionId", required = false) String sessionId) {
+        String errorMessage = Translator.tolocale(ERROR_WS_INVALID_DATA_STRING);
+        this.handleChatError(authentication, sessionId, null, errorMessage);
+    }
+
+    @MessageExceptionHandler(IllegalArgumentException.class)
+    public void handleIllegalArgumentException(
+            IllegalArgumentException ex,
+            Authentication authentication,
+            @Header(value = "simpSessionId", required = false) String sessionId) {
+        this.handleChatError(authentication, sessionId, null, ex.getMessage());
+    }
+
+    @MessageExceptionHandler(IllegalStateException.class)
+    public void handleIllegalStateException(
+            IllegalStateException ex,
+            Authentication authentication,
+            @Header(value = "simpSessionId", required = false) String sessionId) {
+        this.handleChatError(authentication, sessionId, null, ex.getMessage());
+    }
+
     @MessageExceptionHandler(Exception.class)
     public void handleAllOtherExceptions(
             Exception ex,
             Authentication authentication,
             @Header(value = "simpSessionId", required = false) String sessionId) {
-
+        log.error("Unhandled WebSocket exception: ", ex);
         String errorMessage = Translator.tolocale(ERROR_SYS_BUSY_STRING);
 
         this.handleChatError(authentication, sessionId, null, errorMessage);

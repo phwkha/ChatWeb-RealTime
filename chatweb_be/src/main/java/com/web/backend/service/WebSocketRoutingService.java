@@ -5,8 +5,12 @@ import com.web.backend.redis.RedisWsMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
+import org.springframework.messaging.simp.SimpMessageType;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
+
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -23,7 +27,7 @@ public class WebSocketRoutingService {
         if (username == null) {
             return;
         }
-        java.util.Set<Object> targetServerIds = redisTemplate.opsForHash().keys(WS_ROUTING_SERVERS_KEY + username);
+        Set<Object> targetServerIds = redisTemplate.opsForHash().keys(WS_ROUTING_SERVERS_KEY + username);
         if (targetServerIds != null && !targetServerIds.isEmpty()) {
             boolean sentLocally = false;
             for (Object serverIdObj : targetServerIds) {
@@ -43,6 +47,26 @@ public class WebSocketRoutingService {
             }
         } else {
             log.debug("User '{}' is offline. Skipped WebSocket routing on destination '{}'", username, destination);
+        }
+    }
+
+    public void routeMessageToSession(String sessionId, String destination, Object payload) {
+        if (sessionId == null) {
+            return;
+        }
+        try {
+            SimpMessageHeaderAccessor headerAccessor = SimpMessageHeaderAccessor
+                    .create(SimpMessageType.MESSAGE);
+            headerAccessor.setSessionId(sessionId);
+            headerAccessor.setLeaveMutable(true);
+            simpMessagingTemplate.convertAndSendToUser(
+                    sessionId,
+                    destination,
+                    payload,
+                    headerAccessor.getMessageHeaders());
+            log.debug("Routed message directly to session '{}' on destination '{}'", sessionId, destination);
+        } catch (Exception e) {
+            log.error("Failed to route message directly to session '{}' on destination '{}'", sessionId, destination, e);
         }
     }
 }
