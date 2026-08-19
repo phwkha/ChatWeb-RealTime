@@ -52,4 +52,12 @@ public class KafkaTopicConfig {
                 .replicas(2)
                 .build();
     }
+
+    @Bean
+    public NewTopic chatMessagesDltTopicBean() {
+        return TopicBuilder.name("chat.messages.dlt")
+                .partitions(12)
+                .replicas(2)
+                .build();
+    }
 }

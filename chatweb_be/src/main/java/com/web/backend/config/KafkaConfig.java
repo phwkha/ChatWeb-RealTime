@@ -1,5 +1,7 @@
 package com.web.backend.config;
 
+import org.springframework.kafka.listener.DefaultErrorHandler;
+import org.springframework.util.backoff.ExponentialBackOff;
 import com.web.backend.kafka.avro.ChatMessageAvro;
 import io.confluent.kafka.serializers.KafkaAvroDeserializer;
 import io.confluent.kafka.serializers.KafkaAvroDeserializerConfig;
@@ -76,6 +78,7 @@ public class KafkaConfig {
         props.put(ErrorHandlingDeserializer.KEY_DESERIALIZER_CLASS, StringDeserializer.class);
         props.put(ErrorHandlingDeserializer.VALUE_DESERIALIZER_CLASS, KafkaAvroDeserializer.class);
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
+        props.put(ConsumerConfig.MAX_POLL_INTERVAL_MS_CONFIG, 600000);
         props.put("schema.registry.url", schemaRegistryUrl);
         props.put(KafkaAvroDeserializerConfig.SPECIFIC_AVRO_READER_CONFIG, true);
         return props;
@@ -112,6 +115,18 @@ public class KafkaConfig {
         factory.setConsumerFactory(batchChatConsumerFactory());
         factory.setBatchListener(true);
         factory.setConcurrency(2);
+        return factory;
+    }
+
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<String, ChatMessageAvro> dltRetryBatchListenerContainerFactory() {
+        ConcurrentKafkaListenerContainerFactory<String, ChatMessageAvro> factory = new ConcurrentKafkaListenerContainerFactory<>();
+        factory.setConsumerFactory(batchChatConsumerFactory());
+        factory.setBatchListener(true);
+        factory.setConcurrency(1);
+        ExponentialBackOff backOff = new ExponentialBackOff(2000L, 2.0);
+        backOff.setMaxInterval(60000L);
+        factory.setCommonErrorHandler(new DefaultErrorHandler(backOff));
         return factory;
     }
 
