@@ -18,6 +18,11 @@ public interface MessageMapper {
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "timestamp", ignore = true)
+    @Mapping(target = "status", ignore = true)
+    @Mapping(target = "edited", ignore = true)
+    @Mapping(target = "deleted", ignore = true)
+    @Mapping(target = "reacted", ignore = true)
+    @Mapping(target = "reactions", ignore = true)
     ChatMessage toEntity(ChatMessageRequest request);
 
     ChatMessageResponse toResponse(ChatMessage entity);

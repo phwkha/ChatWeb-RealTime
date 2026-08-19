@@ -131,8 +131,28 @@ class MessageServiceTest {
 
         ChatMessageRequest request = new ChatMessageRequest();
         request.setRecipient("recipient");
+        request.setContent("Hello!");
 
         assertThrows(ResourceNotFoundException.class, () -> messageService.sendPrivateMessage("sender", request));
+    }
+
+    @Test
+    void testSendPrivateMessage_SelfSend_ThrowsInvalidDataException() {
+        ChatMessageRequest request = new ChatMessageRequest();
+        request.setRecipient("sender");
+        request.setContent("Hello myself!");
+
+        assertThrows(InvalidDataException.class, () -> messageService.sendPrivateMessage("sender", request));
+    }
+
+    @Test
+    void testSendPrivateMessage_EmptyContentAndFile_ThrowsInvalidDataException() {
+        ChatMessageRequest request = new ChatMessageRequest();
+        request.setRecipient("recipient");
+        request.setContent("   ");
+        request.setFileUrl(null);
+
+        assertThrows(InvalidDataException.class, () -> messageService.sendPrivateMessage("sender", request));
     }
 
     @Test
@@ -142,6 +162,7 @@ class MessageServiceTest {
 
         ChatMessageRequest request = new ChatMessageRequest();
         request.setRecipient("recipient");
+        request.setContent("Hello!");
 
         assertThrows(AccessForbiddenException.class, () -> messageService.sendPrivateMessage("sender", request));
     }
@@ -153,6 +174,7 @@ class MessageServiceTest {
 
         ChatMessageRequest request = new ChatMessageRequest();
         request.setRecipient("recipient");
+        request.setContent("Hello!");
 
         assertThrows(AccessForbiddenException.class, () -> messageService.sendPrivateMessage("sender", request));
     }
@@ -164,6 +186,7 @@ class MessageServiceTest {
 
         ChatMessageRequest request = new ChatMessageRequest();
         request.setRecipient("recipient");
+        request.setContent("Hello!");
 
         assertThrows(AccessForbiddenException.class, () -> messageService.sendPrivateMessage("sender", request));
     }
@@ -202,8 +225,10 @@ class MessageServiceTest {
 
         // Assert
         verify(chatProducer).sendChatMessage(any(ChatMessageAvro.class));
-
-
+        assertFalse(chatMessage.isEdited());
+        assertFalse(chatMessage.isDeleted());
+        assertFalse(chatMessage.isReacted());
+        assertNull(chatMessage.getReactions());
     }
 
     // ==========================================
@@ -323,6 +348,7 @@ class MessageServiceTest {
         message.setSender("sender");
         message.setRecipient("recipient");
         message.setConversationId("recipient_sender");
+        message.setMessageType(com.web.backend.common.MessageType.CHAT);
 
         when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
         CompletableFuture<SendResult<String, Object>> future = CompletableFuture
@@ -352,6 +378,7 @@ class MessageServiceTest {
         message.setRecipient("recipient");
         message.setConversationId("recipient_sender");
         message.setIv("old_iv");
+        message.setMessageType(com.web.backend.common.MessageType.CHAT);
 
         when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
         CompletableFuture<SendResult<String, Object>> future = CompletableFuture
@@ -378,10 +405,30 @@ class MessageServiceTest {
         message.setSender("otherUser");
         message.setRecipient("recipient");
         message.setConversationId("recipient_sender");
+        message.setMessageType(com.web.backend.common.MessageType.CHAT);
 
         when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
 
         assertThrows(AccessForbiddenException.class, () -> messageService.editMessage("sender", request));
+    }
+
+    @Test
+    void testEditMessage_NonChatMessage_ThrowsInvalidDataException() {
+        EditMessageRequest request = new EditMessageRequest();
+        request.setMessageId("msg1");
+        request.setRecipient("recipient");
+        request.setNewContent("New text");
+
+        ChatMessage message = new ChatMessage();
+        message.setId("msg1");
+        message.setSender("sender");
+        message.setRecipient("recipient");
+        message.setConversationId("recipient_sender");
+        message.setMessageType(null);
+
+        when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
+
+        assertThrows(InvalidDataException.class, () -> messageService.editMessage("sender", request));
     }
 
     @Test
@@ -397,6 +444,7 @@ class MessageServiceTest {
         message.setRecipient("recipient");
         message.setConversationId("recipient_sender");
         message.setDeleted(true);
+        message.setMessageType(com.web.backend.common.MessageType.CHAT);
 
         when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
 
@@ -420,6 +468,7 @@ class MessageServiceTest {
         message.setWrappedKeyRecipient("key_r");
         message.setWrappedKeySender("key_s");
         message.setStatus(MessageStatus.SENT);
+        message.setMessageType(com.web.backend.common.MessageType.CHAT);
 
         when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
         CompletableFuture<SendResult<String, Object>> future = CompletableFuture
@@ -439,6 +488,24 @@ class MessageServiceTest {
     }
 
     @Test
+    void testRevokeMessage_NonChatMessage_ThrowsInvalidDataException() {
+        RevokeMessageRequest request = new RevokeMessageRequest();
+        request.setMessageId("msg1");
+        request.setRecipient("recipient");
+
+        ChatMessage message = new ChatMessage();
+        message.setId("msg1");
+        message.setSender("sender");
+        message.setRecipient("recipient");
+        message.setConversationId("recipient_sender");
+        message.setMessageType(null);
+
+        when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
+
+        assertThrows(InvalidDataException.class, () -> messageService.revokeMessage("sender", request));
+    }
+
+    @Test
     void testRevokeMessage_AlreadyDeleted_Idempotent() {
         RevokeMessageRequest request = new RevokeMessageRequest();
         request.setMessageId("msg1");
@@ -450,6 +517,7 @@ class MessageServiceTest {
         message.setRecipient("recipient");
         message.setConversationId("recipient_sender");
         message.setDeleted(true);
+        message.setMessageType(com.web.backend.common.MessageType.CHAT);
 
         when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
 
@@ -502,6 +570,16 @@ class MessageServiceTest {
     // ==========================================
     // TESTS FOR UNREAD COUNTS & READ STATUS
     // ==========================================
+
+    @Test
+    void testMarkMessagesAsRead_SelfSender_Ignored() {
+        MarkReadRequest request = new MarkReadRequest();
+        request.setSender("recipient");
+
+        messageService.markMessagesAsRead("recipient", request);
+
+        verify(chatProducer, never()).sendStatusMessage(any());
+    }
 
     @Test
     void testMarkMessagesAsRead_Success() {
@@ -715,8 +793,10 @@ class MessageServiceTest {
 
         ChatMessageRequest request = new ChatMessageRequest();
         request.setRecipient("recipient");
+        request.setFileUrl("https://example.com/image.png");
 
         ChatMessage chatMessage = new ChatMessage();
+        chatMessage.setFileUrl("https://example.com/image.png");
         // timestamp, content, and contentType are null
         when(messageMapper.toEntity(request)).thenReturn(chatMessage);
         CompletableFuture<SendResult<String, ChatMessageAvro>> future = CompletableFuture
@@ -740,6 +820,7 @@ class MessageServiceTest {
 
         ChatMessage dbMsg = new ChatMessage();
         dbMsg.setSender("other_user");
+        dbMsg.setMessageType(com.web.backend.common.MessageType.CHAT);
 
         when(messageRepository.findById("msg1")).thenReturn(Optional.of(dbMsg));
 

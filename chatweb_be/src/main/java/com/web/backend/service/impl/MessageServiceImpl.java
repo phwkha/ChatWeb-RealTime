@@ -100,6 +100,9 @@ public class MessageServiceImpl implements MessageService {
     private static final String ERROR_MSG_EDIT_FORBIDDEN_STRING = "error.msg.edit_forbidden";
     private static final String ERROR_MSG_DELETE_FORBIDDEN_STRING = "error.msg.delete_forbidden";
     private static final String ERROR_MSG_EDIT_DELETED_STRING = "error.msg.edit_deleted";
+    private static final String ERROR_MSG_SELF_SEND_STRING = "error.msg.self_send";
+    private static final String ERROR_MSG_EMPTY_CONTENT_STRING = "error.msg.empty_content";
+    private static final String ERROR_MSG_INVALID_TYPE_STRING = "error.msg.invalid_type";
 
     private String generateConversationId(String user1, String user2) {
         return (user1.compareTo(user2) < 0) ? user1 + "_" + user2 : user2 + "_" + user1;
@@ -146,6 +149,16 @@ public class MessageServiceImpl implements MessageService {
     }
 
     private void validatePrivateMessageRequest(String sender, ChatMessageRequest request) {
+        if (sender.equals(request.getRecipient())) {
+            throw new InvalidDataException(Translator.tolocale(ERROR_MSG_SELF_SEND_STRING), request);
+        }
+
+        boolean hasContent = request.getContent() != null && !request.getContent().trim().isEmpty();
+        boolean hasFile = request.getFileUrl() != null && !request.getFileUrl().trim().isEmpty();
+        if (!hasContent && !hasFile) {
+            throw new InvalidDataException(Translator.tolocale(ERROR_MSG_EMPTY_CONTENT_STRING), request);
+        }
+
         UserEntity recipientEntity = userRepository.findByUsername(request.getRecipient())
                 .orElseThrow(
                         () -> new ResourceNotFoundException(Translator.tolocale(ERROR_MSG_RECIPIENT_NOT_FOUND_STRING),
@@ -169,6 +182,10 @@ public class MessageServiceImpl implements MessageService {
         chatMsg.setSender(sender);
         chatMsg.setId(new ObjectId().toHexString());
         chatMsg.setStatus(MessageStatus.SENDING);
+        chatMsg.setEdited(false);
+        chatMsg.setDeleted(false);
+        chatMsg.setReacted(false);
+        chatMsg.setReactions(null);
         if (chatMsg.getTimestamp() == null) {
             chatMsg.setTimestamp(LocalDateTime.now(ZoneId.systemDefault()));
         }
@@ -327,6 +344,10 @@ public class MessageServiceImpl implements MessageService {
             throw new AccessForbiddenException(Translator.tolocale(ERROR_MSG_EDIT_FORBIDDEN_STRING));
         }
 
+        if (msg.getMessageType() != MessageType.CHAT) {
+            throw new InvalidDataException(Translator.tolocale(ERROR_MSG_INVALID_TYPE_STRING));
+        }
+
         if (msg.isDeleted()) {
             throw new InvalidDataException(Translator.tolocale(ERROR_MSG_EDIT_DELETED_STRING));
         }
@@ -391,6 +412,10 @@ public class MessageServiceImpl implements MessageService {
 
         if (!msg.getSender().equals(senderUsername) || !convId.equals(msg.getConversationId())) {
             throw new AccessForbiddenException(Translator.tolocale(ERROR_MSG_DELETE_FORBIDDEN_STRING));
+        }
+
+        if (msg.getMessageType() != MessageType.CHAT) {
+            throw new InvalidDataException(Translator.tolocale(ERROR_MSG_INVALID_TYPE_STRING));
         }
 
         if (msg.isDeleted()) {
@@ -537,6 +562,9 @@ public class MessageServiceImpl implements MessageService {
     @Override
     public void markMessagesAsRead(String recipientUsername, MarkReadRequest request) {
         String senderUsername = request.getSender();
+        if (recipientUsername.equals(senderUsername)) {
+            return;
+        }
         String convId = generateConversationId(recipientUsername, senderUsername);
         String unreadKey = UNREAD_COUNTS_STRING + recipientUsername;
 
