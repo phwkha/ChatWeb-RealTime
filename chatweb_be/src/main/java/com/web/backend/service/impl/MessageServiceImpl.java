@@ -310,7 +310,7 @@ public class MessageServiceImpl implements MessageService {
         ChatMessage message = messageRepository.findById(Objects.requireNonNull(messageId))
                 .orElseThrow(() -> new ResourceNotFoundException(Translator.tolocale(ERROR_MSG_NOT_FOUND_STRING)));
 
-        if (!message.getConversationId().contains(currentUsername)) {
+        if (!currentUsername.equals(message.getSender()) && !currentUsername.equals(message.getRecipient())) {
             throw new AccessForbiddenException(Translator.tolocale(ERROR_MSG_RECIPIENT_NOT_FOUND_STRING));
         }
 
@@ -333,13 +333,34 @@ public class MessageServiceImpl implements MessageService {
 
         String oldContent = msg.getContent();
         boolean oldIsEdited = msg.isEdited();
+        String oldIv = msg.getIv();
+        String oldWrappedKeyRecipient = msg.getWrappedKeyRecipient();
+        String oldWrappedKeySender = msg.getWrappedKeySender();
 
         msg.setContent(request.getNewContent());
         msg.setEdited(true);
+        if (request.getIv() != null) {
+            msg.setIv(request.getIv());
+        }
+        if (request.getWrappedKeyRecipient() != null) {
+            msg.setWrappedKeyRecipient(request.getWrappedKeyRecipient());
+        }
+        if (request.getWrappedKeySender() != null) {
+            msg.setWrappedKeySender(request.getWrappedKeySender());
+        }
 
         updateMessageInRedisCache(convId, msg.getId(), m -> {
             m.setContent(request.getNewContent());
             m.setEdited(true);
+            if (request.getIv() != null) {
+                m.setIv(request.getIv());
+            }
+            if (request.getWrappedKeyRecipient() != null) {
+                m.setWrappedKeyRecipient(request.getWrappedKeyRecipient());
+            }
+            if (request.getWrappedKeySender() != null) {
+                m.setWrappedKeySender(request.getWrappedKeySender());
+            }
         });
 
         chatProducer
@@ -352,6 +373,9 @@ public class MessageServiceImpl implements MessageService {
                         updateMessageInRedisCache(convId, request.getMessageId(), m -> {
                             m.setContent(oldContent);
                             m.setEdited(oldIsEdited);
+                            m.setIv(oldIv);
+                            m.setWrappedKeyRecipient(oldWrappedKeyRecipient);
+                            m.setWrappedKeySender(oldWrappedKeySender);
                         });
                         webSocketErrorHandler.handleChatError(senderUsername, request,
                                 Translator.tolocale(ERROR_MSG_SYSTEM_OVERLOAD_STRING));
@@ -387,6 +411,9 @@ public class MessageServiceImpl implements MessageService {
         String oldFileName = msg.getFileName();
         Long oldFileSize = msg.getFileSize();
         Map<String, String> oldReactions = msg.getReactions() == null ? null : new HashMap<>(msg.getReactions());
+        String oldIv = msg.getIv();
+        String oldWrappedKeyRecipient = msg.getWrappedKeyRecipient();
+        String oldWrappedKeySender = msg.getWrappedKeySender();
         boolean oldIsDeleted = msg.isDeleted();
 
         msg.setContent("");
@@ -394,6 +421,9 @@ public class MessageServiceImpl implements MessageService {
         msg.setFileName(null);
         msg.setFileSize(null);
         msg.setReactions(null);
+        msg.setIv(null);
+        msg.setWrappedKeyRecipient(null);
+        msg.setWrappedKeySender(null);
         msg.setDeleted(true);
 
         updateMessageInRedisCache(convId, msg.getId(), m -> {
@@ -402,6 +432,9 @@ public class MessageServiceImpl implements MessageService {
             m.setFileName(null);
             m.setFileSize(null);
             m.setReactions(null);
+            m.setIv(null);
+            m.setWrappedKeyRecipient(null);
+            m.setWrappedKeySender(null);
             m.setDeleted(true);
         });
 
@@ -418,6 +451,9 @@ public class MessageServiceImpl implements MessageService {
                             m.setFileName(oldFileName);
                             m.setFileSize(oldFileSize);
                             m.setReactions(oldReactions);
+                            m.setIv(oldIv);
+                            m.setWrappedKeyRecipient(oldWrappedKeyRecipient);
+                            m.setWrappedKeySender(oldWrappedKeySender);
                             m.setDeleted(oldIsDeleted);
                         });
                         webSocketErrorHandler.handleChatError(senderUsername, request,

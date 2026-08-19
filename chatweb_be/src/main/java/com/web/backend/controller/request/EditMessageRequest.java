@@ -15,4 +15,8 @@ public class EditMessageRequest {
     @NotBlank(message = "{valid.content_empty}")
     @Size(max = 10000, message = "{valid.msg_max_10000}")
     private String newContent;
+
+    private String iv;
+    private String wrappedKeyRecipient;
+    private String wrappedKeySender;
 }
