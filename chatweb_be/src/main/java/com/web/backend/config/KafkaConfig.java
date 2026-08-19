@@ -1,7 +1,5 @@
 package com.web.backend.config;
 
-import org.springframework.kafka.listener.DefaultErrorHandler;
-import org.springframework.util.backoff.ExponentialBackOff;
 import com.web.backend.kafka.avro.ChatMessageAvro;
 import io.confluent.kafka.serializers.KafkaAvroDeserializer;
 import io.confluent.kafka.serializers.KafkaAvroDeserializerConfig;
@@ -16,10 +14,16 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.core.*;
+import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.errors.RecordTooLargeException;
+import org.apache.kafka.common.errors.SerializationException;
 import org.springframework.kafka.listener.ContainerProperties;
+import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
+import org.springframework.kafka.listener.DefaultErrorHandler;
 import org.springframework.kafka.support.serializer.ErrorHandlingDeserializer;
 import org.springframework.kafka.support.serializer.JsonDeserializer;
 import org.springframework.kafka.support.serializer.JsonSerializer;
+import org.springframework.util.backoff.FixedBackOff;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -94,10 +98,28 @@ public class KafkaConfig {
     }
 
     @Bean
-    public ConcurrentKafkaListenerContainerFactory<String, ChatMessageAvro> chatAvroListenerContainerFactory() {
+    public DefaultErrorHandler chatAvroErrorHandler(KafkaTemplate<String, ChatMessageAvro> avroChatKafkaTemplate) {
+        DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(avroChatKafkaTemplate,
+                (r, e) -> new TopicPartition("chat.messages.dlt", r.partition()));
+        DefaultErrorHandler errorHandler = new DefaultErrorHandler(recoverer, new FixedBackOff(1000L, 3L));
+        errorHandler.addNotRetryableExceptions(
+                SerializationException.class,
+                RecordTooLargeException.class);
+        return errorHandler;
+    }
+
+    @Bean
+    public DefaultErrorHandler batchChatAvroErrorHandler() {
+        return new DefaultErrorHandler(new FixedBackOff(2000L, 3L));
+    }
+
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<String, ChatMessageAvro> chatAvroListenerContainerFactory(
+            DefaultErrorHandler chatAvroErrorHandler) {
         ConcurrentKafkaListenerContainerFactory<String, ChatMessageAvro> factory = new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(realtimeChatConsumerFactory());
         factory.setConcurrency(4);
+        factory.setCommonErrorHandler(chatAvroErrorHandler);
         return factory;
     }
 
@@ -110,23 +132,13 @@ public class KafkaConfig {
     }
 
     @Bean
-    public ConcurrentKafkaListenerContainerFactory<String, ChatMessageAvro> batchChatAvroListenerContainerFactory() {
+    public ConcurrentKafkaListenerContainerFactory<String, ChatMessageAvro> batchChatAvroListenerContainerFactory(
+            DefaultErrorHandler batchChatAvroErrorHandler) {
         ConcurrentKafkaListenerContainerFactory<String, ChatMessageAvro> factory = new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(batchChatConsumerFactory());
         factory.setBatchListener(true);
         factory.setConcurrency(2);
-        return factory;
-    }
-
-    @Bean
-    public ConcurrentKafkaListenerContainerFactory<String, ChatMessageAvro> dltRetryBatchListenerContainerFactory() {
-        ConcurrentKafkaListenerContainerFactory<String, ChatMessageAvro> factory = new ConcurrentKafkaListenerContainerFactory<>();
-        factory.setConsumerFactory(batchChatConsumerFactory());
-        factory.setBatchListener(true);
-        factory.setConcurrency(1);
-        ExponentialBackOff backOff = new ExponentialBackOff(2000L, 2.0);
-        backOff.setMaxInterval(60000L);
-        factory.setCommonErrorHandler(new DefaultErrorHandler(backOff));
+        factory.setCommonErrorHandler(batchChatAvroErrorHandler);
         return factory;
     }
 
