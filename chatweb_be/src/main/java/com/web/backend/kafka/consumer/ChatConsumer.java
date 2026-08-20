@@ -1,14 +1,14 @@
 package com.web.backend.kafka.consumer;
 
 import org.springframework.kafka.annotation.DltHandler;
-import org.springframework.kafka.annotation.RetryableTopic;
-import org.springframework.retry.annotation.Backoff;
-import org.springframework.kafka.retrytopic.SameIntervalTopicReuseStrategy;
 import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.annotation.RetryableTopic;
+import org.springframework.kafka.retrytopic.SameIntervalTopicReuseStrategy;
 import org.springframework.kafka.support.KafkaHeaders;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.retry.annotation.Backoff;
 import org.springframework.stereotype.Component;
 import com.web.backend.controller.response.ChatMessageResponse;
 import com.web.backend.controller.response.MessageSystemResponse;
@@ -35,7 +35,7 @@ public class ChatConsumer {
 
     private static final String TOPIC_PUBLIC_STRING = "/topic/public";
 
-    @RetryableTopic(attempts = "5", backoff = @Backoff(delay = 10000), sameIntervalTopicReuseStrategy = SameIntervalTopicReuseStrategy.SINGLE_TOPIC, autoCreateTopics = "true")
+    @RetryableTopic(attempts = "5", backoff = @Backoff(delay = 200), sameIntervalTopicReuseStrategy = SameIntervalTopicReuseStrategy.SINGLE_TOPIC, autoCreateTopics = "true")
     @KafkaListener(topics = "${spring.kafka.topic.chat.messages}", groupId = "${spring.kafka.topic.chat.messages-group-id}", containerFactory = "chatAvroListenerContainerFactory")
     public void listenChatMessages(
             @Payload ChatMessageAvro message,
@@ -65,7 +65,7 @@ public class ChatConsumer {
                 message.getSender(), message.getRecipient());
     }
 
-    @RetryableTopic(attempts = "5", backoff = @Backoff(delay = 10000), sameIntervalTopicReuseStrategy = SameIntervalTopicReuseStrategy.SINGLE_TOPIC, autoCreateTopics = "true")
+    @RetryableTopic(attempts = "5", backoff = @Backoff(delay = 200), sameIntervalTopicReuseStrategy = SameIntervalTopicReuseStrategy.SINGLE_TOPIC, autoCreateTopics = "true")
     @KafkaListener(topics = "${spring.kafka.topic.chat.system-messages}", groupId = "${spring.kafka.topic.chat.system-messages-group-id}-${random.uuid}", containerFactory = "jsonKafkaListenerContainerFactory")
     public void listenSystemMessages(SystemMessage systemMessage) {
         if (systemMessage == null)
