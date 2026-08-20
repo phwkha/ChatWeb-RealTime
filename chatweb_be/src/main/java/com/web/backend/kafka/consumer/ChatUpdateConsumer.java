@@ -1,5 +1,6 @@
 package com.web.backend.kafka.consumer;
 
+import org.springframework.kafka.annotation.DltHandler;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.annotation.RetryableTopic;
 import org.springframework.kafka.retrytopic.SameIntervalTopicReuseStrategy;
@@ -11,6 +12,7 @@ import com.web.backend.common.MessageType;
 import com.web.backend.common.NotificationsType;
 import com.web.backend.common.UpdateMessageType;
 import com.web.backend.controller.response.ChatMessageResponse;
+import com.web.backend.controller.response.ErrorSocketResponse;
 import com.web.backend.controller.response.NotificationResponse;
 import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.kafka.payload.UpdateMessagePayload;
@@ -43,14 +45,16 @@ public class ChatUpdateConsumer {
     private final ObjectMapper objectMapper;
 
     private static final String QUEUE_NOTIFICATIONS_STRING = "/queue/notifications";
+    private static final String QUEUE_ERRORS_STRING = "/queue/errors";
     private static final String CHAT_RECENT_HASH_STRING = "chat:recent:hash:";
 
     private static final String SYS_MSG_EDIT_MESSAGE_STRING = "sys.msg.edit_message";
     private static final String SYS_MSG_REVOKE_MESSAGE_STRING = "sys.msg.revoke_message";
     private static final String SYS_MSG_REACT_MESSAGE_STRING = "sys.msg.react_message";
     private static final String SYS_MSG_STATUS_MESSAGE_STRING = "sys.msg.status_message";
+    private static final String ERROR_SYS_PROCESSING_REQ_STRING = "error.sys.processing_req";
 
-    @RetryableTopic(attempts = "-1", backoff = @Backoff(delay = 5000), sameIntervalTopicReuseStrategy = SameIntervalTopicReuseStrategy.SINGLE_TOPIC, include = {
+    @RetryableTopic(attempts = "6", backoff = @Backoff(delay = 500), sameIntervalTopicReuseStrategy = SameIntervalTopicReuseStrategy.SINGLE_TOPIC, include = {
             SQLException.class, SocketTimeoutException.class, IllegalStateException.class })
     @KafkaListener(topics = "${spring.kafka.topic.update-message.update}", groupId = "${spring.kafka.topic.update-message.group-id}", containerFactory = "jsonKafkaListenerContainerFactory")
     public void handleMessageUpdates(UpdateMessagePayload updateEvent) {
@@ -84,6 +88,9 @@ public class ChatUpdateConsumer {
     }
 
     private ChatMessage extractChatMessage(UpdateMessagePayload updateEvent) {
+        if (updateEvent == null || updateEvent.updateEvent() == null) {
+            return null;
+        }
         if (updateEvent.updateEvent() instanceof ChatMessage chatMessage) {
             return chatMessage;
         }
@@ -167,6 +174,7 @@ public class ChatUpdateConsumer {
         String reader = updateEvent.relatedUsername();
         String sender = (updateEvent.updateEvent() instanceof String r) ? r : null;
         if (reader == null || sender == null) {
+            log.warn("Invalid status update event: reader or sender is null");
             return;
         }
 
@@ -236,4 +244,60 @@ public class ChatUpdateConsumer {
         }
     }
 
+    @DltHandler
+    public void handleChatDlt(UpdateMessagePayload updateEvent) {
+        if (updateEvent == null) {
+            return;
+        }
+        log.error("Dead Letter Topic: Failed to process update event [type='{}', user='{}'] after retries exhausted",
+                updateEvent.type(), updateEvent.relatedUsername());
+
+        notifyUserDltFailure(updateEvent.relatedUsername(), updateEvent.updateEvent());
+        restoreRedisCacheFromDb(updateEvent);
+    }
+
+    private void notifyUserDltFailure(String user, Object request) {
+        if (user == null) {
+            return;
+        }
+        try {
+            String errorMsg = Translator.tolocale(ERROR_SYS_PROCESSING_REQ_STRING);
+            webSocketRoutingService.routeMessage(user, QUEUE_ERRORS_STRING,
+                    ErrorSocketResponse.builder()
+                            .message(errorMsg)
+                            .request(request)
+                            .build());
+            log.debug("Dispatched update failure notification to user '{}' via WebSocket", user);
+        } catch (Exception e) {
+            log.error("Failed to route DLT error notification to user '{}'", user, e);
+        }
+    }
+
+    private void restoreRedisCacheFromDb(UpdateMessagePayload updateEvent) {
+        if (updateEvent.type() == UpdateMessageType.STATUS || updateEvent.updateEvent() == null) {
+            return;
+        }
+        try {
+            ChatMessage msg = extractChatMessage(updateEvent);
+            if (msg == null || msg.getId() == null) {
+                return;
+            }
+            ChatMessage dbMsg = mongoTemplate.findById(msg.getId(), ChatMessage.class);
+            if (dbMsg == null || dbMsg.getConversationId() == null) {
+                if (msg.getConversationId() != null) {
+                    String hashKey = CHAT_RECENT_HASH_STRING + msg.getConversationId();
+                    redisTemplate.opsForHash().delete(hashKey, msg.getId());
+                    log.debug("Evicted ghost message '{}' from Redis cache during DLT reconciliation", msg.getId());
+                }
+                return;
+            }
+            String hashKey = CHAT_RECENT_HASH_STRING + dbMsg.getConversationId();
+            if (Boolean.TRUE.equals(redisTemplate.hasKey(hashKey))) {
+                redisTemplate.opsForHash().put(hashKey, dbMsg.getId(), dbMsg);
+                log.debug("Restored Redis cache from DB for message '{}'", dbMsg.getId());
+            }
+        } catch (Exception e) {
+            log.warn("Failed to reconcile Redis cache during DLT processing", e);
+        }
+    }
 }

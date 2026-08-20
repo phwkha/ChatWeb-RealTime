@@ -85,8 +85,6 @@ public class MessageServiceImpl implements MessageService {
 
     private final WebSocketErrorHandler webSocketErrorHandler;
 
-    private final com.web.backend.service.WebSocketRoutingService webSocketRoutingService;
-
     private static final String TIMESTAMP_STRING = "timestamp";
 
     private static final String CHAT_RECENT_HASH_STRING = "chat:recent:hash:";
@@ -113,17 +111,15 @@ public class MessageServiceImpl implements MessageService {
     @Override
     public void sendPrivateMessage(String sender, ChatMessageRequest request) {
         validatePrivateMessageRequest(sender, request);
-
         String convId = generateConversationId(sender, request.getRecipient());
         ChatMessage chatMsg = buildChatMessage(sender, request, convId);
-        ChatMessageAvro payload = messageMapper.toAvro(chatMsg);
-        payload.setStatus(MessageStatus.SENT.name());
-        payload.setLocalId(request.getLocalId());
-
         try {
             if (chatMsg.getMessageType() == MessageType.CHAT) {
                 cacheMessageToRedis(chatMsg);
             }
+            ChatMessageAvro payload = messageMapper.toAvro(chatMsg);
+            payload.setStatus(MessageStatus.SENT.name());
+            payload.setLocalId(request.getLocalId());
             chatProducer.sendChatMessage(payload).whenComplete((result, ex) -> {
                 if (ex != null) {
                     if (chatMsg.getMessageType() == MessageType.CHAT) {
@@ -137,21 +133,11 @@ public class MessageServiceImpl implements MessageService {
                             log.error("Failed to rollback Redis cache for message '{}' in conversation '{}'",
                                     chatMsg.getId(), convId, redisEx);
                         }
-                        webSocketErrorHandler.handleChatError(sender, request,
+                        webSocketErrorHandler.handleChatError(sender, messageMapper.toResponse(chatMsg),
                                 Translator.tolocale(ERROR_MSG_SYSTEM_OVERLOAD_STRING));
                     }
                 } else if (chatMsg.getMessageType() == MessageType.CHAT) {
                     log.debug("Published message '{}' to Kafka successfully", chatMsg.getId());
-                    updateMessageInRedisCache(convId, chatMsg.getId(), m -> m.setStatus(MessageStatus.SENT));
-                    try {
-                        ChatMessageResponse messageResponse = messageMapper.toResponse(chatMsg);
-                        messageResponse.setStatus(MessageStatus.SENT);
-                        webSocketRoutingService.routeMessage(sender, "/queue/messages", messageResponse);
-                        log.debug("Dispatched ACK to sender '{}' for message '{}'", sender, chatMsg.getId());
-                    } catch (Exception routeEx) {
-                        log.error("Failed to route ACK to sender '{}' for message '{}'", sender, chatMsg.getId(),
-                                routeEx);
-                    }
                 }
             });
         } catch (Exception syncEx) {
