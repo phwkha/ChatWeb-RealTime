@@ -101,7 +101,7 @@ public class KafkaConfig {
     public DefaultErrorHandler batchChatAvroErrorHandler(KafkaTemplate<String, ChatMessageAvro> avroChatKafkaTemplate) {
         DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(avroChatKafkaTemplate,
                 (r, e) -> new TopicPartition("chat.messages.dlt", r.partition()));
-        DefaultErrorHandler errorHandler = new DefaultErrorHandler(recoverer, new FixedBackOff(2000L, 3L));
+        DefaultErrorHandler errorHandler = new DefaultErrorHandler(recoverer, new FixedBackOff(500L, 4L));
         errorHandler.addNotRetryableExceptions(
                 SerializationException.class,
                 RecordTooLargeException.class);
