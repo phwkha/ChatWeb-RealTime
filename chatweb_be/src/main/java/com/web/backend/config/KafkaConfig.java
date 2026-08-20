@@ -98,10 +98,10 @@ public class KafkaConfig {
     }
 
     @Bean
-    public DefaultErrorHandler chatAvroErrorHandler(KafkaTemplate<String, ChatMessageAvro> avroChatKafkaTemplate) {
+    public DefaultErrorHandler batchChatAvroErrorHandler(KafkaTemplate<String, ChatMessageAvro> avroChatKafkaTemplate) {
         DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(avroChatKafkaTemplate,
                 (r, e) -> new TopicPartition("chat.messages.dlt", r.partition()));
-        DefaultErrorHandler errorHandler = new DefaultErrorHandler(recoverer, new FixedBackOff(1000L, 3L));
+        DefaultErrorHandler errorHandler = new DefaultErrorHandler(recoverer, new FixedBackOff(2000L, 3L));
         errorHandler.addNotRetryableExceptions(
                 SerializationException.class,
                 RecordTooLargeException.class);
@@ -109,17 +109,10 @@ public class KafkaConfig {
     }
 
     @Bean
-    public DefaultErrorHandler batchChatAvroErrorHandler() {
-        return new DefaultErrorHandler(new FixedBackOff(2000L, 3L));
-    }
-
-    @Bean
-    public ConcurrentKafkaListenerContainerFactory<String, ChatMessageAvro> chatAvroListenerContainerFactory(
-            DefaultErrorHandler chatAvroErrorHandler) {
+    public ConcurrentKafkaListenerContainerFactory<String, ChatMessageAvro> chatAvroListenerContainerFactory() {
         ConcurrentKafkaListenerContainerFactory<String, ChatMessageAvro> factory = new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(realtimeChatConsumerFactory());
         factory.setConcurrency(4);
-        factory.setCommonErrorHandler(chatAvroErrorHandler);
         return factory;
     }
 
