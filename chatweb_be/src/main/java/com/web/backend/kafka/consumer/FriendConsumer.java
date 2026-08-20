@@ -37,7 +37,7 @@ public class FriendConsumer {
     private static final String SYS_MSG_USER_ONLINE_STRING = "sys.msg.user_online";
     private static final String SYS_MSG_USER_OFFLINE_STRING = "sys.msg.user_offline";
 
-    @RetryableTopic(attempts = "5", backoff = @Backoff(delay = 15000), sameIntervalTopicReuseStrategy = SameIntervalTopicReuseStrategy.SINGLE_TOPIC, autoCreateTopics = "true")
+    @RetryableTopic(attempts = "5", backoff = @Backoff(delay = 500), sameIntervalTopicReuseStrategy = SameIntervalTopicReuseStrategy.SINGLE_TOPIC, autoCreateTopics = "true")
     @KafkaListener(topics = "${spring.kafka.topic.friend.friend-topic}", groupId = "${spring.kafka.topic.friend.friend-group-id}", containerFactory = "jsonKafkaListenerContainerFactory")
     public void listenFriendNotifications(FriendPayload friendEvent) {
         if (friendEvent == null) {
