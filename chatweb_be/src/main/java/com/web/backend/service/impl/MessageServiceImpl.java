@@ -104,158 +104,16 @@ public class MessageServiceImpl implements MessageService {
     private static final String ERROR_MSG_EMPTY_CONTENT_STRING = "error.msg.empty_content";
     private static final String ERROR_MSG_INVALID_TYPE_STRING = "error.msg.invalid_type";
 
-    private String generateConversationId(String user1, String user2) {
-        return (user1.compareTo(user2) < 0) ? user1 + "_" + user2 : user2 + "_" + user1;
-    }
-
     @Override
-    public void sendPrivateMessage(String sender, ChatMessageRequest request) {
-        validatePrivateMessageRequest(sender, request);
-        String convId = generateConversationId(sender, request.getRecipient());
-        ChatMessage chatMsg = buildChatMessage(sender, request, convId);
-        try {
-            if (chatMsg.getMessageType() == MessageType.CHAT) {
-                cacheMessageToRedis(chatMsg);
-            }
-            ChatMessageAvro payload = messageMapper.toAvro(chatMsg);
-            payload.setStatus(MessageStatus.SENT.name());
-            payload.setLocalId(request.getLocalId());
-            chatProducer.sendChatMessage(payload).whenComplete((result, ex) -> {
-                if (ex != null) {
-                    if (chatMsg.getMessageType() == MessageType.CHAT) {
-                        log.error("Failed to publish message '{}' to Kafka", chatMsg.getId(), ex);
-                        try {
-                            String hashKey = CHAT_RECENT_HASH_STRING + convId;
-                            String zsetKey = CHAT_RECENT_ZSET_STRING + convId;
-                            redisTemplate.opsForZSet().remove(zsetKey, chatMsg.getId());
-                            redisTemplate.opsForHash().delete(hashKey, chatMsg.getId());
-                        } catch (Exception redisEx) {
-                            log.error("Failed to rollback Redis cache for message '{}' in conversation '{}'",
-                                    chatMsg.getId(), convId, redisEx);
-                        }
-                        webSocketErrorHandler.handleChatError(sender, messageMapper.toResponse(chatMsg),
-                                Translator.tolocale(ERROR_MSG_SYSTEM_OVERLOAD_STRING));
-                    }
-                } else if (chatMsg.getMessageType() == MessageType.CHAT) {
-                    log.debug("Published message '{}' to Kafka successfully", chatMsg.getId());
-                }
-            });
-        } catch (Exception syncEx) {
-            log.error("Synchronous error publishing message '{}' to Kafka", chatMsg.getId(), syncEx);
-            throw new SystemOverloadException(Translator.tolocale(ERROR_MSG_SYSTEM_OVERLOAD_STRING), request, syncEx);
-        }
-    }
+    public ChatMessageResponse getMessageById(String messageId, String currentUsername) {
+        ChatMessage message = messageRepository.findById(Objects.requireNonNull(messageId))
+                .orElseThrow(() -> new ResourceNotFoundException(Translator.tolocale(ERROR_MSG_NOT_FOUND_STRING)));
 
-    private void validatePrivateMessageRequest(String sender, ChatMessageRequest request) {
-        if (sender.equals(request.getRecipient())) {
-            throw new InvalidDataException(Translator.tolocale(ERROR_MSG_SELF_SEND_STRING), request);
+        if (!currentUsername.equals(message.getSender()) && !currentUsername.equals(message.getRecipient())) {
+            throw new AccessForbiddenException(Translator.tolocale(ERROR_MSG_RECIPIENT_NOT_FOUND_STRING));
         }
 
-        boolean hasContent = request.getContent() != null && !request.getContent().trim().isEmpty();
-        boolean hasFile = request.getFileUrl() != null && !request.getFileUrl().trim().isEmpty();
-        if (!hasContent && !hasFile) {
-            throw new InvalidDataException(Translator.tolocale(ERROR_MSG_EMPTY_CONTENT_STRING), request);
-        }
-
-        UserEntity recipientEntity = userRepository.findByUsername(request.getRecipient())
-                .orElseThrow(
-                        () -> new ResourceNotFoundException(Translator.tolocale(ERROR_MSG_RECIPIENT_NOT_FOUND_STRING),
-                                request));
-
-        if (recipientEntity.getUserStatus() == UserStatus.INACTIVE) {
-            throw new AccessForbiddenException(Translator.tolocale(ERROR_MSG_SEND_DELETED_STRING), request);
-        }
-        if (recipientEntity.getUserStatus() == UserStatus.LOCKED) {
-            throw new AccessForbiddenException(Translator.tolocale(ERROR_MSG_SEND_LOCKED_STRING), request);
-        }
-        if (!friendService.isFriend(Objects.requireNonNull(sender),
-                Objects.requireNonNull(request.getRecipient()))) {
-            throw new AccessForbiddenException(Translator.tolocale(ERROR_MSG_NOT_FRIENDS_STRING), request);
-        }
-    }
-
-    private ChatMessage buildChatMessage(String sender, ChatMessageRequest request, String convId) {
-        ChatMessage chatMsg = messageMapper.toEntity(request);
-        chatMsg.setConversationId(convId);
-        chatMsg.setSender(sender);
-        chatMsg.setId(new ObjectId().toHexString());
-        chatMsg.setStatus(MessageStatus.SENDING);
-        chatMsg.setEdited(false);
-        chatMsg.setDeleted(false);
-        chatMsg.setReacted(false);
-        chatMsg.setReactions(null);
-        if (chatMsg.getTimestamp() == null) {
-            chatMsg.setTimestamp(LocalDateTime.now(ZoneId.systemDefault()));
-        }
-        if (chatMsg.getContent() == null) {
-            chatMsg.setContent("");
-        }
-        if (chatMsg.getContentType() == null) {
-            chatMsg.setContentType(ContentType.TEXT);
-        }
-        return chatMsg;
-    }
-
-    @Override
-    public void sendSystemMessage(String currentUsername, MessageSystemRequest request) {
-        SystemMessage systemMsg = new SystemMessage();
-        systemMsg.setSender(currentUsername);
-        systemMsg.setTimestamp(Instant.now());
-        systemMsg.setExpiresAt(request.getSurvivalTime() == null ? null
-                : Instant.now().plus(request.getSurvivalTime(), ChronoUnit.SECONDS));
-        systemMsg.setContent(request.getContent());
-        systemMessageRepository.save(Objects.requireNonNull(systemMsg));
-
-        chatProducer.sendSystemMessage(systemMsg).whenComplete((result, ex) -> {
-            if (ex != null) {
-                webSocketErrorHandler.handleChatError(systemMsg.getSender(), systemMsg,
-                        Translator.tolocale(ERROR_MSG_SYSTEM_OVERLOAD_STRING));
-            }
-        });
-    }
-
-    @Override
-    public void reactToMessage(String senderUsername, ReactionRequest request) {
-
-        if (!friendService.isFriend(Objects.requireNonNull(senderUsername),
-                Objects.requireNonNull(request.getRecipient()))) {
-            throw new AccessForbiddenException(Translator.tolocale(ERROR_MSG_NOT_FRIENDS_STRING));
-        }
-
-        String convId = generateConversationId(senderUsername, request.getRecipient());
-
-        ChatMessage msg = getMessageFromDbOrRedis(request.getMessageId(), convId);
-
-        if (!convId.equals(msg.getConversationId())) {
-            throw new AccessForbiddenException(Translator.tolocale(ERROR_MSG_EDIT_FORBIDDEN_STRING));
-        }
-
-        if (msg.isDeleted()) {
-            throw new InvalidDataException(Translator.tolocale(ERROR_MSG_EDIT_DELETED_STRING));
-        }
-
-        Map<String, String> oldReactions = msg.getReactions() == null ? null : new HashMap<>(msg.getReactions());
-        boolean oldIsReacted = msg.isReacted();
-
-        updateMessageInRedisCache(convId, request.getMessageId(),
-                m -> applyReactionToMessage(m, senderUsername, request));
-        applyReactionToMessage(msg, senderUsername, request);
-
-        chatProducer.sendReaction(
-                UpdateMessagePayload.builder().relatedUsername(senderUsername).type(UpdateMessageType.REACT)
-                        .updateEvent(msg).build())
-                .whenComplete((result, ex) -> {
-                    if (ex != null) {
-                        log.error("Failed to publish reaction update to Kafka for message '{}'", request.getMessageId(),
-                                ex);
-                        updateMessageInRedisCache(convId, request.getMessageId(), m -> {
-                            m.setReactions(oldReactions);
-                            m.setReacted(oldIsReacted);
-                        });
-                        webSocketErrorHandler.handleChatError(senderUsername, request,
-                                Translator.tolocale(ERROR_MSG_SYSTEM_OVERLOAD_STRING));
-                    }
-                });
+        return messageMapper.toResponse(message);
     }
 
     @Override
@@ -276,60 +134,101 @@ public class MessageServiceImpl implements MessageService {
         return buildCursorResponse(finalMessages, size);
     }
 
-    private List<ChatMessage> fetchMessagesFromRedisCache(String conversationId, long start, long end) {
-        String hashKey = CHAT_RECENT_HASH_STRING + conversationId;
-        String zsetKey = CHAT_RECENT_ZSET_STRING + conversationId;
-        Set<Object> messageIds = redisTemplate.opsForZSet().reverseRange(zsetKey, start, end);
+    @Override
+    public CursorResponse<MessageSystemResponse> findSystemMessageWithCursor(String cursorStr, int size) {
 
-        if (messageIds == null || messageIds.isEmpty()) {
-            return new ArrayList<>();
+        Pageable pageable = PageRequest.of(0, size + 1, Sort.by(Sort.Direction.DESC, TIMESTAMP_STRING));
+        List<SystemMessage> messages;
+
+        if (cursorStr == null || cursorStr.isEmpty()) {
+            messages = new ArrayList<>(systemMessageRepository.findInitialMessage(pageable));
+        } else {
+            Instant cursorTime = Instant.parse(cursorStr);
+            messages = new ArrayList<>(systemMessageRepository.findMessage(cursorTime, pageable));
         }
 
-        List<Object> redisObjects = redisTemplate.opsForHash().multiGet(hashKey, messageIds);
-        List<ChatMessage> messages = new ArrayList<>();
-        for (Object obj : redisObjects) {
-            if (obj != null) {
-                messages.add((ChatMessage) obj);
-            }
-        }
-        return messages;
-    }
-
-    private List<ChatMessage> fetchMessagesFromDatabaseAndMerge(String conversationId, String cursorStr, int size,
-            Pageable pageable) {
-        if (cursorStr != null && !cursorStr.isEmpty()) {
-            LocalDateTime cursorTime = LocalDateTime.parse(cursorStr);
-            return new ArrayList<>(
-                    messageRepository.findByConversationIdAndTimestampBefore(conversationId, cursorTime, pageable));
+        boolean hasMore = false;
+        if (messages.size() > size) {
+            hasMore = true;
+            messages.remove(messages.size() - 1);
         }
 
-        List<ChatMessage> dbMessages = messageRepository.findByConversationId(conversationId, pageable);
-        List<ChatMessage> redisMessages = fetchMessagesFromRedisCache(conversationId, 0, -1);
-
-        Map<String, ChatMessage> uniqueMessagesMap = new LinkedHashMap<>();
-        for (ChatMessage msg : redisMessages) {
-            uniqueMessagesMap.put(msg.getId(), msg);
-        }
-        for (ChatMessage msg : dbMessages) {
-            uniqueMessagesMap.putIfAbsent(msg.getId(), msg);
+        String nextCursor = null;
+        if (!messages.isEmpty()) {
+            Instant lastMessageTime = messages.get(messages.size() - 1).getTimestamp();
+            nextCursor = lastMessageTime.toString();
         }
 
-        return uniqueMessagesMap.values().stream()
-                .sorted(Comparator.comparing(ChatMessage::getTimestamp).reversed())
-                .limit(size + 1L)
+        List<MessageSystemResponse> responseList = messages.stream()
+                .map(messageMapper::systemMessageToResponse)
                 .toList();
+
+        return new CursorResponse<>(responseList, nextCursor, hasMore);
     }
 
     @Override
-    public ChatMessageResponse getMessageById(String messageId, String currentUsername) {
-        ChatMessage message = messageRepository.findById(Objects.requireNonNull(messageId))
-                .orElseThrow(() -> new ResourceNotFoundException(Translator.tolocale(ERROR_MSG_NOT_FOUND_STRING)));
+    public UnreadCountsResponse getUnreadMessageCounts(String recipientUsername) {
 
-        if (!currentUsername.equals(message.getSender()) && !currentUsername.equals(message.getRecipient())) {
-            throw new AccessForbiddenException(Translator.tolocale(ERROR_MSG_RECIPIENT_NOT_FOUND_STRING));
+        String key = UNREAD_COUNTS_STRING + recipientUsername;
+
+        Map<Object, Object> redisCounts = redisTemplate.opsForHash().entries(key);
+
+        if (!redisCounts.isEmpty()) {
+            if (redisCounts.containsKey("_empty")) {
+                return UnreadCountsResponse.builder().unreadCounts(new HashMap<>()).build();
+            }
+            Map<String, Long> result = redisCounts.entrySet().stream()
+                    .collect(Collectors.toMap(
+                            e -> (String) e.getKey(),
+                            e -> Long.valueOf(e.getValue().toString())));
+            return UnreadCountsResponse.builder().unreadCounts(result).build();
         }
 
-        return messageMapper.toResponse(message);
+        List<UnreadCountProjection> dbResults = messageRepository.countUnreadMessagesBySender(recipientUsername);
+
+        Map<String, Long> resultMap = new HashMap<>();
+        Map<String, Object> redisMap = new HashMap<>();
+
+        if (dbResults.isEmpty()) {
+            redisMap.put("_empty", 0L);
+        } else {
+            for (UnreadCountProjection r : dbResults) {
+                resultMap.put(r.sender(), r.count());
+                redisMap.put(r.sender(), r.count());
+            }
+        }
+
+        redisTemplate.opsForHash().putAll(key, redisMap);
+        redisTemplate.expire(key, getRandomTtl(7 * 24 * 3600L, 12 * 3600L));
+
+        return UnreadCountsResponse.builder()
+                .unreadCounts(resultMap)
+                .build();
+    }
+
+    @Override
+    public void markMessagesAsRead(String recipientUsername, MarkReadRequest request) {
+        String senderUsername = request.getSender();
+        if (recipientUsername.equals(senderUsername)) {
+            return;
+        }
+        String convId = generateConversationId(recipientUsername, senderUsername);
+        String unreadKey = UNREAD_COUNTS_STRING + recipientUsername;
+
+        Map<String, MessageStatus> oldStatuses = new HashMap<>();
+        Object oldUnreadCount = markRecentMessagesAsReadInRedis(convId, senderUsername, unreadKey, oldStatuses);
+
+        chatProducer.sendStatusMessage(UpdateMessagePayload.builder().relatedUsername(recipientUsername)
+                .type(UpdateMessageType.STATUS).updateEvent(request.getSender()).build())
+                .whenComplete((result, ex) -> {
+                    if (ex != null) {
+                        log.error("Failed to publish read status update to Kafka: reader='{}', sender='{}'",
+                                recipientUsername, request.getSender(), ex);
+                        rollbackMarkAsReadInRedis(convId, unreadKey, request.getSender(), oldStatuses, oldUnreadCount);
+                        webSocketErrorHandler.handleChatError(recipientUsername, request,
+                                Translator.tolocale(ERROR_MSG_SYSTEM_OVERLOAD_STRING));
+                    }
+                });
     }
 
     @Override
@@ -486,100 +385,217 @@ public class MessageServiceImpl implements MessageService {
     }
 
     @Override
-    public CursorResponse<MessageSystemResponse> findSystemMessageWithCursor(String cursorStr, int size) {
+    public void reactToMessage(String senderUsername, ReactionRequest request) {
 
-        Pageable pageable = PageRequest.of(0, size + 1, Sort.by(Sort.Direction.DESC, TIMESTAMP_STRING));
-        List<SystemMessage> messages;
-
-        if (cursorStr == null || cursorStr.isEmpty()) {
-            messages = new ArrayList<>(systemMessageRepository.findInitialMessage(pageable));
-        } else {
-            Instant cursorTime = Instant.parse(cursorStr);
-            messages = new ArrayList<>(systemMessageRepository.findMessage(cursorTime, pageable));
+        if (!friendService.isFriend(Objects.requireNonNull(senderUsername),
+                Objects.requireNonNull(request.getRecipient()))) {
+            throw new AccessForbiddenException(Translator.tolocale(ERROR_MSG_NOT_FRIENDS_STRING));
         }
 
-        boolean hasMore = false;
-        if (messages.size() > size) {
-            hasMore = true;
-            messages.remove(messages.size() - 1);
+        String convId = generateConversationId(senderUsername, request.getRecipient());
+
+        ChatMessage msg = getMessageFromDbOrRedis(request.getMessageId(), convId);
+
+        if (!convId.equals(msg.getConversationId())) {
+            throw new AccessForbiddenException(Translator.tolocale(ERROR_MSG_EDIT_FORBIDDEN_STRING));
         }
 
-        String nextCursor = null;
-        if (!messages.isEmpty()) {
-            Instant lastMessageTime = messages.get(messages.size() - 1).getTimestamp();
-            nextCursor = lastMessageTime.toString();
+        if (msg.isDeleted()) {
+            throw new InvalidDataException(Translator.tolocale(ERROR_MSG_EDIT_DELETED_STRING));
         }
 
-        List<MessageSystemResponse> responseList = messages.stream()
-                .map(messageMapper::systemMessageToResponse)
-                .toList();
+        Map<String, String> oldReactions = msg.getReactions() == null ? null : new HashMap<>(msg.getReactions());
+        boolean oldIsReacted = msg.isReacted();
 
-        return new CursorResponse<>(responseList, nextCursor, hasMore);
-    }
+        updateMessageInRedisCache(convId, request.getMessageId(),
+                m -> applyReactionToMessage(m, senderUsername, request));
+        applyReactionToMessage(msg, senderUsername, request);
 
-    @Override
-    public UnreadCountsResponse getUnreadMessageCounts(String recipientUsername) {
-
-        String key = UNREAD_COUNTS_STRING + recipientUsername;
-
-        Map<Object, Object> redisCounts = redisTemplate.opsForHash().entries(key);
-
-        if (!redisCounts.isEmpty()) {
-            if (redisCounts.containsKey("_empty")) {
-                return UnreadCountsResponse.builder().unreadCounts(new HashMap<>()).build();
-            }
-            Map<String, Long> result = redisCounts.entrySet().stream()
-                    .collect(Collectors.toMap(
-                            e -> (String) e.getKey(),
-                            e -> Long.valueOf(e.getValue().toString())));
-            return UnreadCountsResponse.builder().unreadCounts(result).build();
-        }
-
-        List<UnreadCountProjection> dbResults = messageRepository.countUnreadMessagesBySender(recipientUsername);
-
-        Map<String, Long> resultMap = new HashMap<>();
-        Map<String, Object> redisMap = new HashMap<>();
-
-        if (dbResults.isEmpty()) {
-            redisMap.put("_empty", 0L);
-        } else {
-            for (UnreadCountProjection r : dbResults) {
-                resultMap.put(r.sender(), r.count());
-                redisMap.put(r.sender(), r.count());
-            }
-        }
-
-        redisTemplate.opsForHash().putAll(key, redisMap);
-        redisTemplate.expire(key, getRandomTtl(7 * 24 * 3600L, 12 * 3600L));
-
-        return UnreadCountsResponse.builder()
-                .unreadCounts(resultMap)
-                .build();
-    }
-
-    @Override
-    public void markMessagesAsRead(String recipientUsername, MarkReadRequest request) {
-        String senderUsername = request.getSender();
-        if (recipientUsername.equals(senderUsername)) {
-            return;
-        }
-        String convId = generateConversationId(recipientUsername, senderUsername);
-        String unreadKey = UNREAD_COUNTS_STRING + recipientUsername;
-
-        Map<String, MessageStatus> oldStatuses = new HashMap<>();
-        Object oldUnreadCount = markRecentMessagesAsReadInRedis(convId, senderUsername, unreadKey, oldStatuses);
-
-        chatProducer.sendStatusMessage(UpdateMessagePayload.builder().relatedUsername(recipientUsername)
-                .type(UpdateMessageType.STATUS).updateEvent(request.getSender()).build())
+        chatProducer.sendReaction(
+                UpdateMessagePayload.builder().relatedUsername(senderUsername).type(UpdateMessageType.REACT)
+                        .updateEvent(msg).build())
                 .whenComplete((result, ex) -> {
                     if (ex != null) {
-                        log.error("Failed to publish read status update to Kafka: reader='{}', sender='{}'",
-                                recipientUsername, request.getSender(), ex);
-                        rollbackMarkAsReadInRedis(convId, unreadKey, request.getSender(), oldStatuses, oldUnreadCount);
-                        webSocketErrorHandler.handleChatError(recipientUsername, request,
+                        log.error("Failed to publish reaction update to Kafka for message '{}'", request.getMessageId(),
+                                ex);
+                        updateMessageInRedisCache(convId, request.getMessageId(), m -> {
+                            m.setReactions(oldReactions);
+                            m.setReacted(oldIsReacted);
+                        });
+                        webSocketErrorHandler.handleChatError(senderUsername, request,
                                 Translator.tolocale(ERROR_MSG_SYSTEM_OVERLOAD_STRING));
                     }
                 });
+    }
+
+    @Override
+    public void sendPrivateMessage(String sender, ChatMessageRequest request) {
+        validatePrivateMessageRequest(sender, request);
+        String convId = generateConversationId(sender, request.getRecipient());
+        ChatMessage chatMsg = buildChatMessage(sender, request, convId);
+        try {
+            if (chatMsg.getMessageType() == MessageType.CHAT) {
+                cacheMessageToRedis(chatMsg);
+            }
+            ChatMessageAvro payload = messageMapper.toAvro(chatMsg);
+            payload.setLocalId(request.getLocalId());
+            chatProducer.sendChatMessage(payload).whenComplete((result, ex) -> {
+                if (ex != null) {
+                    if (chatMsg.getMessageType() == MessageType.CHAT) {
+                        log.error("Failed to publish message '{}' to Kafka", chatMsg.getId(), ex);
+                        rollbackRedisCache(convId, chatMsg);
+                        webSocketErrorHandler.handleChatError(sender, request,
+                                Translator.tolocale(ERROR_MSG_SYSTEM_OVERLOAD_STRING));
+                    }
+                } else if (chatMsg.getMessageType() == MessageType.CHAT) {
+                    log.debug("Published message '{}' to Kafka successfully", chatMsg.getId());
+                }
+            });
+        } catch (Exception syncEx) {
+            log.error("Synchronous error publishing message '{}' to Kafka", chatMsg.getId(), syncEx);
+            if (chatMsg.getMessageType() == MessageType.CHAT) {
+                rollbackRedisCache(convId, chatMsg);
+            }
+            throw new SystemOverloadException(Translator.tolocale(ERROR_MSG_SYSTEM_OVERLOAD_STRING), request, syncEx);
+        }
+    }
+
+    @Override
+    public void sendSystemMessage(String currentUsername, MessageSystemRequest request) {
+        SystemMessage systemMsg = new SystemMessage();
+        systemMsg.setSender(currentUsername);
+        systemMsg.setTimestamp(Instant.now());
+        systemMsg.setExpiresAt(request.getSurvivalTime() == null ? null
+                : Instant.now().plus(request.getSurvivalTime(), ChronoUnit.SECONDS));
+        systemMsg.setContent(request.getContent());
+        systemMessageRepository.save(Objects.requireNonNull(systemMsg));
+
+        chatProducer.sendSystemMessage(systemMsg).whenComplete((result, ex) -> {
+            if (ex != null) {
+                webSocketErrorHandler.handleChatError(systemMsg.getSender(), systemMsg,
+                        Translator.tolocale(ERROR_MSG_SYSTEM_OVERLOAD_STRING));
+            }
+        });
+    }
+
+    private void validatePrivateMessageRequest(String sender, ChatMessageRequest request) {
+        if (sender.equals(request.getRecipient())) {
+            throw new InvalidDataException(Translator.tolocale(ERROR_MSG_SELF_SEND_STRING), request);
+        }
+
+        boolean hasContent = request.getContent() != null && !request.getContent().trim().isEmpty();
+        boolean hasFile = request.getFileUrl() != null && !request.getFileUrl().trim().isEmpty();
+        if (!hasContent && !hasFile) {
+            throw new InvalidDataException(Translator.tolocale(ERROR_MSG_EMPTY_CONTENT_STRING), request);
+        }
+
+        UserEntity recipientEntity = userRepository.findByUsername(request.getRecipient())
+                .orElseThrow(
+                        () -> new ResourceNotFoundException(Translator.tolocale(ERROR_MSG_RECIPIENT_NOT_FOUND_STRING),
+                                request));
+
+        if (recipientEntity.getUserStatus() == UserStatus.INACTIVE) {
+            throw new AccessForbiddenException(Translator.tolocale(ERROR_MSG_SEND_DELETED_STRING), request);
+        }
+        if (recipientEntity.getUserStatus() == UserStatus.LOCKED) {
+            throw new AccessForbiddenException(Translator.tolocale(ERROR_MSG_SEND_LOCKED_STRING), request);
+        }
+        if (!friendService.isFriend(Objects.requireNonNull(sender),
+                Objects.requireNonNull(request.getRecipient()))) {
+            throw new AccessForbiddenException(Translator.tolocale(ERROR_MSG_NOT_FRIENDS_STRING), request);
+        }
+    }
+
+    private ChatMessage buildChatMessage(String sender, ChatMessageRequest request, String convId) {
+        ChatMessage chatMsg = messageMapper.toEntity(request);
+        chatMsg.setConversationId(convId);
+        chatMsg.setSender(sender);
+        chatMsg.setId(new ObjectId().toHexString());
+        chatMsg.setStatus(MessageStatus.SENT);
+        chatMsg.setEdited(false);
+        chatMsg.setDeleted(false);
+        chatMsg.setReacted(false);
+        chatMsg.setReactions(null);
+        if (chatMsg.getTimestamp() == null) {
+            chatMsg.setTimestamp(LocalDateTime.now(ZoneId.systemDefault()));
+        }
+        if (chatMsg.getContent() == null) {
+            chatMsg.setContent("");
+        }
+        if (chatMsg.getContentType() == null) {
+            chatMsg.setContentType(ContentType.TEXT);
+        }
+        return chatMsg;
+    }
+
+    private void rollbackRedisCache(String convId, ChatMessage chatMsg) {
+        if (chatMsg == null) {
+            return;
+        }
+        try {
+            String hashKey = CHAT_RECENT_HASH_STRING + convId;
+            String zsetKey = CHAT_RECENT_ZSET_STRING + convId;
+            redisTemplate.opsForZSet().remove(zsetKey, chatMsg.getId());
+            redisTemplate.opsForHash().delete(hashKey, chatMsg.getId());
+            if (chatMsg.getRecipient() != null && chatMsg.getSender() != null) {
+                String unreadKey = UNREAD_COUNTS_STRING + chatMsg.getRecipient();
+                Long count = redisTemplate.opsForHash().increment(unreadKey, chatMsg.getSender(), -1);
+                if (count != null && count <= 0) {
+                    redisTemplate.opsForHash().delete(unreadKey, chatMsg.getSender());
+                }
+            }
+        } catch (Exception redisEx) {
+            log.error("Failed to rollback Redis cache for message '{}' in conversation '{}'",
+                    chatMsg.getId(), convId, redisEx);
+        }
+    }
+
+    private String generateConversationId(String user1, String user2) {
+        return (user1.compareTo(user2) < 0) ? user1 + "_" + user2 : user2 + "_" + user1;
+    }
+
+    private List<ChatMessage> fetchMessagesFromRedisCache(String conversationId, long start, long end) {
+        String hashKey = CHAT_RECENT_HASH_STRING + conversationId;
+        String zsetKey = CHAT_RECENT_ZSET_STRING + conversationId;
+        Set<Object> messageIds = redisTemplate.opsForZSet().reverseRange(zsetKey, start, end);
+
+        if (messageIds == null || messageIds.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        List<Object> redisObjects = redisTemplate.opsForHash().multiGet(hashKey, messageIds);
+        List<ChatMessage> messages = new ArrayList<>();
+        for (Object obj : redisObjects) {
+            if (obj != null) {
+                messages.add((ChatMessage) obj);
+            }
+        }
+        return messages;
+    }
+
+    private List<ChatMessage> fetchMessagesFromDatabaseAndMerge(String conversationId, String cursorStr, int size,
+            Pageable pageable) {
+        if (cursorStr != null && !cursorStr.isEmpty()) {
+            LocalDateTime cursorTime = LocalDateTime.parse(cursorStr);
+            return new ArrayList<>(
+                    messageRepository.findByConversationIdAndTimestampBefore(conversationId, cursorTime, pageable));
+        }
+
+        List<ChatMessage> dbMessages = messageRepository.findByConversationId(conversationId, pageable);
+        List<ChatMessage> redisMessages = fetchMessagesFromRedisCache(conversationId, 0, -1);
+
+        Map<String, ChatMessage> uniqueMessagesMap = new LinkedHashMap<>();
+        for (ChatMessage msg : redisMessages) {
+            uniqueMessagesMap.put(msg.getId(), msg);
+        }
+        for (ChatMessage msg : dbMessages) {
+            uniqueMessagesMap.putIfAbsent(msg.getId(), msg);
+        }
+
+        return uniqueMessagesMap.values().stream()
+                .sorted(Comparator.comparing(ChatMessage::getTimestamp).reversed())
+                .limit(size + 1L)
+                .toList();
     }
 
     private Object markRecentMessagesAsReadInRedis(String convId, String senderUsername, String unreadKey,
@@ -647,24 +663,26 @@ public class MessageServiceImpl implements MessageService {
             String hashKey = CHAT_RECENT_HASH_STRING + convId;
             String zsetKey = CHAT_RECENT_ZSET_STRING + convId;
             long score = chatMsg.getTimestamp().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+            Duration chatTtl = getRandomTtl(300, 30);
 
             redisTemplate.opsForHash().put(hashKey, chatMsg.getId(), chatMsg);
             redisTemplate.opsForZSet().add(zsetKey, chatMsg.getId(), score);
+
+            redisTemplate.expire(hashKey, chatTtl);
+            redisTemplate.expire(zsetKey, chatTtl);
+
+            if (chatMsg.getRecipient() != null && chatMsg.getSender() != null) {
+                String key = UNREAD_COUNTS_STRING + chatMsg.getRecipient();
+                redisTemplate.opsForHash().increment(key, chatMsg.getSender(), 1);
+            }
 
             Set<Object> keysToRemove = redisTemplate.opsForZSet().range(zsetKey, 0, -51);
             if (keysToRemove != null && !keysToRemove.isEmpty()) {
                 redisTemplate.opsForHash().delete(hashKey, keysToRemove.toArray());
                 redisTemplate.opsForZSet().removeRange(zsetKey, 0, -51);
             }
-
-            Duration chatTtl = getRandomTtl(300, 30);
-            redisTemplate.expire(hashKey, chatTtl);
-            redisTemplate.expire(zsetKey, chatTtl);
-
-            String key = UNREAD_COUNTS_STRING + chatMsg.getRecipient();
-            redisTemplate.opsForHash().increment(key, chatMsg.getSender(), 1);
         } catch (Exception e) {
-            log.error("Failed to cache message '{}' to Redis", chatMsg.getId(), e);
+            log.warn("Failed to cache message '{}' to Redis, continuing pipeline", chatMsg.getId(), e);
         }
     }
 
