@@ -1,9 +1,10 @@
 package com.web.backend.repository;
 
 import com.web.backend.common.FriendshipStatus;
-import com.web.backend.model.FriendshipEntity;
-import com.web.backend.model.RoleEntity;
-import com.web.backend.model.UserEntity;
+import com.web.backend.model.postgres.FriendshipEntity;
+import com.web.backend.model.postgres.RoleEntity;
+import com.web.backend.model.postgres.UserEntity;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

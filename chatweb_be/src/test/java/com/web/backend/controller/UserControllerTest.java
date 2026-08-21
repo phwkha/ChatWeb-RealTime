@@ -4,10 +4,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.request.*;
 import com.web.backend.controller.response.*;
-import com.web.backend.model.UserEntity;
 import com.web.backend.service.UserService;
 import com.web.backend.service.UserServiceDetail;
 import com.web.backend.jwt.JwtAuthenticationFilter;
+import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.service.JwtService;
 
 import org.junit.jupiter.api.BeforeEach;

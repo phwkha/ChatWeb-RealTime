@@ -1,6 +1,7 @@
-package com.web.backend.model;
+package com.web.backend.model.postgres;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -9,7 +10,6 @@ import lombok.*;
 @Getter
 @Setter
 public class AddressEntity extends AbstractEntity<Long> {
-
 
     @Column(name = "house_number")
     private String houseNumber;

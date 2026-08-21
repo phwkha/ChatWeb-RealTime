@@ -10,7 +10,7 @@ import org.springframework.security.web.authentication.SimpleUrlAuthenticationSu
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import com.web.backend.model.UserEntity;
+import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.service.JwtService;
 
 import jakarta.servlet.ServletException;

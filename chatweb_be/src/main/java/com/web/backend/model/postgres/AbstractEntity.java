@@ -1,4 +1,4 @@
-package com.web.backend.model;
+package com.web.backend.model.postgres;
 
 import jakarta.persistence.*;
 import lombok.Getter;

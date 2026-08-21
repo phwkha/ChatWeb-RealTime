@@ -5,7 +5,7 @@ import com.web.backend.controller.request.FriendRequest;
 import com.web.backend.controller.response.ApiResponse;
 import com.web.backend.controller.response.PageResponse;
 import com.web.backend.controller.response.UserSummaryResponse;
-import com.web.backend.model.UserEntity;
+import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.service.FriendService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -128,7 +128,8 @@ public class FriendController {
                         @RequestBody @Valid FriendRequest request) {
 
                 UserEntity user = (UserEntity) auth.getPrincipal();
-                log.debug("User '{}' accepting friend request from '{}'", user.getUsername(), request.getTargetUsername());
+                log.debug("User '{}' accepting friend request from '{}'", user.getUsername(),
+                                request.getTargetUsername());
 
                 friendService.acceptFriendRequest(user.getUsername(), request.getTargetUsername());
 

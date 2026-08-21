@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.web.backend.common.TokenType;
 import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.response.ApiResponse;
-import com.web.backend.model.UserEntity;
+import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.service.JwtService;
 import com.web.backend.service.UserServiceDetail;
 

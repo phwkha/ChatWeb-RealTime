@@ -5,7 +5,7 @@ import com.web.backend.controller.request.AddressRequest;
 import com.web.backend.controller.request.AdminCreateUserRequest;
 import com.web.backend.controller.request.AdminUpdateUserRequest;
 import com.web.backend.controller.response.*;
-import com.web.backend.model.UserEntity;
+import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.service.AdminService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -87,7 +87,8 @@ public class AdminController {
         public ResponseEntity<ApiResponse<UserResponse>> addUser(Authentication authentication,
                         @RequestBody @Valid AdminCreateUserRequest request) {
                 UserEntity userEntityPrincipal = (UserEntity) authentication.getPrincipal();
-                log.debug("Admin '{}' creating new user '{}'", userEntityPrincipal.getUsername(), request.getUsername());
+                log.debug("Admin '{}' creating new user '{}'", userEntityPrincipal.getUsername(),
+                                request.getUsername());
                 UserResponse newUser = adminService.adminCreateUser(request);
                 return ResponseEntity.status(HttpStatus.CREATED)
                                 .body(ApiResponse.success(HttpStatus.CREATED.value(),

@@ -3,7 +3,7 @@ package com.web.backend.controller.websocket;
 import com.web.backend.controller.request.ChatMessageRequest;
 import com.web.backend.controller.request.MessageSystemRequest;
 import com.web.backend.exception.WebSocketErrorHandler;
-import com.web.backend.model.UserEntity;
+import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.service.ChatService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

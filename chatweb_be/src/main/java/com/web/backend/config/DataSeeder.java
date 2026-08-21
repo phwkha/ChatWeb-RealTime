@@ -2,9 +2,10 @@ package com.web.backend.config;
 
 import com.web.backend.common.AuthProvider;
 import com.web.backend.common.UserStatus;
-import com.web.backend.model.PermissionEntity;
-import com.web.backend.model.RoleEntity;
-import com.web.backend.model.UserEntity;
+import com.web.backend.model.postgres.PermissionEntity;
+import com.web.backend.model.postgres.RoleEntity;
+import com.web.backend.model.postgres.UserEntity;
+import com.web.backend.model.mongo.ChatMessage;
 import com.web.backend.repository.PermissionRepository;
 import com.web.backend.repository.RoleRepository;
 import com.web.backend.repository.UserRepository;
@@ -168,7 +169,7 @@ public class DataSeeder implements CommandLineRunner {
             log.info("Reset online user states in Redis to prevent phantom data");
 
             try {
-                var indexOps = mongoTemplate.indexOps(com.web.backend.model.ChatMessage.class);
+                var indexOps = mongoTemplate.indexOps(ChatMessage.class);
                 List<org.springframework.data.mongodb.core.index.IndexInfo> indexInfoList = indexOps.getIndexInfo();
                 for (org.springframework.data.mongodb.core.index.IndexInfo indexInfo : indexInfoList) {
                     if ("recipient_1".equals(indexInfo.getName()) || "conversationId_1".equals(indexInfo.getName())) {

@@ -6,7 +6,7 @@ import com.web.backend.controller.request.RoleRequest;
 import com.web.backend.controller.response.PermissionResponse;
 import com.web.backend.controller.response.RoleResponse;
 import com.web.backend.jwt.JwtAuthenticationFilter;
-import com.web.backend.model.UserEntity;
+import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.service.JwtService;
 import com.web.backend.service.RoleService;
 import com.web.backend.service.UserServiceDetail;

@@ -2,7 +2,7 @@ package com.web.backend.controller.websocket;
 
 import com.web.backend.controller.request.ChatMessageRequest;
 import com.web.backend.controller.request.MessageSystemRequest;
-import com.web.backend.model.UserEntity;
+import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.service.ChatService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;

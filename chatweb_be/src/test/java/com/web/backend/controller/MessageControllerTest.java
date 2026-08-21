@@ -7,7 +7,7 @@ import com.web.backend.controller.response.ChatMessageResponse;
 import com.web.backend.controller.response.CursorResponse;
 import com.web.backend.controller.response.UnreadCountsResponse;
 import com.web.backend.jwt.JwtAuthenticationFilter;
-import com.web.backend.model.UserEntity;
+import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.service.JwtService;
 import com.web.backend.service.MessageService;
 import com.web.backend.service.UserServiceDetail;

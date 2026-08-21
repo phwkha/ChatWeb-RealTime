@@ -1,7 +1,8 @@
 package com.web.backend.repository;
 
-import com.web.backend.model.RoleEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
+
+import com.web.backend.model.postgres.RoleEntity;
 
 import java.util.Optional;
 

@@ -7,7 +7,7 @@ import com.web.backend.controller.request.AdminCreateUserRequest;
 import com.web.backend.controller.request.AdminUpdateUserRequest;
 import com.web.backend.controller.response.*;
 import com.web.backend.jwt.JwtAuthenticationFilter;
-import com.web.backend.model.UserEntity;
+import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.service.AdminService;
 import com.web.backend.service.JwtService;
 import com.web.backend.service.UserServiceDetail;

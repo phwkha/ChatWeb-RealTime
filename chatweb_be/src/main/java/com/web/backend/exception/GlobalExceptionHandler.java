@@ -31,6 +31,7 @@ import com.web.backend.exception.custom.InvalidPasswordException;
 import com.web.backend.exception.custom.PasswordMismatchException;
 import com.web.backend.exception.custom.ResourceConflictException;
 import com.web.backend.exception.custom.ResourceNotFoundException;
+import com.web.backend.exception.custom.SystemOverloadException;
 import com.web.backend.exception.custom.TooManyRequestsException;
 import org.springframework.http.HttpHeaders;
 
@@ -222,6 +223,14 @@ public class GlobalExceptionHandler {
     public ApiResponse<Void> handleConstraintViolationException(ConstraintViolationException ex) {
         log.warn("Validation constraint violated: {}", ex.getMessage());
         return ApiResponse.error(HttpStatus.BAD_REQUEST.value(), Translator.tolocale(ERROR_SYS_INVALID_INPUT_STRING));
+    }
+
+    @ExceptionHandler(SystemOverloadException.class)
+    public ResponseEntity<ApiResponse<Void>> handleSystemOverloadException(SystemOverloadException ex) {
+        log.warn("System overload / processing delay: {}", ex.getMessage());
+        return ResponseEntity
+                .status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(ApiResponse.error(HttpStatus.SERVICE_UNAVAILABLE.value(), ex.getMessage()));
     }
 
     @ExceptionHandler(TooManyRequestsException.class)

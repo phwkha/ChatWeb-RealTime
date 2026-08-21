@@ -5,7 +5,7 @@ import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.request.SaveKeyRequest;
 import com.web.backend.controller.request.SavePublicKeyRequest;
 import com.web.backend.jwt.JwtAuthenticationFilter;
-import com.web.backend.model.UserEntity;
+import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.service.JwtService;
 import com.web.backend.service.KeyService;
 import com.web.backend.service.UserServiceDetail;

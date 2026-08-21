@@ -11,6 +11,7 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 
 import com.web.backend.kafka.avro.ChatMessageAvro;
+import com.web.backend.model.mongo.SystemMessage;
 
 @Component
 @Slf4j(topic = "CHAT-KAFKA-PRODUCER")
@@ -25,9 +26,6 @@ public class ChatProducer {
 
     @Value("${spring.kafka.topic.chat.system-messages}")
     private String systemTopic;
-
-    @Value("${spring.kafka.topic.update-message.update}")
-    private String chatTopicUpdate;
 
     public CompletableFuture<SendResult<String, ChatMessageAvro>> sendChatMessage(ChatMessageAvro messageChat) {
         CompletableFuture<SendResult<String, ChatMessageAvro>> future = avroChatKafkaTemplate.send(
@@ -45,36 +43,18 @@ public class ChatProducer {
         return future;
     }
 
-    public CompletableFuture<SendResult<String, Object>> sendSystemMessage(Object messageSystem) {
-        return sendSafely(systemTopic, messageSystem, "System Message");
-    }
-
-    public CompletableFuture<SendResult<String, Object>> sendReaction(Object messageReaction) {
-        return sendSafely(chatTopicUpdate, messageReaction, "Reaction");
-    }
-
-    public CompletableFuture<SendResult<String, Object>> sendEditMessage(Object messageEdit) {
-        return sendSafely(chatTopicUpdate, messageEdit, "Edit Message");
-    }
-
-    public CompletableFuture<SendResult<String, Object>> sendRevokeMessage(Object messageRevoke) {
-        return sendSafely(chatTopicUpdate, messageRevoke, "Revoke Message");
-    }
-
-    public CompletableFuture<SendResult<String, Object>> sendStatusMessage(Object statusMsg) {
-        return sendSafely(chatTopicUpdate, statusMsg, "Status Message");
-    }
-
-    private CompletableFuture<SendResult<String, Object>> sendSafely(String topic, Object payload, String actionName) {
+    public CompletableFuture<SendResult<String, Object>> sendSystemMessage(SystemMessage messageSystem) {
         CompletableFuture<SendResult<String, Object>> future = kafkaTemplate.send(
-                Objects.requireNonNull(topic), payload);
+                Objects.requireNonNull(systemTopic), messageSystem);
         future.whenComplete((result, ex) -> {
             if (ex != null) {
-                log.error("Failed to publish {} to Kafka topic '{}'", actionName, topic, ex);
+                log.error("Failed to publish messageSystem to Kafka topic '{}'", systemTopic, ex);
             } else {
-                log.debug("Published {} to Kafka topic '{}' [offset={}]", actionName, topic, result.getRecordMetadata().offset());
+                log.debug("Published messageSystem to Kafka topic '{}' [offset={}]", systemTopic,
+                        result.getRecordMetadata().offset());
             }
         });
         return future;
     }
+
 }

@@ -1,10 +1,11 @@
 package com.web.backend.repository;
 
-import com.web.backend.model.PermissionEntity;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
+
+import com.web.backend.model.postgres.PermissionEntity;
 
 import java.util.Optional;
 

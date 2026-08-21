@@ -28,9 +28,9 @@ import com.web.backend.exception.custom.SystemOverloadException;
 import com.web.backend.kafka.avro.ChatMessageAvro;
 import com.web.backend.kafka.producer.ChatProducer;
 import com.web.backend.mapper.MessageMapper;
-import com.web.backend.model.ChatMessage;
-import com.web.backend.model.SystemMessage;
-import com.web.backend.model.UserEntity;
+import com.web.backend.model.mongo.ChatMessage;
+import com.web.backend.model.mongo.SystemMessage;
+import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.repository.SystemMessageRepository;
 import com.web.backend.repository.UserRepository;
 import com.web.backend.service.ChatService;
@@ -104,14 +104,23 @@ public class ChatServiceImpl implements ChatService {
         systemMsg.setExpiresAt(request.getSurvivalTime() == null ? null
                 : Instant.now().plus(request.getSurvivalTime(), ChronoUnit.SECONDS));
         systemMsg.setContent(request.getContent());
-        systemMessageRepository.save(Objects.requireNonNull(systemMsg));
 
-        chatProducer.sendSystemMessage(systemMsg).whenComplete((result, ex) -> {
-            if (ex != null) {
-                webSocketErrorHandler.handleChatError(systemMsg.getSender(), systemMsg,
-                        Translator.tolocale(ERROR_MSG_SYSTEM_OVERLOAD_STRING));
-            }
-        });
+        try {
+            systemMessageRepository.save(Objects.requireNonNull(systemMsg));
+            chatProducer.sendSystemMessage(systemMsg)
+                    .whenComplete((result, ex) -> {
+                        if (ex != null) {
+                            log.error("Failed to publish system message to Kafka for user '{}'", currentUsername, ex);
+                            webSocketErrorHandler.handleChatError(currentUsername, request,
+                                    Translator.tolocale(ERROR_MSG_SYSTEM_OVERLOAD_STRING));
+                        }
+                    });
+        } catch (Exception e) {
+            log.error("Failed to save system message to database for user '{}'", currentUsername, e);
+            webSocketErrorHandler.handleChatError(currentUsername, request,
+                    Translator.tolocale(ERROR_MSG_SYSTEM_OVERLOAD_STRING));
+            throw new SystemOverloadException(Translator.tolocale(ERROR_MSG_SYSTEM_OVERLOAD_STRING), request, e);
+        }
     }
 
     private void validatePrivateMessageRequest(String sender, ChatMessageRequest request) {

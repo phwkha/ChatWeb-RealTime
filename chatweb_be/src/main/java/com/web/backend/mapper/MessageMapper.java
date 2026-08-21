@@ -4,8 +4,9 @@ import com.web.backend.controller.request.ChatMessageRequest;
 import com.web.backend.controller.response.ChatMessageResponse;
 import com.web.backend.controller.response.MessageSystemResponse;
 import com.web.backend.kafka.avro.ChatMessageAvro;
-import com.web.backend.model.ChatMessage;
-import com.web.backend.model.SystemMessage;
+import com.web.backend.model.mongo.ChatMessage;
+import com.web.backend.model.mongo.SystemMessage;
+
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.Named;

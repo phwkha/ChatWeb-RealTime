@@ -5,7 +5,7 @@ import com.web.backend.controller.response.ApiResponse;
 import com.web.backend.controller.response.LoginResponse;
 import com.web.backend.controller.response.TokenResponse;
 import com.web.backend.controller.response.UserResponse;
-import com.web.backend.model.UserEntity;
+import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.ratelimit.LimitType;
 import com.web.backend.ratelimit.RateLimit;
 import com.web.backend.service.AuthenticationService;

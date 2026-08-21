@@ -19,11 +19,11 @@ public interface MessageService {
 
     void markMessagesAsRead(String recipientUsername, MarkReadRequest request);
 
-    void reactToMessage(String senderUsername, ReactionRequest request);
+    ChatMessageResponse reactToMessage(String senderUsername, ReactionRequest request);
 
     ChatMessageResponse getMessageById(String messageId, String currentUsername);
 
-    void editMessage(String senderUsername, EditMessageRequest request);
+    ChatMessageResponse editMessage(String senderUsername, EditMessageRequest request);
 
     void revokeMessage(String senderUsername, RevokeMessageRequest request);
 }

@@ -11,7 +11,7 @@ import com.mongodb.bulk.BulkWriteError;
 import com.web.backend.common.MessageStatus;
 import com.web.backend.common.MessageType;
 import com.web.backend.kafka.avro.ChatMessageAvro;
-import com.web.backend.model.ChatMessage;
+import com.web.backend.model.mongo.ChatMessage;
 import com.web.backend.mapper.MessageMapper;
 
 import org.springframework.data.mongodb.core.BulkOperations;

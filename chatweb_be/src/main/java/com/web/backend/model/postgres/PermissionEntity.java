@@ -1,6 +1,7 @@
-package com.web.backend.model;
+package com.web.backend.model.postgres;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import jakarta.persistence.*;
 import lombok.*;
 

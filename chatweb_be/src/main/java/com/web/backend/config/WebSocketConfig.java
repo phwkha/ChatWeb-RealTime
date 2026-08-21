@@ -5,8 +5,8 @@ import java.util.Objects;
 import java.security.Principal;
 
 import com.web.backend.jwt.JwtHandshakeInterceptor;
+import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.common.TokenType;
-import com.web.backend.model.UserEntity;
 import com.web.backend.service.JwtService;
 import com.web.backend.service.UserServiceDetail;
 

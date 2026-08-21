@@ -9,7 +9,7 @@ import com.web.backend.controller.response.ApiResponse;
 import com.web.backend.controller.response.ChatMessageResponse;
 import com.web.backend.controller.response.CursorResponse;
 import com.web.backend.controller.response.UnreadCountsResponse;
-import com.web.backend.model.UserEntity;
+import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.ratelimit.LimitType;
 import com.web.backend.ratelimit.RateLimit;
 import com.web.backend.service.MessageService;
@@ -51,7 +51,6 @@ public class MessageController {
                 CursorResponse<ChatMessageResponse> response = messageService.findPrivateMessageWithCursor(user1, user2,
                                 cursor,
                                 size);
-
                 return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(),
                                 Translator.tolocale(SUCCESS_MSG_GET_PRIVATE_STRING), response));
         }
@@ -61,7 +60,6 @@ public class MessageController {
         @GetMapping("/unread-counts")
         public ResponseEntity<ApiResponse<UnreadCountsResponse>> getUnreadCounts(Authentication auth) {
                 UserEntity user = (UserEntity) auth.getPrincipal();
-
                 return ResponseEntity
                                 .ok(ApiResponse.success(HttpStatus.OK.value(),
                                                 Translator.tolocale(SUCCESS_MSG_GET_UNREAD_STRING),
@@ -74,13 +72,9 @@ public class MessageController {
         public ResponseEntity<ApiResponse<Void>> markAsRead(
                         Authentication auth,
                         @RequestBody @Valid MarkReadRequest request) {
-
                 UserEntity user = (UserEntity) auth.getPrincipal();
-
                 log.debug("User '{}' marked messages from '{}' as read", user.getUsername(), request.getSender());
-
                 messageService.markMessagesAsRead(user.getUsername(), request);
-
                 return ResponseEntity.ok(
                                 ApiResponse.success(HttpStatus.OK.value(),
                                                 Translator.tolocale(SUCCESS_MSG_MARK_READ_STRING), null));
@@ -92,11 +86,8 @@ public class MessageController {
         public ResponseEntity<ApiResponse<ChatMessageResponse>> getMessageById(
                         @PathVariable String id,
                         Authentication auth) {
-
                 UserEntity user = (UserEntity) auth.getPrincipal();
-
                 ChatMessageResponse response = messageService.getMessageById(id, user.getUsername());
-
                 return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(),
                                 Translator.tolocale(SUCCESS_MSG_GET_MESSAGE_STRING), response));
         }
@@ -104,52 +95,40 @@ public class MessageController {
         @Operation(summary = "React to a message", description = "API endpoint for reacting to a message")
         @RateLimit(key = "msg_reaction", limit = 30, period = 60, type = LimitType.USER)
         @PostMapping("/reaction")
-        public ResponseEntity<ApiResponse<Void>> reactToMessage(
+        public ResponseEntity<ApiResponse<ChatMessageResponse>> reactToMessage(
                         Authentication auth,
                         @RequestBody @Valid ReactionRequest request) {
-
                 UserEntity user = (UserEntity) auth.getPrincipal();
-
                 log.debug("User '{}' reacted to message '{}'", user.getUsername(), request.getMessageId());
-
-                messageService.reactToMessage(user.getUsername(), request);
-
+                ChatMessageResponse chatMessageResponse = messageService.reactToMessage(user.getUsername(), request);
                 return ResponseEntity.ok(
                                 ApiResponse.success(HttpStatus.OK.value(),
-                                                Translator.tolocale(SUCCESS_MSG_REACTION_STRING), null));
+                                                Translator.tolocale(SUCCESS_MSG_REACTION_STRING), chatMessageResponse));
         }
 
         @Operation(summary = "Edit a message", description = "API endpoint to edit an existing message")
         @RateLimit(key = "msg_edit", limit = 20, period = 60, type = LimitType.USER)
-        @PostMapping("/edit")
-        public ResponseEntity<ApiResponse<Void>> editMessage(
+        @PutMapping("/edit")
+        public ResponseEntity<ApiResponse<ChatMessageResponse>> editMessage(
                         Authentication auth,
                         @RequestBody @Valid EditMessageRequest request) {
-
                 UserEntity user = (UserEntity) auth.getPrincipal();
-
                 log.debug("User '{}' edited message '{}'", user.getUsername(), request.getMessageId());
-
-                messageService.editMessage(user.getUsername(), request);
-
+                ChatMessageResponse chatMessageResponse = messageService.editMessage(user.getUsername(), request);
                 return ResponseEntity.ok(
                                 ApiResponse.success(HttpStatus.OK.value(),
-                                                Translator.tolocale(SUCCESS_MSG_EDIT_STRING), null));
+                                                Translator.tolocale(SUCCESS_MSG_EDIT_STRING), chatMessageResponse));
         }
 
         @Operation(summary = "Revoke a message", description = "API endpoint to revoke a message")
         @RateLimit(key = "msg_revoke", limit = 20, period = 60, type = LimitType.USER)
-        @PostMapping("/revoke")
+        @DeleteMapping("/revoke")
         public ResponseEntity<ApiResponse<Void>> revokeMessage(
                         Authentication auth,
                         @RequestBody @Valid RevokeMessageRequest request) {
-
                 UserEntity user = (UserEntity) auth.getPrincipal();
-
                 log.debug("User '{}' revoked message '{}'", user.getUsername(), request.getMessageId());
-
                 messageService.revokeMessage(user.getUsername(), request);
-
                 return ResponseEntity.ok(
                                 ApiResponse.success(HttpStatus.OK.value(),
                                                 Translator.tolocale(SUCCESS_MSG_REVOKE_STRING), null));

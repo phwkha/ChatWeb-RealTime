@@ -1,8 +1,9 @@
-package com.web.backend.model;
+package com.web.backend.model.postgres;
 
 import com.web.backend.common.AuthProvider;
 import com.web.backend.common.GenderType;
 import com.web.backend.common.UserStatus;
+
 import jakarta.persistence.*;
 import lombok.*;
 import org.springframework.security.core.GrantedAuthority;

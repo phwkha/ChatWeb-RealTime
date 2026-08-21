@@ -13,7 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.web.backend.common.AuthProvider;
 import com.web.backend.common.UserStatus;
-import com.web.backend.model.UserEntity;
+import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.oauth2.CustomOAuth2User;
 import com.web.backend.repository.RoleRepository;
 import com.web.backend.repository.UserRepository;

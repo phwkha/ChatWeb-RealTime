@@ -4,7 +4,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -18,9 +17,15 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.mongodb.core.FindAndModifyOptions;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -35,17 +40,19 @@ import com.web.backend.controller.request.RevokeMessageRequest;
 import com.web.backend.controller.response.ChatMessageResponse;
 import com.web.backend.controller.response.CursorResponse;
 import com.web.backend.controller.response.MessageSystemResponse;
+import com.web.backend.controller.response.ReadReceiptData;
 import com.web.backend.controller.response.UnreadCountsResponse;
-import com.web.backend.exception.WebSocketErrorHandler;
 import com.web.backend.exception.custom.AccessForbiddenException;
 import com.web.backend.exception.custom.InvalidDataException;
 import com.web.backend.exception.custom.ResourceNotFoundException;
+import com.web.backend.exception.custom.SystemOverloadException;
 import com.web.backend.kafka.payload.UpdateMessagePayload;
-import com.web.backend.kafka.producer.ChatProducer;
 import com.web.backend.mapper.MessageMapper;
-import com.web.backend.model.ChatMessage;
-import com.web.backend.model.SystemMessage;
+import com.web.backend.model.mongo.ChatMessage;
+import com.web.backend.model.mongo.ReadReceipt;
+import com.web.backend.model.mongo.SystemMessage;
 import com.web.backend.repository.MessageRepository;
+import com.web.backend.repository.ReadReceiptRepository;
 import com.web.backend.repository.SystemMessageRepository;
 import com.web.backend.repository.projection.UnreadCountProjection;
 import com.web.backend.service.FriendService;
@@ -60,23 +67,45 @@ import lombok.extern.slf4j.Slf4j;
 public class MessageServiceImpl implements MessageService {
 
     private final MessageRepository messageRepository;
+    private final ReadReceiptRepository readReceiptRepository;
     private final SystemMessageRepository systemMessageRepository;
     private final FriendService friendService;
     private final RedisTemplate<String, Object> redisTemplate;
+    private final MongoTemplate mongoTemplate;
     private final MessageMapper messageMapper;
-    private final ChatProducer chatProducer;
-    private final WebSocketErrorHandler webSocketErrorHandler;
+    private final ApplicationEventPublisher eventPublisher;
 
     private static final String TIMESTAMP_STRING = "timestamp";
+    private static final String SENTINEL_EMPTY_STRING = "_empty";
+    private static final String EMPTY_STRING = "";
+    private static final String DELIMITER_COLON_STRING = ":";
+    private static final String DELIMITER_UNDERSCORE_STRING = "_";
+
+    private static final String FIELD_ID_STRING = "id";
+    private static final String FIELD_CONVERSATION_ID_STRING = "conversationId";
+    private static final String FIELD_SENDER_STRING = "sender";
+    private static final String FIELD_IS_DELETED_STRING = "isDeleted";
+    private static final String FIELD_CONTENT_STRING = "content";
+    private static final String FIELD_IS_EDITED_STRING = "isEdited";
+    private static final String FIELD_IV_STRING = "iv";
+    private static final String FIELD_WRAPPED_KEY_RECIPIENT_STRING = "wrappedKeyRecipient";
+    private static final String FIELD_WRAPPED_KEY_SENDER_STRING = "wrappedKeySender";
+    private static final String FIELD_FILE_URL_STRING = "fileUrl";
+    private static final String FIELD_FILE_NAME_STRING = "fileName";
+    private static final String FIELD_FILE_SIZE_STRING = "fileSize";
+    private static final String FIELD_REACTIONS_STRING = "reactions";
+    private static final String FIELD_REACTIONS_PREFIX_STRING = "reactions.";
+    private static final String FIELD_IS_REACTED_STRING = "isReacted";
 
     private static final String CHAT_RECENT_HASH_STRING = "chat:recent:hash:";
     private static final String CHAT_RECENT_ZSET_STRING = "chat:recent:zset:";
     private static final String UNREAD_COUNTS_STRING = "unread_counts:";
+    private static final String READ_RECEIPT_KEY_STRING = "read_receipt:";
 
     private static final String ERROR_MSG_RECIPIENT_NOT_FOUND_STRING = "error.msg.recipient_not_found";
     private static final String ERROR_MSG_NOT_FRIENDS_STRING = "error.msg.not_friends";
     private static final String ERROR_MSG_NOT_FOUND_STRING = "error.msg.not_found";
-    private static final String ERROR_MSG_SYSTEM_OVERLOAD_STRING = "error.msg.system_overload";
+    private static final String ERROR_MSG_SYNCING_STRING = "error.msg.syncing";
     private static final String ERROR_MSG_EDIT_FORBIDDEN_STRING = "error.msg.edit_forbidden";
     private static final String ERROR_MSG_DELETE_FORBIDDEN_STRING = "error.msg.delete_forbidden";
     private static final String ERROR_MSG_EDIT_DELETED_STRING = "error.msg.edit_deleted";
@@ -104,12 +133,12 @@ public class MessageServiceImpl implements MessageService {
             List<ChatMessage> cachedMessages = fetchMessagesFromRedisCache(conversationId, 0, size);
             if (cachedMessages.size() >= size + 1) {
                 cachedMessages.sort(Comparator.comparing(ChatMessage::getTimestamp).reversed());
-                return buildCursorResponse(cachedMessages, size);
+                return buildCursorResponse(cachedMessages, size, conversationId, user1, user2);
             }
         }
 
         List<ChatMessage> finalMessages = fetchMessagesFromDatabaseAndMerge(conversationId, cursorStr, size, pageable);
-        return buildCursorResponse(finalMessages, size);
+        return buildCursorResponse(finalMessages, size, conversationId, user1, user2);
     }
 
     @Override
@@ -152,7 +181,7 @@ public class MessageServiceImpl implements MessageService {
         Map<Object, Object> redisCounts = redisTemplate.opsForHash().entries(key);
 
         if (!redisCounts.isEmpty()) {
-            if (redisCounts.containsKey("_empty")) {
+            if (redisCounts.containsKey(SENTINEL_EMPTY_STRING)) {
                 return UnreadCountsResponse.builder().unreadCounts(new HashMap<>()).build();
             }
             Map<String, Long> result = redisCounts.entrySet().stream()
@@ -168,7 +197,7 @@ public class MessageServiceImpl implements MessageService {
         Map<String, Object> redisMap = new HashMap<>();
 
         if (dbResults.isEmpty()) {
-            redisMap.put("_empty", 0L);
+            redisMap.put(SENTINEL_EMPTY_STRING, 0L);
         } else {
             for (UnreadCountProjection r : dbResults) {
                 resultMap.put(r.sender(), r.count());
@@ -191,26 +220,41 @@ public class MessageServiceImpl implements MessageService {
             return;
         }
         String convId = generateConversationId(recipientUsername, senderUsername);
-        String unreadKey = UNREAD_COUNTS_STRING + recipientUsername;
+        LocalDateTime now = LocalDateTime.now(ZoneId.systemDefault());
 
-        Map<String, MessageStatus> oldStatuses = new HashMap<>();
-        Object oldUnreadCount = markRecentMessagesAsReadInRedis(convId, senderUsername, unreadKey, oldStatuses);
+        try {
+            String readReceiptKey = READ_RECEIPT_KEY_STRING + convId + DELIMITER_COLON_STRING + recipientUsername;
+            redisTemplate.opsForValue().set(readReceiptKey, now.toString(), Duration.ofDays(7));
 
-        chatProducer.sendStatusMessage(UpdateMessagePayload.builder().relatedUsername(recipientUsername)
-                .type(UpdateMessageType.STATUS).updateEvent(request.getSender()).build())
-                .whenComplete((result, ex) -> {
-                    if (ex != null) {
-                        log.error("Failed to publish read status update to Kafka: reader='{}', sender='{}'",
-                                recipientUsername, request.getSender(), ex);
-                        rollbackMarkAsReadInRedis(convId, unreadKey, request.getSender(), oldStatuses, oldUnreadCount);
-                        webSocketErrorHandler.handleChatError(recipientUsername, request,
-                                Translator.tolocale(ERROR_MSG_SYSTEM_OVERLOAD_STRING));
-                    }
-                });
+            String unreadKey = UNREAD_COUNTS_STRING + recipientUsername;
+            redisTemplate.opsForHash().delete(unreadKey, senderUsername);
+        } catch (Exception e) {
+            log.warn("Failed to update read receipt in Redis for conv '{}'", convId, e);
+        }
+
+        try {
+            ReadReceipt receipt = ReadReceipt.builder()
+                    .id(convId + DELIMITER_COLON_STRING + recipientUsername)
+                    .conversationId(convId)
+                    .username(recipientUsername)
+                    .lastReadTimestamp(now)
+                    .build();
+            readReceiptRepository.save(receipt);
+            log.debug("Persisted ReadReceipt to MongoDB for conv '{}' and user '{}'", convId, recipientUsername);
+        } catch (Exception ex) {
+            log.error("Failed to persist ReadReceipt to MongoDB for conv '{}'", convId, ex);
+        }
+
+        eventPublisher.publishEvent(ReadReceiptData.builder()
+                .conversationId(convId)
+                .reader(recipientUsername)
+                .sender(senderUsername)
+                .readTimestamp(now)
+                .build());
     }
 
     @Override
-    public void editMessage(String senderUsername, EditMessageRequest request) {
+    public ChatMessageResponse editMessage(String senderUsername, EditMessageRequest request) {
         String convId = generateConversationId(senderUsername, request.getRecipient());
 
         ChatMessage msg = getMessageFromDbOrRedis(request.getMessageId(), convId);
@@ -227,56 +271,53 @@ public class MessageServiceImpl implements MessageService {
             throw new InvalidDataException(Translator.tolocale(ERROR_MSG_EDIT_DELETED_STRING));
         }
 
-        String oldContent = msg.getContent();
-        boolean oldIsEdited = msg.isEdited();
-        String oldIv = msg.getIv();
-        String oldWrappedKeyRecipient = msg.getWrappedKeyRecipient();
-        String oldWrappedKeySender = msg.getWrappedKeySender();
+        Query query = new Query(Criteria.where(FIELD_ID_STRING).is(request.getMessageId())
+                .and(FIELD_CONVERSATION_ID_STRING).is(convId)
+                .and(FIELD_SENDER_STRING).is(senderUsername)
+                .and(FIELD_IS_DELETED_STRING).is(false));
 
-        msg.setContent(request.getNewContent());
-        msg.setEdited(true);
+        Update update = new Update();
+        update.set(FIELD_CONTENT_STRING, request.getNewContent());
+        update.set(FIELD_IS_EDITED_STRING, true);
         if (request.getIv() != null) {
-            msg.setIv(request.getIv());
+            update.set(FIELD_IV_STRING, request.getIv());
         }
         if (request.getWrappedKeyRecipient() != null) {
-            msg.setWrappedKeyRecipient(request.getWrappedKeyRecipient());
+            update.set(FIELD_WRAPPED_KEY_RECIPIENT_STRING, request.getWrappedKeyRecipient());
         }
         if (request.getWrappedKeySender() != null) {
-            msg.setWrappedKeySender(request.getWrappedKeySender());
+            update.set(FIELD_WRAPPED_KEY_SENDER_STRING, request.getWrappedKeySender());
         }
 
-        updateMessageInRedisCache(convId, msg.getId(), m -> {
-            m.setContent(request.getNewContent());
+        FindAndModifyOptions options = new FindAndModifyOptions().returnNew(true);
+        ChatMessage updatedMsg = mongoTemplate.findAndModify(query, update, options, ChatMessage.class);
+
+        if (updatedMsg == null) {
+            handleMissingMongoMessage(convId, request.getMessageId(), request);
+            return null;
+        }
+
+        updateMessageInRedisCache(convId, updatedMsg.getId(), m -> {
+            m.setContent(updatedMsg.getContent());
             m.setEdited(true);
-            if (request.getIv() != null) {
-                m.setIv(request.getIv());
+            if (updatedMsg.getIv() != null) {
+                m.setIv(updatedMsg.getIv());
             }
-            if (request.getWrappedKeyRecipient() != null) {
-                m.setWrappedKeyRecipient(request.getWrappedKeyRecipient());
+            if (updatedMsg.getWrappedKeyRecipient() != null) {
+                m.setWrappedKeyRecipient(updatedMsg.getWrappedKeyRecipient());
             }
-            if (request.getWrappedKeySender() != null) {
-                m.setWrappedKeySender(request.getWrappedKeySender());
+            if (updatedMsg.getWrappedKeySender() != null) {
+                m.setWrappedKeySender(updatedMsg.getWrappedKeySender());
             }
         });
 
-        chatProducer
-                .sendEditMessage(UpdateMessagePayload.builder().relatedUsername(senderUsername)
-                        .type(UpdateMessageType.EDIT).updateEvent(msg).build())
-                .whenComplete((result, ex) -> {
-                    if (ex != null) {
-                        log.error("Failed to publish edit update to Kafka for message '{}'", request.getMessageId(),
-                                ex);
-                        updateMessageInRedisCache(convId, request.getMessageId(), m -> {
-                            m.setContent(oldContent);
-                            m.setEdited(oldIsEdited);
-                            m.setIv(oldIv);
-                            m.setWrappedKeyRecipient(oldWrappedKeyRecipient);
-                            m.setWrappedKeySender(oldWrappedKeySender);
-                        });
-                        webSocketErrorHandler.handleChatError(senderUsername, request,
-                                Translator.tolocale(ERROR_MSG_SYSTEM_OVERLOAD_STRING));
-                    }
-                });
+        eventPublisher.publishEvent(UpdateMessagePayload.builder()
+                .relatedUsername(senderUsername)
+                .type(UpdateMessageType.EDIT)
+                .updateEvent(updatedMsg)
+                .build());
+
+        return messageMapper.toResponse(updatedMsg);
     }
 
     @Override
@@ -297,6 +338,30 @@ public class MessageServiceImpl implements MessageService {
             return;
         }
 
+        Query query = new Query(Criteria.where(FIELD_ID_STRING).is(request.getMessageId())
+                .and(FIELD_CONVERSATION_ID_STRING).is(convId)
+                .and(FIELD_SENDER_STRING).is(senderUsername)
+                .and(FIELD_IS_DELETED_STRING).is(false));
+
+        Update update = new Update();
+        update.set(FIELD_CONTENT_STRING, EMPTY_STRING);
+        update.set(FIELD_FILE_URL_STRING, null);
+        update.set(FIELD_FILE_NAME_STRING, null);
+        update.set(FIELD_FILE_SIZE_STRING, null);
+        update.set(FIELD_REACTIONS_STRING, null);
+        update.set(FIELD_IV_STRING, null);
+        update.set(FIELD_WRAPPED_KEY_RECIPIENT_STRING, null);
+        update.set(FIELD_WRAPPED_KEY_SENDER_STRING, null);
+        update.set(FIELD_IS_DELETED_STRING, true);
+
+        FindAndModifyOptions options = new FindAndModifyOptions().returnNew(true);
+        ChatMessage updatedMsg = mongoTemplate.findAndModify(query, update, options, ChatMessage.class);
+
+        if (updatedMsg == null) {
+            handleMissingMongoMessage(convId, request.getMessageId(), request);
+            return;
+        }
+
         if (msg.getStatus() != MessageStatus.READ && msg.getRecipient() != null) {
             String unreadKey = UNREAD_COUNTS_STRING + msg.getRecipient();
             try {
@@ -306,28 +371,8 @@ public class MessageServiceImpl implements MessageService {
             }
         }
 
-        String oldContent = msg.getContent();
-        String oldFileUrl = msg.getFileUrl();
-        String oldFileName = msg.getFileName();
-        Long oldFileSize = msg.getFileSize();
-        Map<String, String> oldReactions = msg.getReactions() == null ? null : new HashMap<>(msg.getReactions());
-        String oldIv = msg.getIv();
-        String oldWrappedKeyRecipient = msg.getWrappedKeyRecipient();
-        String oldWrappedKeySender = msg.getWrappedKeySender();
-        boolean oldIsDeleted = msg.isDeleted();
-
-        msg.setContent("");
-        msg.setFileUrl(null);
-        msg.setFileName(null);
-        msg.setFileSize(null);
-        msg.setReactions(null);
-        msg.setIv(null);
-        msg.setWrappedKeyRecipient(null);
-        msg.setWrappedKeySender(null);
-        msg.setDeleted(true);
-
-        updateMessageInRedisCache(convId, msg.getId(), m -> {
-            m.setContent("");
+        updateMessageInRedisCache(convId, updatedMsg.getId(), m -> {
+            m.setContent(EMPTY_STRING);
             m.setFileUrl(null);
             m.setFileName(null);
             m.setFileSize(null);
@@ -338,32 +383,15 @@ public class MessageServiceImpl implements MessageService {
             m.setDeleted(true);
         });
 
-        chatProducer.sendRevokeMessage(
-                UpdateMessagePayload.builder().relatedUsername(senderUsername).type(UpdateMessageType.REVOKE)
-                        .updateEvent(msg).build())
-                .whenComplete((result, ex) -> {
-                    if (ex != null) {
-                        log.error("Failed to publish revoke update to Kafka for message '{}'", request.getMessageId(),
-                                ex);
-                        updateMessageInRedisCache(convId, request.getMessageId(), m -> {
-                            m.setContent(oldContent);
-                            m.setFileUrl(oldFileUrl);
-                            m.setFileName(oldFileName);
-                            m.setFileSize(oldFileSize);
-                            m.setReactions(oldReactions);
-                            m.setIv(oldIv);
-                            m.setWrappedKeyRecipient(oldWrappedKeyRecipient);
-                            m.setWrappedKeySender(oldWrappedKeySender);
-                            m.setDeleted(oldIsDeleted);
-                        });
-                        webSocketErrorHandler.handleChatError(senderUsername, request,
-                                Translator.tolocale(ERROR_MSG_SYSTEM_OVERLOAD_STRING));
-                    }
-                });
+        eventPublisher.publishEvent(UpdateMessagePayload.builder()
+                .relatedUsername(senderUsername)
+                .type(UpdateMessageType.REVOKE)
+                .updateEvent(updatedMsg)
+                .build());
     }
 
     @Override
-    public void reactToMessage(String senderUsername, ReactionRequest request) {
+    public ChatMessageResponse reactToMessage(String senderUsername, ReactionRequest request) {
 
         if (!friendService.isFriend(Objects.requireNonNull(senderUsername),
                 Objects.requireNonNull(request.getRecipient()))) {
@@ -382,32 +410,96 @@ public class MessageServiceImpl implements MessageService {
             throw new InvalidDataException(Translator.tolocale(ERROR_MSG_EDIT_DELETED_STRING));
         }
 
-        Map<String, String> oldReactions = msg.getReactions() == null ? null : new HashMap<>(msg.getReactions());
-        boolean oldIsReacted = msg.isReacted();
+        Query query = new Query(Criteria.where(FIELD_ID_STRING).is(request.getMessageId())
+                .and(FIELD_CONVERSATION_ID_STRING).is(convId)
+                .and(FIELD_IS_DELETED_STRING).is(false));
 
-        updateMessageInRedisCache(convId, request.getMessageId(),
+        Update update = new Update();
+        if (request.getReactionType() != null) {
+            update.set(FIELD_REACTIONS_PREFIX_STRING + senderUsername, request.getReactionType().toString());
+            update.set(FIELD_IS_REACTED_STRING, true);
+        } else {
+            update.unset(FIELD_REACTIONS_PREFIX_STRING + senderUsername);
+            Map<String, String> currentReactions = msg.getReactions();
+            if (currentReactions == null || currentReactions.size() <= 1) {
+                update.set(FIELD_IS_REACTED_STRING, false);
+            }
+        }
+
+        FindAndModifyOptions options = new FindAndModifyOptions().returnNew(true);
+        ChatMessage updatedMsg = mongoTemplate.findAndModify(query, update, options, ChatMessage.class);
+
+        if (updatedMsg == null) {
+            handleMissingMongoMessage(convId, request.getMessageId(), request);
+            return null;
+        }
+
+        updateMessageInRedisCache(convId, updatedMsg.getId(),
                 m -> applyReactionToMessage(m, senderUsername, request));
-        applyReactionToMessage(msg, senderUsername, request);
 
-        chatProducer.sendReaction(
-                UpdateMessagePayload.builder().relatedUsername(senderUsername).type(UpdateMessageType.REACT)
-                        .updateEvent(msg).build())
-                .whenComplete((result, ex) -> {
-                    if (ex != null) {
-                        log.error("Failed to publish reaction update to Kafka for message '{}'", request.getMessageId(),
-                                ex);
-                        updateMessageInRedisCache(convId, request.getMessageId(), m -> {
-                            m.setReactions(oldReactions);
-                            m.setReacted(oldIsReacted);
-                        });
-                        webSocketErrorHandler.handleChatError(senderUsername, request,
-                                Translator.tolocale(ERROR_MSG_SYSTEM_OVERLOAD_STRING));
-                    }
-                });
+        eventPublisher.publishEvent(UpdateMessagePayload.builder()
+                .relatedUsername(senderUsername)
+                .type(UpdateMessageType.REACT)
+                .updateEvent(updatedMsg)
+                .build());
+
+        return messageMapper.toResponse(updatedMsg);
+    }
+
+    private void handleMissingMongoMessage(String convId, String messageId, Object requestData) {
+        String hashKey = CHAT_RECENT_HASH_STRING + convId;
+        Object redisObj = null;
+        try {
+            redisObj = redisTemplate.opsForHash().get(hashKey, messageId);
+        } catch (Exception e) {
+            log.warn("Failed to check Redis cache for message '{}'", messageId, e);
+        }
+        if (redisObj != null) {
+            throw new SystemOverloadException(Translator.tolocale(ERROR_MSG_SYNCING_STRING), requestData);
+        }
+        throw new ResourceNotFoundException(Translator.tolocale(ERROR_MSG_NOT_FOUND_STRING));
     }
 
     private String generateConversationId(String user1, String user2) {
-        return (user1.compareTo(user2) < 0) ? user1 + "_" + user2 : user2 + "_" + user1;
+        return (user1.compareTo(user2) < 0) ? user1 + DELIMITER_UNDERSCORE_STRING + user2
+                : user2 + DELIMITER_UNDERSCORE_STRING + user1;
+    }
+
+    private LocalDateTime getLastReadTimestamp(String conversationId, String username) {
+        if (conversationId == null || username == null) {
+            return null;
+        }
+        String key = READ_RECEIPT_KEY_STRING + conversationId + DELIMITER_COLON_STRING + username;
+        try {
+            Object val = redisTemplate.opsForValue().get(key);
+            if (val != null) {
+                return LocalDateTime.parse(val.toString());
+            }
+        } catch (Exception e) {
+            log.warn("Failed to get read receipt from Redis for key '{}'", key, e);
+        }
+
+        try {
+            Optional<ReadReceipt> receiptOpt = readReceiptRepository.findByConversationIdAndUsername(conversationId,
+                    username);
+            if (receiptOpt.isPresent() && receiptOpt.get().getLastReadTimestamp() != null) {
+                LocalDateTime ts = receiptOpt.get().getLastReadTimestamp();
+                cacheReadTimestamp(key, ts);
+                return ts;
+            }
+        } catch (Exception e) {
+            log.warn("Failed to get read receipt from MongoDB for conv '{}' and user '{}'", conversationId, username,
+                    e);
+        }
+        return null;
+    }
+
+    private void cacheReadTimestamp(String key, LocalDateTime timestamp) {
+        try {
+            redisTemplate.opsForValue().set(key, timestamp.toString(), Duration.ofDays(7));
+        } catch (Exception e) {
+            log.warn("Failed to populate read receipt in Redis for key '{}'", key, e);
+        }
     }
 
     private List<ChatMessage> fetchMessagesFromRedisCache(String conversationId, long start, long end) {
@@ -454,64 +546,13 @@ public class MessageServiceImpl implements MessageService {
                 .toList();
     }
 
-    private Object markRecentMessagesAsReadInRedis(String convId, String senderUsername, String unreadKey,
-            Map<String, MessageStatus> oldStatuses) {
-        String hashKey = CHAT_RECENT_HASH_STRING + convId;
-        String zsetKey = CHAT_RECENT_ZSET_STRING + convId;
-        Object oldUnreadCount = null;
-
-        try {
-            oldUnreadCount = redisTemplate.opsForHash().get(unreadKey, senderUsername);
-            updateCachedMessagesToRead(senderUsername, hashKey, zsetKey, oldStatuses);
-            redisTemplate.opsForHash().delete(unreadKey, senderUsername);
-        } catch (Exception e) {
-            log.warn("Failed to update read status in Redis cache for conversation '{}'", convId, e);
-        }
-        return oldUnreadCount;
-    }
-
-    private void updateCachedMessagesToRead(String senderUsername, String hashKey, String zsetKey,
-            Map<String, MessageStatus> oldStatuses) {
-        Set<Object> messageIds = redisTemplate.opsForZSet().range(zsetKey, 0, -1);
-        if (messageIds == null || messageIds.isEmpty()) {
-            return;
-        }
-
-        List<Object> cachedObjects = redisTemplate.opsForHash().multiGet(hashKey, messageIds);
-        Map<String, Object> updates = new HashMap<>();
-        for (Object obj : cachedObjects) {
-            if (obj instanceof ChatMessage msg && senderUsername.equals(msg.getSender())
-                    && msg.getStatus() != MessageStatus.READ) {
-                oldStatuses.put(msg.getId(), msg.getStatus());
-                msg.setStatus(MessageStatus.READ);
-                updates.put(msg.getId(), msg);
-            }
-        }
-        if (!updates.isEmpty()) {
-            redisTemplate.opsForHash().putAll(hashKey, updates);
-        }
-    }
-
-    private void rollbackMarkAsReadInRedis(String convId, String unreadKey, String senderUsername,
-            Map<String, MessageStatus> oldStatuses, Object oldUnreadCount) {
-        try {
-            for (Map.Entry<String, MessageStatus> entry : oldStatuses.entrySet()) {
-                updateMessageInRedisCache(convId, entry.getKey(), m -> m.setStatus(entry.getValue()));
-            }
-            if (oldUnreadCount != null) {
-                redisTemplate.opsForHash().put(unreadKey, senderUsername, oldUnreadCount);
-            }
-        } catch (Exception rollbackEx) {
-            log.error("Failed to rollback Redis cache on markAsRead failure for conv '{}'", convId, rollbackEx);
-        }
-    }
-
     private Duration getRandomTtl(long baseSeconds, long jitterSeconds) {
         long jitter = ThreadLocalRandom.current().nextLong(-jitterSeconds, jitterSeconds + 1);
         return Duration.ofSeconds(Math.max(10, baseSeconds + jitter));
     }
 
-    private CursorResponse<ChatMessageResponse> buildCursorResponse(List<ChatMessage> messages, int size) {
+    private CursorResponse<ChatMessageResponse> buildCursorResponse(List<ChatMessage> messages, int size,
+            String conversationId, String user1, String user2) {
 
         boolean hasMore = false;
         if (messages.size() > size) {
@@ -525,8 +566,23 @@ public class MessageServiceImpl implements MessageService {
             nextCursor = lastMessageTime.toString();
         }
 
+        LocalDateTime user1LastRead = getLastReadTimestamp(conversationId, user1);
+        LocalDateTime user2LastRead = getLastReadTimestamp(conversationId, user2);
+
         List<ChatMessageResponse> responseList = messages.stream()
-                .map(messageMapper::toResponse)
+                .map(msg -> {
+                    ChatMessageResponse response = messageMapper.toResponse(msg);
+                    String recipient = msg.getRecipient();
+                    LocalDateTime recipientReadTime = recipient != null && recipient.equals(user1) ? user1LastRead
+                            : user2LastRead;
+                    if (recipientReadTime != null && msg.getTimestamp() != null
+                            && !msg.getTimestamp().isAfter(recipientReadTime)) {
+                        response.setStatus(MessageStatus.READ);
+                    } else if (response.getStatus() == null) {
+                        response.setStatus(MessageStatus.SENT);
+                    }
+                    return response;
+                })
                 .toList();
 
         return new CursorResponse<>(responseList, nextCursor, hasMore);

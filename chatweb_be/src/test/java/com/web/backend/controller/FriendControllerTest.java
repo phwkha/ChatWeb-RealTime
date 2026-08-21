@@ -5,7 +5,7 @@ import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.response.PageResponse;
 import com.web.backend.controller.response.UserSummaryResponse;
 import com.web.backend.jwt.JwtAuthenticationFilter;
-import com.web.backend.model.UserEntity;
+import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.service.FriendService;
 import com.web.backend.service.JwtService;
 import com.web.backend.service.UserServiceDetail;

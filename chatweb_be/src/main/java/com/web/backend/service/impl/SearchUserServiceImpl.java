@@ -8,7 +8,7 @@ import com.web.backend.controller.response.PageResponse;
 import com.web.backend.controller.response.UserDetailResponse;
 import com.web.backend.controller.response.UserSummaryResponse;
 import com.web.backend.mapper.UserMapper;
-import com.web.backend.model.UserEntity;
+import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.repository.UserRepository;
 import com.web.backend.repository.specification.AddressSpecification;
 import com.web.backend.repository.specification.SearchSpecificationsBuilder;

@@ -5,7 +5,7 @@ import com.web.backend.controller.request.SaveKeyRequest;
 import com.web.backend.controller.request.SavePublicKeyRequest;
 import com.web.backend.controller.response.ApiResponse;
 import com.web.backend.controller.response.RsaKeyResponse;
-import com.web.backend.model.UserEntity;
+import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.service.KeyService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;

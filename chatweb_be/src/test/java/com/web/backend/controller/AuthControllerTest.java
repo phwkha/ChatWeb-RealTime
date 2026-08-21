@@ -4,9 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.request.*;
 import com.web.backend.controller.response.*;
-import com.web.backend.model.UserEntity;
 import com.web.backend.service.AuthenticationService;
 import com.web.backend.jwt.JwtAuthenticationFilter;
+import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.service.JwtService;
 import com.web.backend.service.RateLimitingService;
 import com.web.backend.service.UserServiceDetail;
@@ -58,7 +58,7 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
                 @ComponentScan.Filter(type = FilterType.ASSIGNABLE_TYPE, classes = JwtAuthenticationFilter.class)
 })
 @EnableAspectJAutoProxy
-@Import({RateLimitAspect.class, AopAutoConfiguration.class})
+@Import({ RateLimitAspect.class, AopAutoConfiguration.class })
 class AuthControllerTest {
 
         @Autowired

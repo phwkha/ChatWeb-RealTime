@@ -1,13 +1,14 @@
-package com.web.backend.model;
+package com.web.backend.model.postgres;
 
 import com.web.backend.common.FriendshipStatus;
+
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
 @Entity
 @Table(name = "friendships", uniqueConstraints = {
-        @UniqueConstraint(columnNames = {"requester_id", "addressee_id"})
+        @UniqueConstraint(columnNames = { "requester_id", "addressee_id" })
 })
 @Getter
 @Setter

@@ -2,10 +2,11 @@ package com.web.backend.mapper;
 
 import com.web.backend.controller.request.*;
 import com.web.backend.controller.response.*;
-import com.web.backend.model.AddressEntity;
-import com.web.backend.model.PermissionEntity;
-import com.web.backend.model.RoleEntity;
-import com.web.backend.model.UserEntity;
+import com.web.backend.model.postgres.AddressEntity;
+import com.web.backend.model.postgres.PermissionEntity;
+import com.web.backend.model.postgres.RoleEntity;
+import com.web.backend.model.postgres.UserEntity;
+
 import org.mapstruct.*;
 
 import java.util.Set;

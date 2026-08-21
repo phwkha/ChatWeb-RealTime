@@ -1,6 +1,5 @@
 package com.web.backend.repository;
 
-import com.web.backend.model.SystemMessage;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -13,6 +12,8 @@ import org.testcontainers.containers.MongoDBContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import com.web.backend.model.mongo.SystemMessage;
+
 import java.time.Instant;
 import java.util.List;
 
@@ -20,7 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @Testcontainers
 @DataMongoTest
- class SystemMessageRepositoryTest {
+class SystemMessageRepositoryTest {
 
     @Container
     static MongoDBContainer mongoDBContainer = new MongoDBContainer("mongo:6.0").withExposedPorts(27017);

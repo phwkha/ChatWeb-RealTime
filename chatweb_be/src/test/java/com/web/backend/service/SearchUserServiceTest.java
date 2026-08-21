@@ -23,15 +23,17 @@ import com.web.backend.controller.response.PageResponse;
 import com.web.backend.controller.response.UserDetailResponse;
 import com.web.backend.controller.response.UserSummaryResponse;
 import com.web.backend.mapper.UserMapper;
-import com.web.backend.model.UserEntity;
+import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.repository.UserRepository;
 import com.web.backend.service.impl.SearchUserServiceImpl;
 
 @ExtendWith(MockitoExtension.class)
- class SearchUserServiceTest {
+class SearchUserServiceTest {
 
-    @Mock private UserRepository userRepository;
-    @Mock private UserMapper userMapper;
+    @Mock
+    private UserRepository userRepository;
+    @Mock
+    private UserMapper userMapper;
 
     @InjectMocks
     private SearchUserServiceImpl searchUserService;
@@ -48,7 +50,8 @@ import com.web.backend.service.impl.SearchUserServiceImpl;
     @Test
     void testSearchUsers() {
         Page<UserEntity> page = new PageImpl<>(List.of(activeUser));
-        when(userRepository.searchUsersByKeyword(eq("test"), eq(UserStatus.INACTIVE), any(Pageable.class))).thenReturn(page);
+        when(userRepository.searchUsersByKeyword(eq("test"), eq(UserStatus.INACTIVE), any(Pageable.class)))
+                .thenReturn(page);
         when(userMapper.toUserSummaryResponse(activeUser)).thenReturn(mock(UserSummaryResponse.class));
 
         PageResponse<UserSummaryResponse> res = searchUserService.searchUsers("test", 0, 10, "asc");
@@ -61,17 +64,19 @@ import com.web.backend.service.impl.SearchUserServiceImpl;
         when(userRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(page);
         when(userMapper.toUserDetailResponse(activeUser)).thenReturn(mock(UserDetailResponse.class));
 
-        PageResponse<UserDetailResponse> res = searchUserService.advanceSearchWithSpecifications(PageRequest.of(0, 10), null, null);
+        PageResponse<UserDetailResponse> res = searchUserService.advanceSearchWithSpecifications(PageRequest.of(0, 10),
+                null, null);
         assertEquals(1, res.getTotalElements());
     }
-    
+
     @Test
     void testAdvanceSearchWithSpecifications_EmptyArrays() {
         Page<UserEntity> page = new PageImpl<>(List.of(activeUser));
         when(userRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(page);
         when(userMapper.toUserDetailResponse(activeUser)).thenReturn(mock(UserDetailResponse.class));
 
-        PageResponse<UserDetailResponse> res = searchUserService.advanceSearchWithSpecifications(PageRequest.of(0, 10), new String[]{}, new String[]{});
+        PageResponse<UserDetailResponse> res = searchUserService.advanceSearchWithSpecifications(PageRequest.of(0, 10),
+                new String[] {}, new String[] {});
         assertEquals(1, res.getTotalElements());
     }
 
@@ -81,10 +86,11 @@ import com.web.backend.service.impl.SearchUserServiceImpl;
         when(userRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(page);
         when(userMapper.toUserDetailResponse(activeUser)).thenReturn(mock(UserDetailResponse.class));
 
-        String[] userFilters = {"username:test", "age>18"};
-        String[] addressFilters = {"city:hanoi"};
-        
-        PageResponse<UserDetailResponse> res = searchUserService.advanceSearchWithSpecifications(PageRequest.of(0, 10), userFilters, addressFilters);
+        String[] userFilters = { "username:test", "age>18" };
+        String[] addressFilters = { "city:hanoi" };
+
+        PageResponse<UserDetailResponse> res = searchUserService.advanceSearchWithSpecifications(PageRequest.of(0, 10),
+                userFilters, addressFilters);
         assertEquals(1, res.getTotalElements());
     }
 }

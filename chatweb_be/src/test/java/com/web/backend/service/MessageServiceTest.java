@@ -13,6 +13,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.support.ResourceBundleMessageSource;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.redis.core.ListOperations;
@@ -27,15 +28,15 @@ import com.web.backend.controller.request.EditMessageRequest;
 import com.web.backend.controller.request.MarkReadRequest;
 import com.web.backend.controller.request.ReactionRequest;
 import com.web.backend.controller.request.RevokeMessageRequest;
-import com.web.backend.exception.WebSocketErrorHandler;
 import com.web.backend.exception.custom.AccessForbiddenException;
 import com.web.backend.exception.custom.InvalidDataException;
 import com.web.backend.exception.custom.ResourceNotFoundException;
+import com.web.backend.exception.custom.SystemOverloadException;
 import com.web.backend.kafka.avro.ChatMessageAvro;
 import com.web.backend.mapper.MessageMapper;
 import com.web.backend.model.ChatMessage;
-import com.web.backend.model.ReadReceipt;
-import com.web.backend.model.SystemMessage;
+import com.web.backend.model.mongo.ReadReceipt;
+import com.web.backend.model.mongo.SystemMessage;
 import com.web.backend.repository.MessageRepository;
 import com.web.backend.repository.ReadReceiptRepository;
 import com.web.backend.repository.SystemMessageRepository;
@@ -53,7 +54,9 @@ import com.web.backend.common.MessageStatus;
 import com.web.backend.controller.response.ChatMessageResponse;
 import com.web.backend.controller.response.CursorResponse;
 import com.web.backend.controller.response.MessageSystemResponse;
+import com.web.backend.controller.response.ReadReceiptData;
 import com.web.backend.controller.response.UnreadCountsResponse;
+import com.web.backend.kafka.payload.UpdateMessagePayload;
 
 @ExtendWith(MockitoExtension.class)
 @org.mockito.junit.jupiter.MockitoSettings(strictness = org.mockito.quality.Strictness.LENIENT)
@@ -75,13 +78,7 @@ class MessageServiceTest {
     private MessageMapper messageMapper;
 
     @Mock
-    private com.web.backend.kafka.producer.ChatProducer chatProducer;
-
-    @Mock
-    private WebSocketRoutingService webSocketRoutingService;
-
-    @Mock
-    private WebSocketErrorHandler webSocketErrorHandler;
+    private ApplicationEventPublisher eventPublisher;
 
     @Mock
     private ListOperations<String, Object> listOperations;
@@ -148,18 +145,18 @@ class MessageServiceTest {
         message.setRecipient("recipient");
         message.setConversationId("recipient_sender");
         when(messageRepository.findById("msg123")).thenReturn(Optional.of(message));
-
-        CompletableFuture<SendResult<String, Object>> future = CompletableFuture
-                .completedFuture(mock(SendResult.class, RETURNS_DEEP_STUBS));
-        when(chatProducer.sendReaction(any())).thenReturn(future);
+        when(mongoTemplate.findAndModify(any(), any(), any(), eq(ChatMessage.class))).thenReturn(message);
 
         messageService.reactToMessage("sender", request);
+
+        // Verify MongoDB updated
+        verify(mongoTemplate).findAndModify(any(), any(), any(), eq(ChatMessage.class));
 
         // Verify Redis updated
         verify(redisTemplate, atLeastOnce()).opsForHash();
 
-        // Verify Kafka push
-        verify(chatProducer).sendReaction(any());
+        // Verify Kafka event published
+        verify(eventPublisher).publishEvent(any(UpdateMessagePayload.class));
     }
 
     @Test
@@ -220,15 +217,12 @@ class MessageServiceTest {
         message.setMessageType(com.web.backend.common.MessageType.CHAT);
 
         when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
-        CompletableFuture<SendResult<String, Object>> future = CompletableFuture
-                .completedFuture(mock(SendResult.class, RETURNS_DEEP_STUBS));
-        when(chatProducer.sendEditMessage(any())).thenReturn(future);
+        when(mongoTemplate.findAndModify(any(), any(), any(), eq(ChatMessage.class))).thenReturn(message);
 
         messageService.editMessage("sender", request);
 
-        assertTrue(message.isEdited());
-        assertEquals("Edited text", message.getContent());
-        verify(chatProducer).sendEditMessage(any());
+        verify(mongoTemplate).findAndModify(any(), any(), any(), eq(ChatMessage.class));
+        verify(eventPublisher).publishEvent(any(UpdateMessagePayload.class));
     }
 
     @Test
@@ -250,18 +244,54 @@ class MessageServiceTest {
         message.setMessageType(com.web.backend.common.MessageType.CHAT);
 
         when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
-        CompletableFuture<SendResult<String, Object>> future = CompletableFuture
-                .completedFuture(mock(SendResult.class, RETURNS_DEEP_STUBS));
-        when(chatProducer.sendEditMessage(any())).thenReturn(future);
+        when(mongoTemplate.findAndModify(any(), any(), any(), eq(ChatMessage.class))).thenReturn(message);
 
         messageService.editMessage("sender", request);
 
-        assertTrue(message.isEdited());
-        assertEquals("Encrypted text", message.getContent());
-        assertEquals("new_iv", message.getIv());
-        assertEquals("new_wrapped_recipient", message.getWrappedKeyRecipient());
-        assertEquals("new_wrapped_sender", message.getWrappedKeySender());
-        verify(chatProducer).sendEditMessage(any());
+        verify(mongoTemplate).findAndModify(any(), any(), any(), eq(ChatMessage.class));
+        verify(eventPublisher).publishEvent(any(UpdateMessagePayload.class));
+    }
+
+    @Test
+    void testEditMessage_NotFoundInDb_ThrowsResourceNotFoundException() {
+        EditMessageRequest request = new EditMessageRequest();
+        request.setMessageId("msg1");
+        request.setNewContent("Edited text");
+        request.setRecipient("recipient");
+
+        ChatMessage message = new ChatMessage();
+        message.setId("msg1");
+        message.setSender("sender");
+        message.setRecipient("recipient");
+        message.setConversationId("recipient_sender");
+        message.setMessageType(com.web.backend.common.MessageType.CHAT);
+
+        when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
+        when(mongoTemplate.findAndModify(any(), any(), any(), eq(ChatMessage.class))).thenReturn(null);
+
+        assertThrows(ResourceNotFoundException.class, () -> messageService.editMessage("sender", request));
+    }
+
+    @Test
+    void testEditMessage_InRedisButNotInDb_ThrowsSystemOverloadException() {
+        EditMessageRequest request = new EditMessageRequest();
+        request.setMessageId("msg1");
+        request.setNewContent("Edited text");
+        request.setRecipient("recipient");
+
+        ChatMessage message = new ChatMessage();
+        message.setId("msg1");
+        message.setSender("sender");
+        message.setRecipient("recipient");
+        message.setConversationId("recipient_sender");
+        message.setMessageType(com.web.backend.common.MessageType.CHAT);
+
+        when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
+        when(mongoTemplate.findAndModify(any(), any(), any(), eq(ChatMessage.class))).thenReturn(null);
+        when(redisTemplate.opsForHash()).thenReturn(hashOperations);
+        when(hashOperations.get("chat:recent:hash:recipient_sender", "msg1")).thenReturn(message);
+
+        assertThrows(SystemOverloadException.class, () -> messageService.editMessage("sender", request));
     }
 
     @Test
@@ -340,20 +370,13 @@ class MessageServiceTest {
         message.setMessageType(com.web.backend.common.MessageType.CHAT);
 
         when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
-        CompletableFuture<SendResult<String, Object>> future = CompletableFuture
-                .completedFuture(mock(SendResult.class, RETURNS_DEEP_STUBS));
-        when(chatProducer.sendRevokeMessage(any())).thenReturn(future);
+        when(mongoTemplate.findAndModify(any(), any(), any(), eq(ChatMessage.class))).thenReturn(message);
 
         messageService.revokeMessage("sender", request);
 
-        assertTrue(message.isDeleted());
-        assertEquals("", message.getContent());
-        assertNull(message.getFileUrl());
-        assertNull(message.getIv());
-        assertNull(message.getWrappedKeyRecipient());
-        assertNull(message.getWrappedKeySender());
+        verify(mongoTemplate).findAndModify(any(), any(), any(), eq(ChatMessage.class));
         verify(hashOperations).increment(eq("unread_counts:recipient"), eq("sender"), eq(-1L));
-        verify(chatProducer).sendRevokeMessage(any());
+        verify(eventPublisher).publishEvent(any(UpdateMessagePayload.class));
     }
 
     @Test
@@ -392,7 +415,7 @@ class MessageServiceTest {
 
         messageService.revokeMessage("sender", request);
 
-        verify(chatProducer, never()).sendRevokeMessage(any());
+        verify(eventPublisher, never()).publishEvent(any());
     }
 
     @Test
@@ -446,17 +469,13 @@ class MessageServiceTest {
 
         messageService.markMessagesAsRead("recipient", request);
 
-        verify(chatProducer, never()).sendStatusMessage(any());
+        verify(eventPublisher, never()).publishEvent(any());
     }
 
     @Test
     void testMarkMessagesAsRead_Success() {
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         when(redisTemplate.opsForHash()).thenReturn(hashOperations);
-
-        CompletableFuture<SendResult<String, Object>> future = CompletableFuture
-                .completedFuture(mock(SendResult.class, RETURNS_DEEP_STUBS));
-        when(chatProducer.sendStatusMessage(any())).thenReturn(future);
 
         MarkReadRequest request = new MarkReadRequest();
         request.setSender("sender");
@@ -465,24 +484,8 @@ class MessageServiceTest {
 
         verify(valueOperations).set(eq("read_receipt:recipient_sender:recipient"), anyString(), any());
         verify(hashOperations).delete("unread_counts:recipient", "sender");
-        verify(chatProducer).sendStatusMessage(any());
-    }
-
-    @Test
-    void testMarkMessagesAsRead_KafkaFailure() {
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(redisTemplate.opsForHash()).thenReturn(hashOperations);
-
-        CompletableFuture<SendResult<String, Object>> failedFuture = new CompletableFuture<>();
-        failedFuture.completeExceptionally(new RuntimeException("Kafka down"));
-        when(chatProducer.sendStatusMessage(any())).thenReturn(failedFuture);
-
-        MarkReadRequest request = new MarkReadRequest();
-        request.setSender("sender");
-
-        messageService.markMessagesAsRead("recipient", request);
-
-        verify(webSocketErrorHandler).handleChatError(eq("recipient"), eq(request), anyString());
+        verify(readReceiptRepository).save(any(ReadReceipt.class));
+        verify(eventPublisher).publishEvent(any(ReadReceiptData.class));
     }
 
     @Test
@@ -609,7 +612,8 @@ class MessageServiceTest {
                     .build();
         });
 
-        CursorResponse<ChatMessageResponse> result = messageService.findPrivateMessageWithCursor("user1", "user2", null, 10);
+        CursorResponse<ChatMessageResponse> result = messageService.findPrivateMessageWithCursor("user1", "user2", null,
+                10);
 
         assertEquals(2, result.getContent().size());
         assertEquals(MessageStatus.SENT, result.getContent().get(0).getStatus()); // newMsg
@@ -629,14 +633,14 @@ class MessageServiceTest {
         message.setRecipient("recipient");
         message.setConversationId("recipient_sender");
         when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
+        when(mongoTemplate.findAndModify(any(), any(), any(), eq(ChatMessage.class))).thenReturn(message);
 
         when(friendService.isFriend("sender", "recipient")).thenReturn(true);
 
-        CompletableFuture<SendResult<String, Object>> future = CompletableFuture
-                .completedFuture(mock(SendResult.class, RETURNS_DEEP_STUBS));
-        when(chatProducer.sendReaction(any())).thenReturn(future);
-
         messageService.reactToMessage("sender", request);
+
+        verify(mongoTemplate).findAndModify(any(), any(), any(), eq(ChatMessage.class));
+        verify(eventPublisher).publishEvent(any(UpdateMessagePayload.class));
     }
 
     @Test
@@ -684,7 +688,8 @@ class MessageServiceTest {
         when(systemMessageRepository.findMessage(any(), any())).thenReturn(List.of(msg));
         when(messageMapper.systemMessageToResponse(any())).thenReturn(MessageSystemResponse.builder().build());
 
-        CursorResponse<MessageSystemResponse> result = messageService.findSystemMessageWithCursor(Instant.now().toString(), 10);
+        CursorResponse<MessageSystemResponse> result = messageService
+                .findSystemMessageWithCursor(Instant.now().toString(), 10);
         assertNotNull(result);
         assertEquals(1, result.getContent().size());
     }
@@ -696,7 +701,8 @@ class MessageServiceTest {
 
         when(messageMapper.toResponse(any())).thenReturn(ChatMessageResponse.builder().build());
 
-        CursorResponse<ChatMessageResponse> result = messageService.findPrivateMessageWithCursor("user2", "user1", null, 10);
+        CursorResponse<ChatMessageResponse> result = messageService.findPrivateMessageWithCursor("user2", "user1", null,
+                10);
         assertNotNull(result);
     }
 }
