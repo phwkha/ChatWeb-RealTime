@@ -43,6 +43,8 @@ public class StorageServiceImpl implements StorageService {
     private static final String RAW_STRING = "raw";
 
     private static final String AVATARS_STRING = "avatars";
+    private static final String DELIMITER_SLASH_STRING = "/";
+    private static final String DELIMITER_DOT_STRING = ".";
 
     private static final String ERROR_STORAGE_INVALID_FORMAT_STRING = "error.storage.invalid_format";
     private static final String ERROR_STORAGE_FILE_TOO_LARGE_STRING = "error.storage.file_too_large";
@@ -72,7 +74,7 @@ public class StorageServiceImpl implements StorageService {
 
             if (!resourceType.equals(RAW_STRING)) {
                 String contentType = file.getContentType();
-                if (contentType == null || !contentType.startsWith(resourceType + "/")) {
+                if (contentType == null || !contentType.startsWith(resourceType + DELIMITER_SLASH_STRING)) {
                     throw new InvalidDataException(
                             Translator.tolocale(ERROR_STORAGE_INVALID_FORMAT_STRING, resourceType));
                 }
@@ -122,8 +124,8 @@ public class StorageServiceImpl implements StorageService {
 
     private String extractPublicId(String url, String folder) {
         try {
-            int startIndex = url.lastIndexOf(folder + "/");
-            int endIndex = url.lastIndexOf(".");
+            int startIndex = url.lastIndexOf(folder + DELIMITER_SLASH_STRING);
+            int endIndex = url.lastIndexOf(DELIMITER_DOT_STRING);
             if (startIndex != -1 && endIndex != -1) {
                 return url.substring(startIndex, endIndex);
             }

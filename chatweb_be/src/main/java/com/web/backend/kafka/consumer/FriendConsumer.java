@@ -36,6 +36,7 @@ public class FriendConsumer {
     private static final String SUCCESS_FRIEND_INVITE_DECLINED_STRING = "success.friend.invite_declined";
     private static final String SYS_MSG_USER_ONLINE_STRING = "sys.msg.user_online";
     private static final String SYS_MSG_USER_OFFLINE_STRING = "sys.msg.user_offline";
+    private static final String EMPTY_STRING = "";
 
     @RetryableTopic(attempts = "5", backoff = @Backoff(delay = 500), sameIntervalTopicReuseStrategy = SameIntervalTopicReuseStrategy.SINGLE_TOPIC, autoCreateTopics = "true")
     @KafkaListener(topics = "${spring.kafka.topic.friend.friend-topic}", groupId = "${spring.kafka.topic.friend.friend-group-id}", containerFactory = "jsonKafkaListenerContainerFactory")
@@ -110,7 +111,7 @@ public class FriendConsumer {
                 translationKey = SYS_MSG_USER_OFFLINE_STRING;
                 break;
             default:
-                translationKey = "";
+                translationKey = EMPTY_STRING;
         }
 
         return NotificationResponse.notificationData(type, relatedUsername, Translator.tolocale(translationKey));

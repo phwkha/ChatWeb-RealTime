@@ -52,6 +52,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private static final String ERROR_WS_BLACKLISTED_STRING = "error.ws.blacklisted";
 
     private static final String BLACK_LIST_PREFIX_STRING = "blacklist:";
+    private static final String TOKEN_VERSION_CLAIM_STRING = "v";
 
     private static final String LOGOUT_URL_STRING = "/api/auth/logout";
     private static final String LOGOUT_ALL_DEVICES_URL_STRING = "/api/auth/logout-all-devices";
@@ -148,7 +149,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         Integer tokenVersionInJwt = jwtService.extractClaim(jwt, TokenType.ACCESS_TOKEN,
-                claims -> claims.get("v", Integer.class));
+                claims -> claims.get(TOKEN_VERSION_CLAIM_STRING, Integer.class));
 
         Integer currentVersion = userEntity.getTokenVersion();
         if (currentVersion == null) {

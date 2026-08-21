@@ -1,6 +1,6 @@
 package com.web.backend.repository;
 
-import com.web.backend.model.ChatMessage;
+import com.web.backend.model.mongo.ChatMessage;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

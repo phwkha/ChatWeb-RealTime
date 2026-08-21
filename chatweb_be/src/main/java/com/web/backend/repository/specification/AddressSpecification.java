@@ -25,6 +25,7 @@ public class AddressSpecification implements Specification<UserEntity> {
     private transient List<SpecSearchCriteria> criteriaList;
 
     private static final String ADDRESSES_STRING = "addresses";
+    private static final String PERCENT_STRING = "%";
 
     @Override
     @SuppressWarnings({ "unchecked", "rawtypes" })
@@ -53,10 +54,10 @@ public class AddressSpecification implements Specification<UserEntity> {
                     builder.greaterThan(addressJoin.get(criteria.getKey()), value.toString().toLowerCase());
                 case LESS_THAN -> builder.lessThan(addressJoin.get(criteria.getKey()), value.toString().toLowerCase());
                 case LIKE ->
-                    builder.like(addressJoin.get(criteria.getKey()), "%" + value.toString().toLowerCase() + "%");
-                case STARTS_WITH -> builder.like(addressJoin.get(criteria.getKey()), value + "%");
-                case ENDS_WITH -> builder.like(addressJoin.get(criteria.getKey()), "%" + value);
-                case CONTAINS -> builder.like(addressJoin.get(criteria.getKey()), "%" + value + "%");
+                    builder.like(addressJoin.get(criteria.getKey()), PERCENT_STRING + value.toString().toLowerCase() + PERCENT_STRING);
+                case STARTS_WITH -> builder.like(addressJoin.get(criteria.getKey()), value + PERCENT_STRING);
+                case ENDS_WITH -> builder.like(addressJoin.get(criteria.getKey()), PERCENT_STRING + value);
+                case CONTAINS -> builder.like(addressJoin.get(criteria.getKey()), PERCENT_STRING + value + PERCENT_STRING);
             };
             if (finalPredicate == null) {
                 finalPredicate = currentPredicate;

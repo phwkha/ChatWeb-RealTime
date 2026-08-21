@@ -56,6 +56,9 @@ public class ChatServiceImpl implements ChatService {
     private static final String CHAT_RECENT_ZSET_STRING = "chat:recent:zset:";
     private static final String UNREAD_COUNTS_STRING = "unread_counts:";
 
+    private static final String EMPTY_STRING = "";
+    private static final String DELIMITER_UNDERSCORE_STRING = "_";
+
     private static final String ERROR_MSG_RECIPIENT_NOT_FOUND_STRING = "error.msg.recipient_not_found";
     private static final String ERROR_MSG_SEND_DELETED_STRING = "error.msg.send_deleted";
     private static final String ERROR_MSG_SEND_LOCKED_STRING = "error.msg.send_locked";
@@ -107,18 +110,9 @@ public class ChatServiceImpl implements ChatService {
 
         try {
             systemMessageRepository.save(Objects.requireNonNull(systemMsg));
-            chatProducer.sendSystemMessage(systemMsg)
-                    .whenComplete((result, ex) -> {
-                        if (ex != null) {
-                            log.error("Failed to publish system message to Kafka for user '{}'", currentUsername, ex);
-                            webSocketErrorHandler.handleChatError(currentUsername, request,
-                                    Translator.tolocale(ERROR_MSG_SYSTEM_OVERLOAD_STRING));
-                        }
-                    });
+            chatProducer.sendSystemMessage(systemMsg);
         } catch (Exception e) {
             log.error("Failed to save system message to database for user '{}'", currentUsername, e);
-            webSocketErrorHandler.handleChatError(currentUsername, request,
-                    Translator.tolocale(ERROR_MSG_SYSTEM_OVERLOAD_STRING));
             throw new SystemOverloadException(Translator.tolocale(ERROR_MSG_SYSTEM_OVERLOAD_STRING), request, e);
         }
     }
@@ -165,7 +159,7 @@ public class ChatServiceImpl implements ChatService {
             chatMsg.setTimestamp(LocalDateTime.now(ZoneId.systemDefault()));
         }
         if (chatMsg.getContent() == null) {
-            chatMsg.setContent("");
+            chatMsg.setContent(EMPTY_STRING);
         }
         if (chatMsg.getContentType() == null) {
             chatMsg.setContentType(ContentType.TEXT);
@@ -237,6 +231,7 @@ public class ChatServiceImpl implements ChatService {
     }
 
     private String generateConversationId(String user1, String user2) {
-        return (user1.compareTo(user2) < 0) ? user1 + "_" + user2 : user2 + "_" + user1;
+        return (user1.compareTo(user2) < 0) ? user1 + DELIMITER_UNDERSCORE_STRING + user2
+                : user2 + DELIMITER_UNDERSCORE_STRING + user1;
     }
 }

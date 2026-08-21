@@ -34,6 +34,7 @@ public class JwtServiceImpl implements JwtService {
     private String secretKeyRefresh;
 
     private static final String ROLE_STRING = "role";
+    private static final String TOKEN_VERSION_CLAIM_STRING = "v";
 
     private static final String ERROR_JWT_INVALID_TYPE_STRING = "error.jwt.invalid_type";
 
@@ -43,7 +44,7 @@ public class JwtServiceImpl implements JwtService {
 
         Map<String, Object> claims = new HashMap<>();
         claims.put(ROLE_STRING, authorities);
-        claims.put("v", tokenVersion);
+        claims.put(TOKEN_VERSION_CLAIM_STRING, tokenVersion);
 
         return generateToken(claims, username);
     }
@@ -54,7 +55,7 @@ public class JwtServiceImpl implements JwtService {
 
         Map<String, Object> claims = new HashMap<>();
         claims.put(ROLE_STRING, authorities);
-        claims.put("v", tokenVersion);
+        claims.put(TOKEN_VERSION_CLAIM_STRING, tokenVersion);
 
         return generateRefreshToken(claims, username);
     }

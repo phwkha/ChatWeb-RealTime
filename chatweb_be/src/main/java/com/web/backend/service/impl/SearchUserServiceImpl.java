@@ -36,8 +36,9 @@ public class SearchUserServiceImpl implements SearchUserService {
     private final UserMapper userMapper;
 
     private static final String DESC_STRING = "desc";
-
     private static final String USERNAME_STRING = "username";
+    private static final String EMPTY_STRING = "";
+    private static final String WILDCARD_ASTERISK_STRING = "*";
 
     private static final Pattern SEARCH_PATTERN = Pattern.compile("^(\\w+)([<:>~!])(.*)$");
 
@@ -95,14 +96,14 @@ public class SearchUserServiceImpl implements SearchUserService {
                 String op = matcher.group(2);
                 String val = matcher.group(3);
 
-                String prefix = "";
-                String suffix = "";
-                if (val.startsWith("*")) {
-                    prefix = "*";
+                String prefix = EMPTY_STRING;
+                String suffix = EMPTY_STRING;
+                if (val.startsWith(WILDCARD_ASTERISK_STRING)) {
+                    prefix = WILDCARD_ASTERISK_STRING;
                     val = val.substring(1);
                 }
-                if (val.endsWith("*") && !val.isEmpty()) {
-                    suffix = "*";
+                if (val.endsWith(WILDCARD_ASTERISK_STRING) && !val.isEmpty()) {
+                    suffix = WILDCARD_ASTERISK_STRING;
                     val = val.substring(0, val.length() - 1);
                 }
 

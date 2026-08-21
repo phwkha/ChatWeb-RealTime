@@ -30,6 +30,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
+import com.web.backend.common.ErrorCode;
 import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.response.ErrorSocketResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -69,7 +70,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     private static final String AUTHORIZATION_STRING = "Authorization";
     private static final String BEARER_STRING = "Bearer ";
     private static final String ACCEPT_LANGUAGE_STRING = "Accept-Language";
-
+    private static final String DELIMITER_COMMA_STRING = ",";
     private static final String ERROR_WS_AUTH_FAILED_STRING = "error.ws.auth_failed";
     private static final String ERROR_WS_BLACKLISTED_STRING = "error.ws.blacklisted";
     private static final String ERROR_WS_INVALID_TOKEN_VERSION_STRING = "error.ws.invalid_token_version";
@@ -98,8 +99,12 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                 accessor.setLeaveMutable(true);
                 byte[] payload;
                 try {
-                    ErrorSocketResponse response = ErrorSocketResponse.builder().message(errorMessage)
-                            .request(null).build();
+                    ErrorSocketResponse response = ErrorSocketResponse.builder()
+                            .code(ErrorCode.STOMP_ERROR.getHttpStatus())
+                            .errorCode(ErrorCode.STOMP_ERROR)
+                            .message(errorMessage)
+                            .request(null)
+                            .build();
                     payload = objectMapper.writeValueAsBytes(response);
                 } catch (Exception e) {
                     payload = errorMessage != null ? errorMessage.getBytes() : new byte[0];
@@ -109,7 +114,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         });
 
         registry.addEndpoint(WS_STRING)
-                .setAllowedOriginPatterns(allowedOrigins.split(","))
+                .setAllowedOriginPatterns(allowedOrigins.split(DELIMITER_COMMA_STRING))
                 .addInterceptors(jwtHandshakeInterceptor)
                 .withSockJS();
     }

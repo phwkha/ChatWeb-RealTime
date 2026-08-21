@@ -19,6 +19,7 @@ public class RateLimitingService {
 
     private static final String RATE_LIMIT_PREFIX = "rate_limit:";
     private static final String DELIMITER = ":";
+    private static final String DELIMITER_DASH_STRING = "-";
 
     // Lua script for atomic sliding window rate limiting using Redis ZSET
     private static final String LUA_SLIDING_WINDOW_SCRIPT =
@@ -53,7 +54,7 @@ public class RateLimitingService {
     public boolean isAllowed(String targetKey, int maxRequests, long windowSeconds) {
         String fullKey = RATE_LIMIT_PREFIX + targetKey;
         long now = System.currentTimeMillis();
-        String member = now + "-" + UUID.randomUUID().toString().substring(0, 8);
+        String member = now + DELIMITER_DASH_STRING + UUID.randomUUID().toString().substring(0, 8);
 
         try {
             Long result = stringRedisTemplate.execute(

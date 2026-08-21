@@ -22,10 +22,12 @@ public class SessionCleanupScheduler {
     private static final long TIMEOUT_MS = 3L * 60 * 1000;
 
     private static final String LOCK_KEY = "lock:session_cleanup";
+    private static final String LOCKED_VALUE_STRING = "locked";
+    private static final String WS_ROUTING_SERVERS_KEY_STRING = "ws:routing:servers:";
 
     @Scheduled(fixedRate = 30 * 1000)
     public void cleanupZombieSessions() {
-        Boolean locked = redisTemplate.opsForValue().setIfAbsent(LOCK_KEY, "locked", Duration.ofSeconds(20));
+        Boolean locked = redisTemplate.opsForValue().setIfAbsent(LOCK_KEY, LOCKED_VALUE_STRING, Duration.ofSeconds(20));
 
         if (Boolean.TRUE.equals(locked)) {
             try {
@@ -39,7 +41,7 @@ public class SessionCleanupScheduler {
                         String username = (String) userObj;
                         redisTemplate.opsForZSet().remove(ONLINE_USERS_KEY, username);
                         redisTemplate.opsForHash().delete(ONLINE_USERS_COUNT_KEY, username);
-                        redisTemplate.delete("ws:routing:servers:" + username);
+                        redisTemplate.delete(WS_ROUTING_SERVERS_KEY_STRING + username);
                         userService.setUserOnlineStatus(username, false);
                         log.debug("Cleaned up zombie session for user '{}'", username);
                     }

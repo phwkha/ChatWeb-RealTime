@@ -21,6 +21,8 @@ public class UserSpecification implements Specification<UserEntity> {
 
     private transient List<SpecSearchCriteria> criteriaList;
 
+    private static final String PERCENT_STRING = "%";
+
     @Override
     @SuppressWarnings({ "unchecked", "rawtypes" })
     public Predicate toPredicate(@NonNull final Root<UserEntity> root, @Nullable final CriteriaQuery<?> query,
@@ -45,10 +47,10 @@ public class UserSpecification implements Specification<UserEntity> {
                     builder.greaterThan(root.get(criteria.getKey()), value.toString().toLowerCase());
                 case LESS_THAN -> builder.lessThan(root.get(criteria.getKey()), value.toString().toLowerCase());
                 case LIKE ->
-                    builder.like(root.get(criteria.getKey()), "%" + value.toString().toLowerCase() + "%");
-                case STARTS_WITH -> builder.like(root.get(criteria.getKey()), value + "%");
-                case ENDS_WITH -> builder.like(root.get(criteria.getKey()), "%" + value);
-                case CONTAINS -> builder.like(root.get(criteria.getKey()), "%" + value + "%");
+                    builder.like(root.get(criteria.getKey()), PERCENT_STRING + value.toString().toLowerCase() + PERCENT_STRING);
+                case STARTS_WITH -> builder.like(root.get(criteria.getKey()), value + PERCENT_STRING);
+                case ENDS_WITH -> builder.like(root.get(criteria.getKey()), PERCENT_STRING + value);
+                case CONTAINS -> builder.like(root.get(criteria.getKey()), PERCENT_STRING + value + PERCENT_STRING);
             };
             if (finalPredicate == null) {
                 finalPredicate = currentPredicate;

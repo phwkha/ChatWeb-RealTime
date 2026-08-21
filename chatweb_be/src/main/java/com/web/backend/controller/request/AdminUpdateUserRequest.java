@@ -12,10 +12,7 @@ public class AdminUpdateUserRequest {
     @Email(message = "{valid.email_invalid}")
     private String email;
 
-    @Pattern(
-            regexp = "^(0[0-9]{9}|\\+84[0-9]{9})$",
-            message = "{valid.phone_invalid}"
-    )
+    @Pattern(regexp = "^(0\\d{9}|\\+84\\d{9})$", message = "{valid.phone_invalid}")
     private String phone;
     private Long roleId;
 }

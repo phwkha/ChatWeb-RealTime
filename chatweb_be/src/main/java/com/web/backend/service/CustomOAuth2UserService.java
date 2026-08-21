@@ -48,6 +48,10 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
 
     private static final String ID_STRING = "id";
     private static final String USER_STRING = "USER";
+    private static final String REGEX_WHITESPACE_STRING = "\\s+";
+    private static final String EMPTY_STRING = "";
+    private static final String DEFAULT_USERNAME_PREFIX_STRING = "user";
+    private static final String DELIMITER_UNDERSCORE_STRING = "_";
 
     @Override
     @Transactional
@@ -114,11 +118,11 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
 
         String username = oAuth2User.getAttribute(NAME_STRING);
         if (username != null) {
-            username = username.replaceAll("\\s+", "");
+            username = username.replaceAll(REGEX_WHITESPACE_STRING, EMPTY_STRING);
         } else {
-            username = "user";
+            username = DEFAULT_USERNAME_PREFIX_STRING;
         }
-        newUser.setUsername(username + "_" + System.currentTimeMillis());
+        newUser.setUsername(username + DELIMITER_UNDERSCORE_STRING + System.currentTimeMillis());
 
         newUser.setRole(roleRepository.findByName(USER_STRING)
                 .orElseThrow(() -> {

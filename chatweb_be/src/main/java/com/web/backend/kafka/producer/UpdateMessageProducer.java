@@ -26,6 +26,13 @@ public class UpdateMessageProducer {
     @Value("${spring.kafka.topic.update-message.update}")
     private String chatTopicUpdate;
 
+    private static final String DEFAULT_UPDATE_MSG_STRING = "Update Message";
+    private static final String STATUS_MSG_STRING = "Status Message";
+    private static final String REACTION_MSG_STRING = "Reaction";
+    private static final String EDIT_MSG_STRING = "Edit Message";
+    private static final String REVOKE_MSG_STRING = "Revoke Message";
+    private static final String TOPIC_MUST_NOT_BE_NULL_STRING = "Topic name must not be null";
+
     @Async
     @EventListener
     public void handleReadReceiptEvent(ReadReceiptData receiptData) {
@@ -46,28 +53,29 @@ public class UpdateMessageProducer {
         if (payload == null) {
             return;
         }
-        sendSafely(chatTopicUpdate, payload, payload.type() != null ? payload.type().name() : "Update Message");
+        sendSafely(chatTopicUpdate, payload,
+                payload.type() != null ? payload.type().name() : DEFAULT_UPDATE_MSG_STRING);
     }
 
     public CompletableFuture<SendResult<String, Object>> sendStatusMessage(Object statusMsg) {
-        return sendSafely(chatTopicUpdate, statusMsg, "Status Message");
+        return sendSafely(chatTopicUpdate, statusMsg, STATUS_MSG_STRING);
     }
 
     public CompletableFuture<SendResult<String, Object>> sendReaction(Object messageReaction) {
-        return sendSafely(chatTopicUpdate, messageReaction, "Reaction");
+        return sendSafely(chatTopicUpdate, messageReaction, REACTION_MSG_STRING);
     }
 
     public CompletableFuture<SendResult<String, Object>> sendEditMessage(Object messageEdit) {
-        return sendSafely(chatTopicUpdate, messageEdit, "Edit Message");
+        return sendSafely(chatTopicUpdate, messageEdit, EDIT_MSG_STRING);
     }
 
     public CompletableFuture<SendResult<String, Object>> sendRevokeMessage(Object messageRevoke) {
-        return sendSafely(chatTopicUpdate, messageRevoke, "Revoke Message");
+        return sendSafely(chatTopicUpdate, messageRevoke, REVOKE_MSG_STRING);
     }
 
     private CompletableFuture<SendResult<String, Object>> sendSafely(String topic, Object payload, String actionName) {
         CompletableFuture<SendResult<String, Object>> future = kafkaTemplate.send(
-                Objects.requireNonNull(topic), payload);
+                Objects.requireNonNull(topic, TOPIC_MUST_NOT_BE_NULL_STRING), payload);
         future.whenComplete((result, ex) -> {
             if (ex != null) {
                 log.error("Failed to publish {} to Kafka topic '{}'", actionName, topic, ex);

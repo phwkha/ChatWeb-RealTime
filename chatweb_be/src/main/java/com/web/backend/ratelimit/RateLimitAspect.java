@@ -25,6 +25,10 @@ public class RateLimitAspect {
 
     private static final String DELIMITER = ":";
     private static final String ANONYMOUS = "anonymous";
+    private static final String DELIMITER_HASH_STRING = "#";
+    private static final String PREFIX_USER_STRING = "user_";
+    private static final String PREFIX_IP_STRING = "ip_";
+    private static final String GLOBAL_STRING = "global";
 
     @Before("@annotation(rateLimit)")
     public void handleRateLimit(JoinPoint joinPoint, RateLimit rateLimit) {
@@ -33,7 +37,7 @@ public class RateLimitAspect {
 
         String keyPrefix = rateLimit.key();
         if (keyPrefix == null || keyPrefix.trim().isEmpty()) {
-            keyPrefix = joinPoint.getSignature().getDeclaringType().getSimpleName() + "#"
+            keyPrefix = joinPoint.getSignature().getDeclaringType().getSimpleName() + DELIMITER_HASH_STRING
                     + joinPoint.getSignature().getName();
         }
 
@@ -59,14 +63,14 @@ public class RateLimitAspect {
 
         switch (limitType) {
             case USER:
-                return username != null ? "user_" + username : "ip_" + clientIp;
+                return username != null ? PREFIX_USER_STRING + username : PREFIX_IP_STRING + clientIp;
             case IP_AND_USER:
-                return (username != null ? "user_" + username : ANONYMOUS) + DELIMITER + "ip_" + clientIp;
+                return (username != null ? PREFIX_USER_STRING + username : ANONYMOUS) + DELIMITER + PREFIX_IP_STRING + clientIp;
             case GLOBAL:
-                return "global";
+                return GLOBAL_STRING;
             case IP:
             default:
-                return "ip_" + clientIp;
+                return PREFIX_IP_STRING + clientIp;
         }
     }
 

@@ -82,7 +82,7 @@ class UpdateMessageProducerTest {
         com.web.backend.kafka.payload.UpdateMessagePayload payload = com.web.backend.kafka.payload.UpdateMessagePayload.builder()
                 .type(com.web.backend.common.UpdateMessageType.EDIT)
                 .relatedUsername("sender1")
-                .updateEvent(new com.web.backend.model.ChatMessage())
+                .updateEvent(new com.web.backend.model.mongo.ChatMessage())
                 .build();
 
         updateMessageProducer.handleUpdateMessageEvent(payload);

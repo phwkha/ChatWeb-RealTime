@@ -79,6 +79,10 @@ public class UserServiceImpl implements UserService {
     private static final String AVATARS_STRING = "avatars";
     private static final String OTP_STRING = "otp:";
     private static final String COOLDOWN_RESEND_STRING = "cooldown:resend:";
+    private static final String ATTEMPTS_SUFFIX_STRING = ":attempts";
+    private static final String DELIMITER_COLON_STRING = ":";
+    private static final String EMPTY_STRING = "";
+    private static final String ONE_STRING = "1";
 
     private static final String ERROR_USER_NOT_FOUND_WITH_STRING = "error.user.not_found_with";
     private static final String ERROR_AUTH_INVALID_OTP_ATTEMPTS_STRING = "error.auth.invalid_otp_attempts";
@@ -167,9 +171,9 @@ public class UserServiceImpl implements UserService {
 
         String otp = String.valueOf(100000 + this.secureRandom.nextInt(900000));
 
-        String redisKey = OTP_STRING + type.name() + ":" + user.getUsername();
+        String redisKey = OTP_STRING + type.name() + DELIMITER_COLON_STRING + user.getUsername();
 
-        String redisValue = otp + (extraData != null ? ":" + extraData : "");
+        String redisValue = otp + (extraData != null ? DELIMITER_COLON_STRING + extraData : EMPTY_STRING);
 
         redisTemplate.opsForValue().set(redisKey, redisValue, expirationMinutes, TimeUnit.MINUTES);
 
@@ -423,12 +427,12 @@ public class UserServiceImpl implements UserService {
         UserEntity user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new ResourceNotFoundException(Translator.tolocale(ERROR_USER_NOT_FOUND_STRING)));
 
-        String redisKey = OTP_STRING + OtpType.EMAIL_CHANGE.name() + ":" + user.getUsername();
+        String redisKey = OTP_STRING + OtpType.EMAIL_CHANGE.name() + DELIMITER_COLON_STRING + user.getUsername();
         String oldValue = (String) redisTemplate.opsForValue().get(redisKey);
         if (oldValue == null)
             throw new ResourceNotFoundException(Translator.tolocale(ERROR_USER_REQ_NOT_FOUND_STRING));
 
-        String[] parts = oldValue.split(":");
+        String[] parts = oldValue.split(DELIMITER_COLON_STRING);
         String newEmail = parts.length > 1 ? parts[1] : null;
 
         if (newEmail == null)
@@ -447,9 +451,9 @@ public class UserServiceImpl implements UserService {
     }
 
     private String validateRedisOtp(String identifier, OtpType type, String inputOtp) {
-        String redisKey = OTP_STRING + type.name() + ":" + identifier;
+        String redisKey = OTP_STRING + type.name() + DELIMITER_COLON_STRING + identifier;
 
-        String attemptKey = redisKey + ":attempts";
+        String attemptKey = redisKey + ATTEMPTS_SUFFIX_STRING;
 
         String value = (String) redisTemplate.opsForValue().get(redisKey);
 
@@ -457,7 +461,7 @@ public class UserServiceImpl implements UserService {
             throw new InvalidOtpException(Translator.tolocale(ERROR_AUTH_OTP_EXPIRED_OR_REQ_MISSING_STRING));
         }
 
-        String[] parts = value.split(":");
+        String[] parts = value.split(DELIMITER_COLON_STRING);
         String savedOtp = parts[0];
         String extraData = parts.length > 1 ? parts[1] : null;
 
@@ -480,7 +484,7 @@ public class UserServiceImpl implements UserService {
     }
 
     private void resendRedisOtp(String identifier, OtpType type, String emailToSend) {
-        String redisKey = OTP_STRING + type.name() + ":" + identifier;
+        String redisKey = OTP_STRING + type.name() + DELIMITER_COLON_STRING + identifier;
 
         String cooldownKey = COOLDOWN_RESEND_STRING + identifier;
 
@@ -494,12 +498,12 @@ public class UserServiceImpl implements UserService {
             throw new ResourceNotFoundException(Translator.tolocale(ERROR_AUTH_REQ_EXPIRED_STRING));
         }
 
-        String[] parts = oldValue.split(":");
-        String extraData = parts.length > 1 ? parts[1] : "";
+        String[] parts = oldValue.split(DELIMITER_COLON_STRING);
+        String extraData = parts.length > 1 ? parts[1] : EMPTY_STRING;
 
         String newOtp = String.valueOf(100000 + this.secureRandom.nextInt(900000));
 
-        String newValue = newOtp + (extraData.isEmpty() ? "" : ":" + extraData);
+        String newValue = newOtp + (extraData.isEmpty() ? EMPTY_STRING : DELIMITER_COLON_STRING + extraData);
 
         redisTemplate.opsForValue().set(redisKey, newValue, expirationMinutes, TimeUnit.MINUTES);
 
@@ -510,7 +514,7 @@ public class UserServiceImpl implements UserService {
             if (u.isPresent())
                 usernameForMail = u.get().getUsername();
         }
-        redisTemplate.opsForValue().set(cooldownKey, "1", 60, TimeUnit.SECONDS);
+        redisTemplate.opsForValue().set(cooldownKey, ONE_STRING, 60, TimeUnit.SECONDS);
         emailService.sendOtpEmail(emailToSend, usernameForMail, newOtp);
         log.info("Resent {} OTP to '{}'", type, emailToSend);
     }

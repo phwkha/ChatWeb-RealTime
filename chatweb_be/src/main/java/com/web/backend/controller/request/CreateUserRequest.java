@@ -17,5 +17,5 @@ public class CreateUserRequest {
 
     @NotBlank(message = "{valid.pwd_empty}")
     @Size(min = 8, message = "{valid.pwd_min_8}")
-    private String password; //
+    private String password;
 }

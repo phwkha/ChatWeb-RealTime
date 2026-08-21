@@ -34,7 +34,7 @@ import com.web.backend.exception.custom.SystemOverloadException;
 import com.web.backend.kafka.avro.ChatMessageAvro;
 import com.web.backend.kafka.producer.ChatProducer;
 import com.web.backend.mapper.MessageMapper;
-import com.web.backend.model.ChatMessage;
+import com.web.backend.model.mongo.ChatMessage;
 import com.web.backend.model.mongo.SystemMessage;
 import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.repository.SystemMessageRepository;
@@ -248,7 +248,8 @@ class ChatServiceTest {
 
         chatService.sendSystemMessage("admin", request);
 
-        verify(webSocketErrorHandler).handleChatError(eq("admin"), eq(request), anyString());
+        verify(systemMessageRepository).save(any(SystemMessage.class));
+        verify(webSocketErrorHandler, never()).handleChatError(any(), any(), any());
     }
 
     @Test
@@ -259,7 +260,7 @@ class ChatServiceTest {
         when(systemMessageRepository.save(any(SystemMessage.class))).thenThrow(new RuntimeException("MongoDB down"));
 
         assertThrows(SystemOverloadException.class, () -> chatService.sendSystemMessage("admin", request));
-        verify(webSocketErrorHandler).handleChatError(eq("admin"), eq(request), anyString());
+        verify(webSocketErrorHandler, never()).handleChatError(any(), any(), any());
         verify(chatProducer, never()).sendSystemMessage(any());
     }
 

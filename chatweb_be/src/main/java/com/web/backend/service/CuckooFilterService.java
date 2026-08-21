@@ -18,13 +18,16 @@ public class CuckooFilterService {
 
     private final RedisTemplate<String, Object> redisTemplate;
 
+    private static final String LUA_CF_ADD_SCRIPT = "return redis.call('CF.ADD', KEYS[1], ARGV[1])";
+    private static final String LUA_CF_EXISTS_SCRIPT = "return redis.call('CF.EXISTS', KEYS[1], ARGV[1])";
+    private static final String LUA_CF_DEL_SCRIPT = "return redis.call('CF.DEL', KEYS[1], ARGV[1])";
+
     /**
      * Thêm item vào Cuckoo Filter dùng Lua script
      */
     public void add(String key, String item) {
-        String script = "return redis.call('CF.ADD', KEYS[1], ARGV[1])";
         redisTemplate.execute(
-                new DefaultRedisScript<>(script, Long.class),
+                new DefaultRedisScript<>(LUA_CF_ADD_SCRIPT, Long.class),
                 RedisSerializer.string(),
                 new GenericToStringSerializer<>(Long.class),
                 Objects.requireNonNull(Collections.singletonList(key)),
@@ -35,9 +38,8 @@ public class CuckooFilterService {
      * Kiểm tra tồn tại trong Cuckoo Filter
      */
     public boolean exists(String key, String item) {
-        String script = "return redis.call('CF.EXISTS', KEYS[1], ARGV[1])";
         Long result = redisTemplate.execute(
-                new DefaultRedisScript<>(script, Long.class),
+                new DefaultRedisScript<>(LUA_CF_EXISTS_SCRIPT, Long.class),
                 RedisSerializer.string(),
                 new GenericToStringSerializer<>(Long.class),
                 Objects.requireNonNull(Collections.singletonList(key)),
@@ -49,9 +51,8 @@ public class CuckooFilterService {
      * Xóa item khỏi Cuckoo Filter
      */
     public void delete(String key, String item) {
-        String script = "return redis.call('CF.DEL', KEYS[1], ARGV[1])";
         redisTemplate.execute(
-                new DefaultRedisScript<>(script, Long.class),
+                new DefaultRedisScript<>(LUA_CF_DEL_SCRIPT, Long.class),
                 RedisSerializer.string(),
                 new GenericToStringSerializer<>(Long.class),
                 Objects.requireNonNull(Collections.singletonList(key)),

@@ -95,6 +95,12 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     private static final String BLACKLIST_STRING = "blacklist:";
     private static final String USER_DETAILS_STRING = "user_details";
     private static final String COOLDOWN_RESEND_STRING = "cooldown:resend:";
+    private static final String OTP_PREFIX_STRING = "otp:";
+    private static final String ATTEMPTS_SUFFIX_STRING = ":attempts";
+    private static final String DELIMITER_COLON_STRING = ":";
+    private static final String EMPTY_STRING = "";
+    private static final String ONE_STRING = "1";
+    private static final String TOKEN_VERSION_CLAIM_STRING = "v";
 
     private static final String ERROR_AUTH_INVALID_OTP_ATTEMPTS_STRING = "error.auth.invalid_otp_attempts";
     private static final String ERROR_AUTH_EMAIL_USED_STRING = "error.auth.email_used";
@@ -253,7 +259,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         }
 
         Integer tokenVersionInJwt = jwtService.extractClaim(refreshToken, TokenType.REFRESH_TOKEN,
-                claims -> claims.get("v", Integer.class));
+                claims -> claims.get(TOKEN_VERSION_CLAIM_STRING, Integer.class));
         Integer currentVersion = user.getTokenVersion() == null ? 0 : user.getTokenVersion();
 
         if (tokenVersionInJwt == null || !tokenVersionInJwt.equals(currentVersion)) {
@@ -298,9 +304,9 @@ public class AuthenticationServiceImpl implements AuthenticationService {
 
         String otp = String.valueOf(100000 + this.secureRandom.nextInt(900000));
 
-        String redisKey = "otp:" + type.name() + ":" + user.getUsername();
+        String redisKey = OTP_PREFIX_STRING + type.name() + DELIMITER_COLON_STRING + user.getUsername();
 
-        String redisValue = otp + (extraData != null ? ":" + extraData : "");
+        String redisValue = otp + (extraData != null ? DELIMITER_COLON_STRING + extraData : EMPTY_STRING);
 
         redisTemplate.opsForValue().set(redisKey, redisValue, expirationMinutes, TimeUnit.MINUTES);
 
@@ -376,7 +382,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             data.setOtp(otp);
             redisTemplate.opsForValue().set(redisKey, Objects.requireNonNull(data), expirationMinutes,
                     TimeUnit.MINUTES);
-            redisTemplate.opsForValue().set(cooldownKey, "1", 60, TimeUnit.SECONDS);
+            redisTemplate.opsForValue().set(cooldownKey, ONE_STRING, 60, TimeUnit.SECONDS);
             emailKafkaProducer.sendOtpEmailTask(data.getEmail(), data.getUsername(), otp);
             log.info("Resent registration OTP for user '{}' to email '{}'", data.getUsername(), data.getEmail());
             return;
@@ -435,9 +441,9 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     }
 
     private String validateRedisOtp(String identifier, OtpType type, String inputOtp) {
-        String redisKey = "otp:" + type.name() + ":" + identifier;
+        String redisKey = OTP_PREFIX_STRING + type.name() + DELIMITER_COLON_STRING + identifier;
 
-        String attemptKey = redisKey + ":attempts";
+        String attemptKey = redisKey + ATTEMPTS_SUFFIX_STRING;
 
         String value = (String) redisTemplate.opsForValue().get(redisKey);
 
@@ -445,7 +451,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             throw new InvalidOtpException(Translator.tolocale(ERROR_AUTH_OTP_EXPIRED_OR_REQ_MISSING_STRING));
         }
 
-        String[] parts = value.split(":");
+        String[] parts = value.split(DELIMITER_COLON_STRING);
         String savedOtp = parts[0];
         String extraData = parts.length > 1 ? parts[1] : null;
 
@@ -468,7 +474,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     }
 
     private void resendRedisOtp(String identifier, OtpType type, String emailToSend) {
-        String redisKey = "otp:" + type.name() + ":" + identifier;
+        String redisKey = OTP_PREFIX_STRING + type.name() + DELIMITER_COLON_STRING + identifier;
 
         String cooldownKey = COOLDOWN_RESEND_STRING + identifier;
 
@@ -482,12 +488,12 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             throw new ResourceNotFoundException(Translator.tolocale(ERROR_AUTH_REQ_EXPIRED_STRING));
         }
 
-        String[] parts = oldValue.split(":");
-        String extraData = parts.length > 1 ? parts[1] : "";
+        String[] parts = oldValue.split(DELIMITER_COLON_STRING);
+        String extraData = parts.length > 1 ? parts[1] : EMPTY_STRING;
 
         String newOtp = String.valueOf(100000 + this.secureRandom.nextInt(900000));
 
-        String newValue = newOtp + (extraData.isEmpty() ? "" : ":" + extraData);
+        String newValue = newOtp + (extraData.isEmpty() ? EMPTY_STRING : DELIMITER_COLON_STRING + extraData);
 
         redisTemplate.opsForValue().set(redisKey, newValue, expirationMinutes, TimeUnit.MINUTES);
 
@@ -498,7 +504,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             if (u.isPresent())
                 usernameForMail = u.get().getUsername();
         }
-        redisTemplate.opsForValue().set(cooldownKey, "1", 60, TimeUnit.SECONDS);
+        redisTemplate.opsForValue().set(cooldownKey, ONE_STRING, 60, TimeUnit.SECONDS);
         emailKafkaProducer.sendOtpEmailTask(emailToSend, usernameForMail, newOtp);
         log.info("Resent {} OTP to '{}'", type, emailToSend);
     }

@@ -87,12 +87,14 @@ public class UserEntity extends AbstractEntity<Long> implements UserDetails {
         address.setUser(null);
     }
 
+    private static final String ROLE_PREFIX_STRING = "ROLE_";
+
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
         Set<SimpleGrantedAuthority> authorities = new HashSet<>();
         if (this.role != null) {
             if (this.role.getName() != null) {
-                authorities.add(new SimpleGrantedAuthority("ROLE_" + this.role.getName().toUpperCase()));
+                authorities.add(new SimpleGrantedAuthority(ROLE_PREFIX_STRING + this.role.getName().toUpperCase()));
             }
             for (PermissionEntity permission : this.role.getPermissions()) {
                 authorities.add(new SimpleGrantedAuthority(permission.getName()));
