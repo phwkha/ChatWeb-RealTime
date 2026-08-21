@@ -49,12 +49,12 @@ public class ChatConsumer {
                 recipient);
         try {
             ChatMessageResponse messageResponse = messageMapper.avroToResponse(message);
-
             webSocketRoutingService.routeMessage(recipient, QUEUE_MESSAGES_STRING, messageResponse);
-
-            log.debug("Dispatched chat message to WebSocket recipient '{}'", recipient);
+            webSocketRoutingService.routeMessage(sender, QUEUE_MESSAGES_STRING, messageResponse);
+            log.debug("Dispatched chat message to WebSocket sender '{}' and recipient '{}'", sender, recipient);
         } catch (Exception e) {
-            log.error("Failed to route WebSocket chat message to recipient '{}'", recipient, e);
+            log.error("Failed to route WebSocket chat message for sender '{}' and recipient '{}'", sender, recipient,
+                    e);
             throw new RuntimeException(e);
         }
     }

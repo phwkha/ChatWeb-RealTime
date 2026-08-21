@@ -136,6 +136,22 @@ public class KafkaConfig {
     }
 
     @Bean
+    public DefaultErrorHandler dltErrorHandler() {
+        FixedBackOff backOff = new FixedBackOff(5000L, FixedBackOff.UNLIMITED_ATTEMPTS);
+        return new DefaultErrorHandler(backOff);
+    }
+
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<String, ChatMessageAvro> dltChatAvroListenerContainerFactory(
+            DefaultErrorHandler dltErrorHandler) {
+        ConcurrentKafkaListenerContainerFactory<String, ChatMessageAvro> factory = new ConcurrentKafkaListenerContainerFactory<>();
+        factory.setConsumerFactory(realtimeChatConsumerFactory());
+        factory.setConcurrency(2);
+        factory.setCommonErrorHandler(dltErrorHandler);
+        return factory;
+    }
+
+    @Bean
     public ConsumerFactory<String, Object> jsonConsumerFactory() {
         Map<String, Object> props = new HashMap<>();
         props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
