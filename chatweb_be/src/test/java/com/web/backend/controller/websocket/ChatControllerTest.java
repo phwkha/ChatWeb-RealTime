@@ -4,7 +4,7 @@ import com.web.backend.controller.request.ChatMessageRequest;
 import com.web.backend.controller.request.MessageSystemRequest;
 import com.web.backend.exception.WebSocketErrorHandler;
 import com.web.backend.model.UserEntity;
-import com.web.backend.service.MessageService;
+import com.web.backend.service.ChatService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -21,7 +21,7 @@ import static org.mockito.Mockito.verify;
 class ChatControllerTest {
 
     @Mock
-    private MessageService messageService;
+    private ChatService chatService;
 
     @Mock
     private WebSocketErrorHandler webSocketErrorHandler;
@@ -46,7 +46,7 @@ class ChatControllerTest {
 
         chatController.sendMessage(request, mockAuth);
 
-        verify(messageService).sendSystemMessage("testuser", request);
+        verify(chatService).sendSystemMessage("testuser", request);
     }
 
     @Test
@@ -57,7 +57,7 @@ class ChatControllerTest {
 
         chatController.sendPrivateMessage(request, mockAuth);
 
-        verify(messageService).sendPrivateMessage("testuser", request);
+        verify(chatService).sendPrivateMessage("testuser", request);
     }
 
 }

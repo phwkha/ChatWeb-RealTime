@@ -65,8 +65,6 @@ class MessageServiceTest {
     @Mock
     private MessageRepository messageRepository;
     @Mock
-    private UserRepository userRepository;
-    @Mock
     private SystemMessageRepository systemMessageRepository;
     @Mock
     private FriendService friendService;
@@ -93,8 +91,6 @@ class MessageServiceTest {
     @InjectMocks
     private MessageServiceImpl messageService;
 
-    private UserEntity recipientUser;
-
     @BeforeEach
     void setUp() {
         // Mock Translator to avoid NullPointerException for multi-language errors
@@ -102,9 +98,6 @@ class MessageServiceTest {
         lenient().when(messageSource.getMessage(anyString(), any(), any())).thenReturn("Mocked Error Message");
         Translator.setStaticMessageSource(messageSource);
 
-        recipientUser = new UserEntity();
-        recipientUser.setUsername("recipient");
-        recipientUser.setUserStatus(UserStatus.ACTIVE);
         lenient().when(redisTemplate.opsForHash()).thenReturn(hashOperations);
         lenient().when(redisTemplate.opsForZSet()).thenReturn(zSetOperations);
         lenient().when(redisTemplate.opsForList()).thenReturn(listOperations);
@@ -123,135 +116,6 @@ class MessageServiceTest {
             return payload;
         });
 
-    }
-
-    @Test
-    void testSendPrivateMessage_RecipientNotFound() {
-        when(userRepository.findByUsername("recipient")).thenReturn(Optional.empty());
-
-        ChatMessageRequest request = new ChatMessageRequest();
-        request.setRecipient("recipient");
-        request.setContent("Hello!");
-
-        assertThrows(ResourceNotFoundException.class, () -> messageService.sendPrivateMessage("sender", request));
-    }
-
-    @Test
-    void testSendPrivateMessage_SelfSend_ThrowsInvalidDataException() {
-        ChatMessageRequest request = new ChatMessageRequest();
-        request.setRecipient("sender");
-        request.setContent("Hello myself!");
-
-        assertThrows(InvalidDataException.class, () -> messageService.sendPrivateMessage("sender", request));
-    }
-
-    @Test
-    void testSendPrivateMessage_EmptyContentAndFile_ThrowsInvalidDataException() {
-        ChatMessageRequest request = new ChatMessageRequest();
-        request.setRecipient("recipient");
-        request.setContent("   ");
-        request.setFileUrl(null);
-
-        assertThrows(InvalidDataException.class, () -> messageService.sendPrivateMessage("sender", request));
-    }
-
-    @Test
-    void testSendPrivateMessage_RecipientInactive() {
-        recipientUser.setUserStatus(UserStatus.INACTIVE);
-        when(userRepository.findByUsername("recipient")).thenReturn(Optional.of(recipientUser));
-
-        ChatMessageRequest request = new ChatMessageRequest();
-        request.setRecipient("recipient");
-        request.setContent("Hello!");
-
-        assertThrows(AccessForbiddenException.class, () -> messageService.sendPrivateMessage("sender", request));
-    }
-
-    @Test
-    void testSendPrivateMessage_RecipientLocked() {
-        recipientUser.setUserStatus(UserStatus.LOCKED);
-        when(userRepository.findByUsername("recipient")).thenReturn(Optional.of(recipientUser));
-
-        ChatMessageRequest request = new ChatMessageRequest();
-        request.setRecipient("recipient");
-        request.setContent("Hello!");
-
-        assertThrows(AccessForbiddenException.class, () -> messageService.sendPrivateMessage("sender", request));
-    }
-
-    @Test
-    void testSendPrivateMessage_NotFriends() {
-        when(userRepository.findByUsername("recipient")).thenReturn(Optional.of(recipientUser));
-        when(friendService.isFriend("sender", "recipient")).thenReturn(false);
-
-        ChatMessageRequest request = new ChatMessageRequest();
-        request.setRecipient("recipient");
-        request.setContent("Hello!");
-
-        assertThrows(AccessForbiddenException.class, () -> messageService.sendPrivateMessage("sender", request));
-    }
-
-    @Test
-    void testSendPrivateMessage_Success() {
-        // Arrange
-        when(userRepository.findByUsername("recipient")).thenReturn(Optional.of(recipientUser));
-        when(friendService.isFriend("sender", "recipient")).thenReturn(true);
-
-        ChatMessage message = new ChatMessage();
-        message.setId("msg123");
-        message.setSender("sender");
-        when(messageRepository.findById("msg123")).thenReturn(Optional.of(message));
-
-
-        ChatMessageRequest request = new ChatMessageRequest();
-        request.setRecipient("recipient");
-        request.setContent("Hello!");
-
-        ChatMessage chatMessage = new ChatMessage();
-        chatMessage.setMessageType(com.web.backend.common.MessageType.CHAT);
-        when(messageMapper.toEntity(request)).thenReturn(chatMessage);
-
-        // Mock Kafka future (asynchronous callback)
-        CompletableFuture<SendResult<String, ChatMessageAvro>> future = CompletableFuture
-                .completedFuture(mock(SendResult.class, RETURNS_DEEP_STUBS));
-        when(chatProducer.sendChatMessage(any())).thenReturn(future);
-
-        // Mock Redis operations
-        lenient().when(redisTemplate.opsForZSet()).thenReturn(zSetOperations);
-        lenient().when(redisTemplate.opsForHash()).thenReturn(hashOperations);
-
-        // Act
-        messageService.sendPrivateMessage("sender", request);
-
-        // Assert
-        verify(chatProducer).sendChatMessage(any(ChatMessageAvro.class));
-        assertFalse(chatMessage.isEdited());
-        assertFalse(chatMessage.isDeleted());
-        assertFalse(chatMessage.isReacted());
-        assertNull(chatMessage.getReactions());
-    }
-
-    // ==========================================
-    // TESTS FOR SYSTEM MESSAGE & REACTION
-    // ==========================================
-
-    @Test
-    void testSendSystemMessage_Success() {
-        com.web.backend.controller.request.MessageSystemRequest request = new com.web.backend.controller.request.MessageSystemRequest();
-        request.setContent("System rebooting in 5 mins");
-        request.setSurvivalTime(300L); // 5 minutes
-
-        when(systemMessageRepository.save(any(com.web.backend.model.SystemMessage.class)))
-                .thenReturn(new com.web.backend.model.SystemMessage());
-
-        CompletableFuture<SendResult<String, Object>> future = CompletableFuture
-                .completedFuture(mock(SendResult.class, RETURNS_DEEP_STUBS));
-        when(chatProducer.sendSystemMessage(any())).thenReturn(future);
-
-        messageService.sendSystemMessage("adminUser", request);
-
-        verify(systemMessageRepository).save(any(com.web.backend.model.SystemMessage.class));
-        verify(chatProducer).sendSystemMessage(any(com.web.backend.model.SystemMessage.class));
     }
 
     @Test
@@ -693,49 +557,6 @@ class MessageServiceTest {
     }
 
     @Test
-    void testSendPrivateMessage_KafkaException() {
-        when(userRepository.findByUsername("recipient")).thenReturn(Optional.of(recipientUser));
-        when(friendService.isFriend("sender", "recipient")).thenReturn(true);
-
-        ChatMessage message = new ChatMessage();
-        message.setId("msg123");
-        message.setSender("sender");
-        when(messageRepository.findById("msg123")).thenReturn(Optional.of(message));
-
-        ChatMessageRequest request = new ChatMessageRequest();
-        request.setRecipient("recipient");
-        request.setContent("Hello!");
-
-        ChatMessage chatMessage = new ChatMessage();
-        chatMessage.setMessageType(com.web.backend.common.MessageType.CHAT);
-        when(messageMapper.toEntity(request)).thenReturn(chatMessage);
-
-        CompletableFuture<SendResult<String, ChatMessageAvro>> future = new CompletableFuture<>();
-        future.completeExceptionally(new RuntimeException("Kafka error"));
-        when(chatProducer.sendChatMessage(any())).thenReturn(future);
-
-        messageService.sendPrivateMessage("sender", request);
-        verify(webSocketErrorHandler).handleChatError(eq("sender"), any(), anyString());
-    }
-
-
-
-    @Test
-    void testSendSystemMessage_KafkaException() {
-        com.web.backend.controller.request.MessageSystemRequest request = new com.web.backend.controller.request.MessageSystemRequest();
-        request.setContent("Sys");
-
-        when(systemMessageRepository.save(any())).thenReturn(new com.web.backend.model.SystemMessage());
-
-        CompletableFuture<SendResult<String, Object>> future = new CompletableFuture<>();
-        future.completeExceptionally(new RuntimeException("Kafka error"));
-        when(chatProducer.sendSystemMessage(any())).thenReturn(future);
-
-        messageService.sendSystemMessage("admin", request);
-        verify(webSocketErrorHandler).handleChatError(eq("admin"), any(), anyString());
-    }
-
-    @Test
     void testReactToMessage_RemoveReaction() {
         com.web.backend.controller.request.ReactionRequest request = new com.web.backend.controller.request.ReactionRequest();
         request.setRecipient("recipient");
@@ -779,37 +600,6 @@ class MessageServiceTest {
 
         assertTrue(result.isHasMore());
         assertEquals(10, result.getContent().size()); // should have removed the 11th
-    }
-
-    @Test
-    void testBuildChatMessage_NullFields() {
-        when(userRepository.findByUsername("recipient")).thenReturn(Optional.of(recipientUser));
-        when(friendService.isFriend("sender", "recipient")).thenReturn(true);
-
-        ChatMessage message = new ChatMessage();
-        message.setId("msg123");
-        message.setSender("sender");
-        when(messageRepository.findById("msg123")).thenReturn(Optional.of(message));
-
-        ChatMessageRequest request = new ChatMessageRequest();
-        request.setRecipient("recipient");
-        request.setFileUrl("https://example.com/image.png");
-
-        ChatMessage chatMessage = new ChatMessage();
-        chatMessage.setFileUrl("https://example.com/image.png");
-        // timestamp, content, and contentType are null
-        when(messageMapper.toEntity(request)).thenReturn(chatMessage);
-        CompletableFuture<SendResult<String, ChatMessageAvro>> future = CompletableFuture
-                .completedFuture(mock(SendResult.class, RETURNS_DEEP_STUBS));
-        when(chatProducer.sendChatMessage(any())).thenReturn(future);
-
-        messageService.sendPrivateMessage("sender", request);
-        // Should execute null-checks and set defaults
-        verify(chatProducer).sendChatMessage(argThat((ChatMessageAvro msg) -> 
-            msg.getTimestamp() != null && 
-            "".equals(msg.getContent()) && 
-            com.web.backend.common.ContentType.TEXT.name().equals(msg.getContentType())
-        ));
     }
 
     @Test
