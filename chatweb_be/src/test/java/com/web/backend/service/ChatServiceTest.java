@@ -30,6 +30,7 @@ import com.web.backend.exception.WebSocketErrorHandler;
 import com.web.backend.exception.custom.AccessForbiddenException;
 import com.web.backend.exception.custom.InvalidDataException;
 import com.web.backend.exception.custom.ResourceNotFoundException;
+import com.web.backend.exception.custom.SystemOverloadException;
 import com.web.backend.kafka.avro.ChatMessageAvro;
 import com.web.backend.kafka.producer.ChatProducer;
 import com.web.backend.mapper.MessageMapper;
@@ -247,7 +248,19 @@ class ChatServiceTest {
 
         chatService.sendSystemMessage("admin", request);
 
-        verify(webSocketErrorHandler).handleChatError(eq("admin"), any(SystemMessage.class), anyString());
+        verify(webSocketErrorHandler).handleChatError(eq("admin"), eq(request), anyString());
+    }
+
+    @Test
+    void testSendSystemMessage_DbException_ThrowsSystemOverloadException() {
+        MessageSystemRequest request = new MessageSystemRequest();
+        request.setContent("System rebooting in 5 mins");
+
+        when(systemMessageRepository.save(any(SystemMessage.class))).thenThrow(new RuntimeException("MongoDB down"));
+
+        assertThrows(SystemOverloadException.class, () -> chatService.sendSystemMessage("admin", request));
+        verify(webSocketErrorHandler).handleChatError(eq("admin"), eq(request), anyString());
+        verify(chatProducer, never()).sendSystemMessage(any());
     }
 
     @Test

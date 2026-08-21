@@ -15,20 +15,17 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.support.ResourceBundleMessageSource;
 import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.core.query.Update;
-import com.mongodb.client.result.UpdateResult;
 import org.springframework.data.redis.core.ListOperations;
 import org.springframework.data.redis.core.HashOperations;
+import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.kafka.support.SendResult;
 
-import com.web.backend.common.UserStatus;
 import com.web.backend.config.localresolverconfig.Translator;
-import com.web.backend.controller.request.ChatMessageRequest;
 import com.web.backend.controller.request.EditMessageRequest;
 import com.web.backend.controller.request.MarkReadRequest;
+import com.web.backend.controller.request.ReactionRequest;
 import com.web.backend.controller.request.RevokeMessageRequest;
 import com.web.backend.exception.WebSocketErrorHandler;
 import com.web.backend.exception.custom.AccessForbiddenException;
@@ -37,11 +34,11 @@ import com.web.backend.exception.custom.ResourceNotFoundException;
 import com.web.backend.kafka.avro.ChatMessageAvro;
 import com.web.backend.mapper.MessageMapper;
 import com.web.backend.model.ChatMessage;
+import com.web.backend.model.ReadReceipt;
 import com.web.backend.model.SystemMessage;
-import com.web.backend.model.UserEntity;
 import com.web.backend.repository.MessageRepository;
+import com.web.backend.repository.ReadReceiptRepository;
 import com.web.backend.repository.SystemMessageRepository;
-import com.web.backend.repository.UserRepository;
 import com.web.backend.repository.projection.UnreadCountProjection;
 import com.web.backend.service.impl.MessageServiceImpl;
 
@@ -65,6 +62,8 @@ class MessageServiceTest {
     @Mock
     private MessageRepository messageRepository;
     @Mock
+    private ReadReceiptRepository readReceiptRepository;
+    @Mock
     private SystemMessageRepository systemMessageRepository;
     @Mock
     private FriendService friendService;
@@ -79,6 +78,9 @@ class MessageServiceTest {
     private com.web.backend.kafka.producer.ChatProducer chatProducer;
 
     @Mock
+    private WebSocketRoutingService webSocketRoutingService;
+
+    @Mock
     private WebSocketErrorHandler webSocketErrorHandler;
 
     @Mock
@@ -87,6 +89,8 @@ class MessageServiceTest {
     private HashOperations<String, Object, Object> hashOperations;
     @Mock
     private ZSetOperations<String, Object> zSetOperations;
+    @Mock
+    private ValueOperations<String, Object> valueOperations;
 
     @InjectMocks
     private MessageServiceImpl messageService;
@@ -101,6 +105,7 @@ class MessageServiceTest {
         lenient().when(redisTemplate.opsForHash()).thenReturn(hashOperations);
         lenient().when(redisTemplate.opsForZSet()).thenReturn(zSetOperations);
         lenient().when(redisTemplate.opsForList()).thenReturn(listOperations);
+        lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         lenient().when(messageMapper.toAvro(any())).thenAnswer(inv -> {
             ChatMessage entity = inv.getArgument(0);
             ChatMessageAvro payload = new ChatMessageAvro();
@@ -266,10 +271,10 @@ class MessageServiceTest {
         request.setRecipient("recipient");
 
         ChatMessage message = new ChatMessage();
-        message.setSender("otherUser");
+        message.setId("msg1");
+        message.setSender("other_user");
         message.setRecipient("recipient");
-        message.setConversationId("recipient_sender");
-        message.setMessageType(com.web.backend.common.MessageType.CHAT);
+        message.setConversationId("recipient_other_user");
 
         when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
 
@@ -296,7 +301,7 @@ class MessageServiceTest {
     }
 
     @Test
-    void testEditMessage_AlreadyDeleted() {
+    void testEditMessage_AlreadyDeleted_ThrowsInvalidDataException() {
         EditMessageRequest request = new EditMessageRequest();
         request.setMessageId("msg1");
         request.setRecipient("recipient");
@@ -420,7 +425,6 @@ class MessageServiceTest {
 
     @Test
     void testGetMessageById_Forbidden_SubstringMatch() {
-        // User 'an' should NOT be able to view message between 'anh' and 'hoang'
         ChatMessage message = new ChatMessage();
         message.setSender("anh");
         message.setRecipient("hoang");
@@ -447,8 +451,8 @@ class MessageServiceTest {
 
     @Test
     void testMarkMessagesAsRead_Success() {
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         when(redisTemplate.opsForHash()).thenReturn(hashOperations);
-        when(redisTemplate.opsForZSet()).thenReturn(zSetOperations);
 
         CompletableFuture<SendResult<String, Object>> future = CompletableFuture
                 .completedFuture(mock(SendResult.class, RETURNS_DEEP_STUBS));
@@ -459,26 +463,25 @@ class MessageServiceTest {
 
         messageService.markMessagesAsRead("recipient", request);
 
+        verify(valueOperations).set(eq("read_receipt:recipient_sender:recipient"), anyString(), any());
         verify(hashOperations).delete("unread_counts:recipient", "sender");
-        verify(chatProducer, times(1)).sendStatusMessage(any());
+        verify(chatProducer).sendStatusMessage(any());
     }
 
     @Test
-    void testMarkMessagesAsRead_KafkaFailure_Rollback() {
+    void testMarkMessagesAsRead_KafkaFailure() {
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         when(redisTemplate.opsForHash()).thenReturn(hashOperations);
-        when(redisTemplate.opsForZSet()).thenReturn(zSetOperations);
-        when(hashOperations.get("unread_counts:recipient", "sender")).thenReturn("3");
 
-        CompletableFuture<SendResult<String, Object>> future = CompletableFuture
-                .failedFuture(new RuntimeException("Kafka error"));
-        when(chatProducer.sendStatusMessage(any())).thenReturn(future);
+        CompletableFuture<SendResult<String, Object>> failedFuture = new CompletableFuture<>();
+        failedFuture.completeExceptionally(new RuntimeException("Kafka down"));
+        when(chatProducer.sendStatusMessage(any())).thenReturn(failedFuture);
 
         MarkReadRequest request = new MarkReadRequest();
         request.setSender("sender");
 
         messageService.markMessagesAsRead("recipient", request);
 
-        verify(hashOperations).put("unread_counts:recipient", "sender", "3");
         verify(webSocketErrorHandler).handleChatError(eq("recipient"), eq(request), anyString());
     }
 
@@ -499,24 +502,22 @@ class MessageServiceTest {
         when(redisTemplate.opsForHash()).thenReturn(hashOperations);
         when(hashOperations.entries("unread_counts:recipient")).thenReturn(Collections.emptyMap());
 
-        UnreadCountProjection projection = new UnreadCountProjection("senderA", 3L);
+        UnreadCountProjection proj = mock(UnreadCountProjection.class);
+        when(proj.sender()).thenReturn("senderB");
+        when(proj.count()).thenReturn(3L);
 
-        when(messageRepository.countUnreadMessagesBySender("recipient")).thenReturn(List.of(projection));
+        when(messageRepository.countUnreadMessagesBySender("recipient")).thenReturn(List.of(proj));
 
         UnreadCountsResponse response = messageService.getUnreadMessageCounts("recipient");
-        assertEquals(3L, response.getUnreadCounts().get("senderA"));
+        assertEquals(3L, response.getUnreadCounts().get("senderB"));
         verify(hashOperations).putAll(eq("unread_counts:recipient"), anyMap());
     }
 
-    // ==========================================
-    // TESTS FOR CURSOR PAGINATION
-    // ==========================================
-
     @Test
-    void testFindSystemMessageWithCursor_FirstPage() {
+    void testFindSystemMessageWithCursor_Initial() {
         SystemMessage sysMsg1 = new SystemMessage();
-        sysMsg1.setTimestamp(Instant.now());
         sysMsg1.setContent("Msg 1");
+        sysMsg1.setTimestamp(Instant.now());
 
         when(systemMessageRepository.findInitialMessage(any(Pageable.class))).thenReturn(List.of(sysMsg1));
         MessageSystemResponse response = MessageSystemResponse.builder().content("Msg 1").build();
@@ -532,10 +533,14 @@ class MessageServiceTest {
     void testFindPrivateMessageWithCursor_FirstPage_MergeRedis() {
         ChatMessage dbMsg = new ChatMessage();
         dbMsg.setId("msg1");
+        dbMsg.setSender("user1");
+        dbMsg.setRecipient("user2");
         dbMsg.setTimestamp(LocalDateTime.now().minusDays(1));
 
         ChatMessage redisMsg = new ChatMessage();
         redisMsg.setId("msg2");
+        redisMsg.setSender("user2");
+        redisMsg.setRecipient("user1");
         redisMsg.setTimestamp(LocalDateTime.now());
 
         when(messageRepository.findByConversationId(eq("user1_user2"), any(Pageable.class)))
@@ -543,17 +548,72 @@ class MessageServiceTest {
 
         when(redisTemplate.opsForZSet()).thenReturn(zSetOperations);
         when(redisTemplate.opsForHash()).thenReturn(hashOperations);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+
         java.util.Set<Object> mockSet = java.util.Collections.singleton((Object) redisMsg.getId());
         when(zSetOperations.reverseRange(anyString(), anyLong(), anyLong())).thenReturn(mockSet);
         when(hashOperations.multiGet(anyString(), anyCollection()))
                 .thenReturn(java.util.Collections.singletonList(redisMsg));
 
-        when(messageMapper.toResponse(any())).thenReturn(ChatMessageResponse.builder().build());
+        when(messageMapper.toResponse(any())).thenAnswer(inv -> {
+            ChatMessage msg = inv.getArgument(0);
+            return ChatMessageResponse.builder()
+                    .id(msg.getId())
+                    .sender(msg.getSender())
+                    .recipient(msg.getRecipient())
+                    .timestamp(msg.getTimestamp())
+                    .build();
+        });
 
         CursorResponse<ChatMessageResponse> result = messageService.findPrivateMessageWithCursor("user2", "user1", null,
                 10);
 
         assertEquals(2, result.getContent().size());
+    }
+
+    @Test
+    void testFindPrivateMessageWithCursor_CalculatesReadStatusFromWatermark() {
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime user2ReadTime = now.minusMinutes(5);
+
+        ChatMessage oldMsg = new ChatMessage();
+        oldMsg.setId("msg1");
+        oldMsg.setSender("user1");
+        oldMsg.setRecipient("user2");
+        oldMsg.setTimestamp(now.minusMinutes(10)); // Before user2 read time -> READ
+
+        ChatMessage newMsg = new ChatMessage();
+        newMsg.setId("msg2");
+        newMsg.setSender("user1");
+        newMsg.setRecipient("user2");
+        newMsg.setTimestamp(now.minusMinutes(1)); // After user2 read time -> SENT
+
+        when(messageRepository.findByConversationId(eq("user1_user2"), any(Pageable.class)))
+                .thenReturn(List.of(newMsg, oldMsg));
+
+        when(redisTemplate.opsForZSet()).thenReturn(zSetOperations);
+        when(redisTemplate.opsForHash()).thenReturn(hashOperations);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(zSetOperations.reverseRange(anyString(), anyLong(), anyLong())).thenReturn(Collections.emptySet());
+
+        // Mock watermark for user2:
+        when(valueOperations.get("read_receipt:user1_user2:user2")).thenReturn(user2ReadTime.toString());
+
+        when(messageMapper.toResponse(any())).thenAnswer(inv -> {
+            ChatMessage msg = inv.getArgument(0);
+            return ChatMessageResponse.builder()
+                    .id(msg.getId())
+                    .sender(msg.getSender())
+                    .recipient(msg.getRecipient())
+                    .timestamp(msg.getTimestamp())
+                    .build();
+        });
+
+        CursorResponse<ChatMessageResponse> result = messageService.findPrivateMessageWithCursor("user1", "user2", null, 10);
+
+        assertEquals(2, result.getContent().size());
+        assertEquals(MessageStatus.SENT, result.getContent().get(0).getStatus()); // newMsg
+        assertEquals(MessageStatus.READ, result.getContent().get(1).getStatus()); // oldMsg
     }
 
     @Test
@@ -570,7 +630,6 @@ class MessageServiceTest {
         message.setConversationId("recipient_sender");
         when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
 
-
         when(friendService.isFriend("sender", "recipient")).thenReturn(true);
 
         CompletableFuture<SendResult<String, Object>> future = CompletableFuture
@@ -578,13 +637,14 @@ class MessageServiceTest {
         when(chatProducer.sendReaction(any())).thenReturn(future);
 
         messageService.reactToMessage("sender", request);
-        
     }
 
     @Test
     void testFindPrivateMessageWithCursor_WithCursorAndHasMore() {
         ChatMessage dbMsg = new ChatMessage();
         dbMsg.setId("msg1");
+        dbMsg.setSender("user1");
+        dbMsg.setRecipient("user2");
         dbMsg.setTimestamp(LocalDateTime.now().minusDays(1));
 
         List<ChatMessage> mockResult = new java.util.ArrayList<>();
@@ -633,6 +693,8 @@ class MessageServiceTest {
     void testFetchMessagesFromRedisCache_NullOrEmptyMessageIds() {
         when(redisTemplate.opsForZSet()).thenReturn(zSetOperations);
         when(zSetOperations.reverseRange(anyString(), anyLong(), anyLong())).thenReturn(null);
+
+        when(messageMapper.toResponse(any())).thenReturn(ChatMessageResponse.builder().build());
 
         CursorResponse<ChatMessageResponse> result = messageService.findPrivateMessageWithCursor("user2", "user1", null, 10);
         assertNotNull(result);
