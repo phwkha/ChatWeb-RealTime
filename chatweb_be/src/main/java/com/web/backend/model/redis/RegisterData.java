@@ -1,4 +1,4 @@
-package com.web.backend.controller.request;
+package com.web.backend.model.redis;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;

@@ -5,7 +5,7 @@ import com.web.backend.common.UpdateMessageType;
 import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.response.ChatMessageResponse;
 import com.web.backend.controller.response.NotificationResponse;
-import com.web.backend.controller.response.ReadReceiptData;
+import com.web.backend.controller.response.ReadReceiptResponse;
 import com.web.backend.kafka.payload.UpdateMessagePayload;
 import com.web.backend.mapper.MessageMapper;
 import com.web.backend.model.mongo.ChatMessage;
@@ -123,7 +123,7 @@ class UpdateMessageConsumerTest {
 
     @Test
     void testHandleMessageUpdates_Status() throws Exception {
-        ReadReceiptData data = ReadReceiptData.builder()
+        ReadReceiptResponse data = ReadReceiptResponse.builder()
                 .conversationId("sender1_recipient1")
                 .reader("recipient1")
                 .sender("sender1")

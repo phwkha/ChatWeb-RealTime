@@ -13,7 +13,7 @@ import com.web.backend.common.UpdateMessageType;
 import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.response.ChatMessageResponse;
 import com.web.backend.controller.response.NotificationResponse;
-import com.web.backend.controller.response.ReadReceiptData;
+import com.web.backend.controller.response.ReadReceiptResponse;
 import com.web.backend.kafka.payload.UpdateMessagePayload;
 import com.web.backend.mapper.MessageMapper;
 import com.web.backend.model.mongo.ChatMessage;
@@ -60,7 +60,7 @@ public class UpdateMessageConsumer {
     }
 
     private void processStatusUpdate(UpdateMessagePayload updateEvent) {
-        ReadReceiptData receiptData = extractReadReceiptData(updateEvent);
+        ReadReceiptResponse receiptData = extractReadReceiptData(updateEvent);
         if (receiptData == null || receiptData.getConversationId() == null || receiptData.getReader() == null) {
             log.warn("Invalid read receipt status update event: {}", updateEvent);
             return;
@@ -71,7 +71,7 @@ public class UpdateMessageConsumer {
         String sender = receiptData.getSender();
 
         try {
-            NotificationResponse<ReadReceiptData> notification = NotificationResponse.<ReadReceiptData>builder()
+            NotificationResponse<ReadReceiptResponse> notification = NotificationResponse.<ReadReceiptResponse>builder()
                     .type(NotificationsType.STATUS_MESSAGE)
                     .relatedUsername(reader)
                     .message(Translator.tolocale(SYS_MSG_STATUS_MESSAGE_STRING))
@@ -89,14 +89,14 @@ public class UpdateMessageConsumer {
         }
     }
 
-    private ReadReceiptData extractReadReceiptData(UpdateMessagePayload updateEvent) {
+    private ReadReceiptResponse extractReadReceiptData(UpdateMessagePayload updateEvent) {
         if (updateEvent == null || updateEvent.updateEvent() == null) {
             return null;
         }
-        if (updateEvent.updateEvent() instanceof ReadReceiptData data) {
+        if (updateEvent.updateEvent() instanceof ReadReceiptResponse data) {
             return data;
         }
-        return objectMapper.convertValue(updateEvent.updateEvent(), ReadReceiptData.class);
+        return objectMapper.convertValue(updateEvent.updateEvent(), ReadReceiptResponse.class);
     }
 
     private ChatMessage extractChatMessage(UpdateMessagePayload updateEvent) {

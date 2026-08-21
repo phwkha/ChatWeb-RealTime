@@ -54,7 +54,7 @@ import com.web.backend.common.MessageStatus;
 import com.web.backend.controller.response.ChatMessageResponse;
 import com.web.backend.controller.response.CursorResponse;
 import com.web.backend.controller.response.MessageSystemResponse;
-import com.web.backend.controller.response.ReadReceiptData;
+import com.web.backend.controller.response.ReadReceiptResponse;
 import com.web.backend.controller.response.UnreadCountsResponse;
 import com.web.backend.kafka.payload.UpdateMessagePayload;
 
@@ -485,7 +485,7 @@ class MessageServiceTest {
         verify(valueOperations).set(eq("read_receipt:recipient_sender:recipient"), anyString(), any());
         verify(hashOperations).delete("unread_counts:recipient", "sender");
         verify(readReceiptRepository).save(any(ReadReceipt.class));
-        verify(eventPublisher).publishEvent(any(ReadReceiptData.class));
+        verify(eventPublisher).publishEvent(any(ReadReceiptResponse.class));
     }
 
     @Test

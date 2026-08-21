@@ -1,7 +1,8 @@
 package com.web.backend.service;
 
 import com.web.backend.config.ServerIdentity;
-import com.web.backend.redis.RedisWsMessage;
+import com.web.backend.model.redis.RedisWsMessage;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -66,7 +67,8 @@ public class WebSocketRoutingService {
                     headerAccessor.getMessageHeaders());
             log.debug("Routed message directly to session '{}' on destination '{}'", sessionId, destination);
         } catch (Exception e) {
-            log.error("Failed to route message directly to session '{}' on destination '{}'", sessionId, destination, e);
+            log.error("Failed to route message directly to session '{}' on destination '{}'", sessionId, destination,
+                    e);
         }
     }
 }

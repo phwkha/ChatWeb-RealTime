@@ -40,7 +40,7 @@ import com.web.backend.controller.request.RevokeMessageRequest;
 import com.web.backend.controller.response.ChatMessageResponse;
 import com.web.backend.controller.response.CursorResponse;
 import com.web.backend.controller.response.MessageSystemResponse;
-import com.web.backend.controller.response.ReadReceiptData;
+import com.web.backend.controller.response.ReadReceiptResponse;
 import com.web.backend.controller.response.UnreadCountsResponse;
 import com.web.backend.exception.custom.AccessForbiddenException;
 import com.web.backend.exception.custom.InvalidDataException;
@@ -245,7 +245,7 @@ public class MessageServiceImpl implements MessageService {
             log.error("Failed to persist ReadReceipt to MongoDB for conv '{}'", convId, ex);
         }
 
-        eventPublisher.publishEvent(ReadReceiptData.builder()
+        eventPublisher.publishEvent(ReadReceiptResponse.builder()
                 .conversationId(convId)
                 .reader(recipientUsername)
                 .sender(senderUsername)

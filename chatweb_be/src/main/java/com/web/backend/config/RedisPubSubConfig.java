@@ -1,6 +1,5 @@
 package com.web.backend.config;
 
-import com.web.backend.redis.RedisSubscriber;
 import org.springframework.data.redis.core.RedisTemplate;
 
 import org.springframework.context.annotation.Bean;
@@ -9,6 +8,8 @@ import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.listener.ChannelTopic;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 import org.springframework.data.redis.listener.adapter.MessageListenerAdapter;
+
+import com.web.backend.listener.RedisSubscriber;
 
 import org.springframework.context.annotation.Profile;
 

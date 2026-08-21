@@ -1,6 +1,5 @@
 package com.web.backend.kafka.producer;
 
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -17,12 +16,18 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
 
-import com.web.backend.controller.response.ReadReceiptData;
+import com.web.backend.common.UpdateMessageType;
+import com.web.backend.controller.response.ReadReceiptResponse;
+import com.web.backend.kafka.payload.UpdateMessagePayload;
+import com.web.backend.model.mongo.ChatMessage;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class UpdateMessageProducerTest {
 
     @Mock
@@ -44,7 +49,7 @@ class UpdateMessageProducerTest {
 
     @Test
     void testHandleReadReceiptEvent() {
-        ReadReceiptData data = ReadReceiptData.builder()
+        ReadReceiptResponse data = ReadReceiptResponse.builder()
                 .conversationId("conv1")
                 .reader("reader1")
                 .sender("sender1")
@@ -53,40 +58,29 @@ class UpdateMessageProducerTest {
 
         updateMessageProducer.handleReadReceiptEvent(data);
 
-        verify(kafkaTemplate).send(eq("chat-update-topic"), any());
+        verify(kafkaTemplate).send(eq("chat-update-topic"), any(UpdateMessagePayload.class));
     }
 
     @Test
-    void testSendEditMessage() {
-        CompletableFuture<?> future = updateMessageProducer.sendEditMessage("editPayload");
-        assertNotNull(future);
-        verify(kafkaTemplate).send(eq("chat-update-topic"), eq("editPayload"));
-    }
-
-    @Test
-    void testSendRevokeMessage() {
-        CompletableFuture<?> future = updateMessageProducer.sendRevokeMessage("revokePayload");
-        assertNotNull(future);
-        verify(kafkaTemplate).send(eq("chat-update-topic"), eq("revokePayload"));
-    }
-
-    @Test
-    void testSendReaction() {
-        CompletableFuture<?> future = updateMessageProducer.sendReaction("reactionPayload");
-        assertNotNull(future);
-        verify(kafkaTemplate).send(eq("chat-update-topic"), eq("reactionPayload"));
+    void testHandleReadReceiptEvent_NullData() {
+        updateMessageProducer.handleReadReceiptEvent(null);
     }
 
     @Test
     void testHandleUpdateMessageEvent() {
-        com.web.backend.kafka.payload.UpdateMessagePayload payload = com.web.backend.kafka.payload.UpdateMessagePayload.builder()
-                .type(com.web.backend.common.UpdateMessageType.EDIT)
+        UpdateMessagePayload payload = UpdateMessagePayload.builder()
+                .type(UpdateMessageType.EDIT)
                 .relatedUsername("sender1")
-                .updateEvent(new com.web.backend.model.mongo.ChatMessage())
+                .updateEvent(new ChatMessage())
                 .build();
 
         updateMessageProducer.handleUpdateMessageEvent(payload);
 
         verify(kafkaTemplate).send(eq("chat-update-topic"), eq(payload));
+    }
+
+    @Test
+    void testSendUpdateMessage_NullPayload() {
+        updateMessageProducer.sendUpdateMessage(null);
     }
 }

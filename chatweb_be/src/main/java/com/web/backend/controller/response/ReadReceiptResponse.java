@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ReadReceiptData {
+public class ReadReceiptResponse {
     private String conversationId;
     private String reader;
     private String sender;
