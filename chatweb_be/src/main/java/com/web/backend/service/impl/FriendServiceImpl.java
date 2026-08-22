@@ -74,6 +74,7 @@ public class FriendServiceImpl implements FriendService {
         private static final String ERROR_FRIEND_INVITE_NOT_FOUND_STRING = "error.friend.invite_not_found";
         private static final String ERROR_FRIEND_ALREADY_FRIENDS_STRING = "error.friend.already_friends";
         private static final String ERROR_FRIEND_RELATION_NOT_FOUND_STRING = "error.friend.relation_not_found";
+        private static final String ERROR_FRIEND_NOT_BLOCKED_STRING = "error.friend.not_blocked";
         private static final String ERROR_USER_NOT_FOUND_STRING = "error.user.not_found";
 
         @Override
@@ -309,6 +310,51 @@ public class FriendServiceImpl implements FriendService {
                                 TTL_BLOCKED);
 
                 log.info("User '{}' blocked '{}'", blockerUsername, targetUsername);
+        }
+
+        @Override
+        @Transactional
+        public void unblockUser(String blockerUsername, String targetUsername) {
+                UserEntity blocker = getUser(blockerUsername);
+                UserEntity target = getUser(targetUsername);
+
+                FriendshipEntity friendship = friendshipRepository.findByUsers(blocker, target)
+                                .orElseThrow(() -> new ResourceNotFoundException(
+                                                Translator.tolocale(ERROR_FRIEND_RELATION_NOT_FOUND_STRING)));
+
+                if (friendship.getStatus() != FriendshipStatus.BLOCKED
+                                || !friendship.getRequester().getUsername().equals(blockerUsername)) {
+                        throw new InvalidDataException(Translator.tolocale(ERROR_FRIEND_NOT_BLOCKED_STRING));
+                }
+
+                friendshipRepository.delete(friendship);
+
+                redisTemplate.opsForValue().set(
+                                buildRelationKey(blockerUsername, targetUsername),
+                                RELATION_NONE,
+                                TTL_NONE);
+
+                log.info("User '{}' unblocked '{}'", blockerUsername, targetUsername);
+        }
+
+        @Override
+        @Transactional(readOnly = true)
+        public PageResponse<UserSummaryResponse> getBlockedList(String currentUsername, int page, int size,
+                        String sortDir) {
+                UserEntity currentUser = getUser(currentUsername);
+                Pageable pageable = PageRequest.of(page, size,
+                                Sort.by((sortDir.equalsIgnoreCase(DESC_STRING)) ? Sort.Direction.DESC
+                                                : Sort.Direction.ASC,
+                                                CREATEAT_STRING));
+
+                Page<FriendshipEntity> pageResult = friendshipRepository.findByRequesterAndStatus(currentUser,
+                                FriendshipStatus.BLOCKED, pageable);
+
+                List<UserSummaryResponse> content = pageResult.getContent().stream()
+                                .map(f -> userMapper.toUserSummaryResponse(f.getAddressee()))
+                                .toList();
+
+                return buildPageResponse(pageResult, content);
         }
 
         @Override

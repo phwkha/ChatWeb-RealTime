@@ -175,4 +175,36 @@ class FriendControllerTest {
 
                 verify(friendService).blockUser("testuser", "otheruser");
         }
+
+        @Test
+        void testUnblockUser_Success() throws Exception {
+                mockMvc.perform(post("/api/friends/unblock/otheruser")
+                                .principal(mockAuth))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.code").value(200));
+
+                verify(friendService).unblockUser("testuser", "otheruser");
+        }
+
+        @Test
+        void testGetBlockedList_Success() throws Exception {
+                UserSummaryResponse summary = UserSummaryResponse.builder()
+                                .username("blocked1")
+                                .build();
+                PageResponse<UserSummaryResponse> pageResponse = PageResponse.<UserSummaryResponse>builder()
+                                .content(List.of(summary))
+                                .build();
+
+                when(friendService.getBlockedList(eq("testuser"), eq(0), eq(10), eq("desc")))
+                                .thenReturn(pageResponse);
+
+                mockMvc.perform(get("/api/friends/blocked")
+                                .principal(mockAuth)
+                                .param("page", "0")
+                                .param("size", "10")
+                                .param("sortDir", "desc"))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.code").value(200))
+                                .andExpect(jsonPath("$.data.content[0].username").value("blocked1"));
+        }
 }

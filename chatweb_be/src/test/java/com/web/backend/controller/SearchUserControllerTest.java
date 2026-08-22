@@ -65,6 +65,9 @@ class SearchUserControllerTest {
         @MockBean
         private SimpMessagingTemplate simpMessagingTemplate;
 
+        @MockBean
+        private com.web.backend.service.WebSocketRoutingService webSocketRoutingService;
+
         @BeforeEach
         void setUp() {
                 ResourceBundleMessageSource messageSource = new ResourceBundleMessageSource();
@@ -82,10 +85,38 @@ class SearchUserControllerTest {
                                 .content(List.of(summary))
                                 .build();
 
-                when(searchUserService.searchUsers(eq("keyword"), eq(0), eq(10), eq("desc")))
+                when(searchUserService.searchUsers(isNull(), eq("keyword"), eq(0), eq(10), eq("desc")))
                                 .thenReturn(pageResponse);
 
                 mockMvc.perform(get("/api/search/users")
+                                .param("keyword", "keyword")
+                                .param("page", "0")
+                                .param("size", "10")
+                                .param("sortDir", "desc"))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.code").value(200))
+                                .andExpect(jsonPath("$.data.content[0].username").value("foundUser"));
+        }
+
+        @Test
+        void testSearchUsers_WithAuth_Success() throws Exception {
+                com.web.backend.model.postgres.UserEntity mockUser = new com.web.backend.model.postgres.UserEntity();
+                mockUser.setUsername("testuser");
+                org.springframework.security.authentication.UsernamePasswordAuthenticationToken mockAuth =
+                        new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(mockUser, null, java.util.Collections.emptyList());
+
+                UserSummaryResponse summary = UserSummaryResponse.builder()
+                                .username("foundUser")
+                                .build();
+                PageResponse<UserSummaryResponse> pageResponse = PageResponse.<UserSummaryResponse>builder()
+                                .content(List.of(summary))
+                                .build();
+
+                when(searchUserService.searchUsers(eq("testuser"), eq("keyword"), eq(0), eq(10), eq("desc")))
+                                .thenReturn(pageResponse);
+
+                mockMvc.perform(get("/api/search/users")
+                                .principal(mockAuth)
                                 .param("keyword", "keyword")
                                 .param("page", "0")
                                 .param("size", "10")

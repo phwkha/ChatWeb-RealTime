@@ -21,5 +21,9 @@ public interface FriendService {
 
     void blockUser(String blockerUsername, String targetUsername);
 
+    void unblockUser(String blockerUsername, String targetUsername);
+
+    PageResponse<UserSummaryResponse> getBlockedList(String currentUsername, int page, int size, String sortDir);
+
     boolean isFriend(@NonNull String user1, @NonNull String user2);
 }

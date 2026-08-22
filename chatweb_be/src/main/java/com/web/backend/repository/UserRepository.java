@@ -45,12 +45,20 @@ public interface UserRepository extends JpaRepository<UserEntity, Long>, JpaSpec
         void updateOnlineStatus(String username, boolean isOnline);
 
         @EntityGraph(attributePaths = { "role", "role.permissions" })
-        @Query("SELECT u FROM UserEntity u WHERE u.userStatus != :status AND " +
-                        "(LOWER(u.username) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
-                        "LOWER(u.email) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
-                        "LOWER(u.firstName) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
-                        "LOWER(u.lastName) LIKE LOWER(CONCAT('%', :keyword, '%')))")
+        @Query("SELECT u FROM UserEntity u WHERE u.userStatus != :status " +
+                        "AND (:currentUsername IS NULL OR u.username != :currentUsername) " +
+                        "AND (:currentUsername IS NULL OR u.id NOT IN (" +
+                        "    SELECT f.addressee.id FROM FriendshipEntity f WHERE f.requester.username = :currentUsername AND f.status = 'BLOCKED'" +
+                        ")) " +
+                        "AND (:currentUsername IS NULL OR u.id NOT IN (" +
+                        "    SELECT f.requester.id FROM FriendshipEntity f WHERE f.addressee.username = :currentUsername AND f.status = 'BLOCKED'" +
+                        ")) " +
+                        "AND (LOWER(u.username) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
+                        "     LOWER(u.email) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
+                        "     LOWER(u.firstName) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
+                        "     LOWER(u.lastName) LIKE LOWER(CONCAT('%', :keyword, '%')))")
         Page<UserEntity> searchUsersByKeyword(
+                        @Param("currentUsername") String currentUsername,
                         @Param("keyword") String keyword,
                         @Param("status") UserStatus status,
                         Pageable pageable);

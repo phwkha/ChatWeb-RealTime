@@ -27,6 +27,8 @@ public class FriendController {
         private final FriendService friendService;
 
         private static final String SUCCESS_FRIEND_BLOCKED_WITH_STRING = "success.friend.blocked_with";
+        private static final String SUCCESS_FRIEND_UNBLOCKED_WITH_STRING = "success.friend.unblocked_with";
+        private static final String SUCCESS_FRIEND_GET_BLOCKED_STRING = "success.friend.get_blocked";
         private static final String SUCCESS_FRIEND_GET_INVITES_STRING = "success.friend.get_invites";
         private static final String SUCCESS_FRIEND_GET_SENT_INVITES_STRING = "success.friend.get_sent_invites";
         private static final String SUCCESS_FRIEND_GET_FRIENDS_STRING = "success.friend.get_friends";
@@ -92,6 +94,21 @@ public class FriendController {
                                 null));
         }
 
+        @Operation(summary = "Get blocked users list", description = "API endpoint for get blocked users list")
+        @GetMapping("/blocked")
+        public ResponseEntity<ApiResponse<PageResponse<UserSummaryResponse>>> getBlockedList(
+                        Authentication auth,
+                        @RequestParam(defaultValue = "0") int page,
+                        @RequestParam(defaultValue = "10") int size,
+                        @RequestParam(defaultValue = "desc") String sortDir) {
+                UserEntity user = (UserEntity) auth.getPrincipal();
+
+                return ResponseEntity.ok(ApiResponse.success(
+                                HttpStatus.OK.value(),
+                                Translator.tolocale(SUCCESS_FRIEND_GET_BLOCKED_STRING),
+                                friendService.getBlockedList(user.getUsername(), page, size, sortDir)));
+        }
+
         @Operation(summary = "Block user", description = "API endpoint for block user")
         @PostMapping("/block/{username}")
         public ResponseEntity<ApiResponse<Void>> blockUser(Authentication auth, @PathVariable String username) {
@@ -101,6 +118,18 @@ public class FriendController {
                 return ResponseEntity.ok(ApiResponse.success(
                                 HttpStatus.OK.value(),
                                 Translator.tolocale(SUCCESS_FRIEND_BLOCKED_WITH_STRING, username),
+                                null));
+        }
+
+        @Operation(summary = "Unblock user", description = "API endpoint for unblock user")
+        @PostMapping("/unblock/{username}")
+        public ResponseEntity<ApiResponse<Void>> unblockUser(Authentication auth, @PathVariable String username) {
+                UserEntity user = (UserEntity) auth.getPrincipal();
+                friendService.unblockUser(user.getUsername(), username);
+
+                return ResponseEntity.ok(ApiResponse.success(
+                                HttpStatus.OK.value(),
+                                Translator.tolocale(SUCCESS_FRIEND_UNBLOCKED_WITH_STRING, username),
                                 null));
         }
 

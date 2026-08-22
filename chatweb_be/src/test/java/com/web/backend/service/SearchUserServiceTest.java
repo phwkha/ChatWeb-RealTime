@@ -50,11 +50,24 @@ class SearchUserServiceTest {
     @Test
     void testSearchUsers() {
         Page<UserEntity> page = new PageImpl<>(List.of(activeUser));
-        when(userRepository.searchUsersByKeyword(eq("test"), eq(UserStatus.INACTIVE), any(Pageable.class)))
+        when(userRepository.searchUsersByKeyword(eq("current_user"), eq("test"), eq(UserStatus.INACTIVE),
+                any(Pageable.class)))
                 .thenReturn(page);
         when(userMapper.toUserSummaryResponse(activeUser)).thenReturn(mock(UserSummaryResponse.class));
 
-        PageResponse<UserSummaryResponse> res = searchUserService.searchUsers("test", 0, 10, "asc");
+        PageResponse<UserSummaryResponse> res = searchUserService.searchUsers("current_user", "test", 0, 10, "asc");
+        assertEquals(1, res.getTotalElements());
+    }
+
+    @Test
+    void testSearchUsers_Anonymous() {
+        Page<UserEntity> page = new PageImpl<>(List.of(activeUser));
+        when(userRepository.searchUsersByKeyword(isNull(), eq("test"), eq(UserStatus.INACTIVE),
+                any(Pageable.class)))
+                .thenReturn(page);
+        when(userMapper.toUserSummaryResponse(activeUser)).thenReturn(mock(UserSummaryResponse.class));
+
+        PageResponse<UserSummaryResponse> res = searchUserService.searchUsers(null, "test", 0, 10, "asc");
         assertEquals(1, res.getTotalElements());
     }
 

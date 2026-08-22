@@ -13,6 +13,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import com.web.backend.model.postgres.UserEntity;
 import org.springframework.web.bind.annotation.*;
 
 @Tag(name = "Search Controller")
@@ -29,12 +31,19 @@ public class SearchUserController {
     @Operation(summary = "Search users by keyword", description = "Search users by username, email, first name or last name")
     @GetMapping("/users")
     public ResponseEntity<ApiResponse<PageResponse<UserSummaryResponse>>> searchUsers(
+            Authentication authentication,
             @RequestParam(defaultValue = "") String keyword,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(defaultValue = "desc") String sortDir) {
 
-        PageResponse<UserSummaryResponse> result = searchUserService.searchUsers(keyword, page, size, sortDir);
+        String currentUsername = null;
+        if (authentication != null && authentication.getPrincipal() instanceof UserEntity user) {
+            currentUsername = user.getUsername();
+        }
+
+        PageResponse<UserSummaryResponse> result = searchUserService.searchUsers(currentUsername, keyword, page, size,
+                sortDir);
 
         return ResponseEntity.ok(ApiResponse.success(
                 HttpStatus.OK.value(),
