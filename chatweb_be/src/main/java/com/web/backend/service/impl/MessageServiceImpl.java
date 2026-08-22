@@ -14,7 +14,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import org.springframework.context.ApplicationEventPublisher;
@@ -96,6 +95,8 @@ public class MessageServiceImpl implements MessageService {
     private static final String FIELD_REACTIONS_STRING = "reactions";
     private static final String FIELD_REACTIONS_PREFIX_STRING = "reactions.";
     private static final String FIELD_IS_REACTED_STRING = "isReacted";
+    private static final String FIELD_LAST_READ_TIMESTAMP_STRING = "lastReadTimestamp";
+    private static final String FIELD_USERNAME_STRING = "username";
 
     private static final String CHAT_RECENT_HASH_STRING = "chat:recent:hash:";
     private static final String CHAT_RECENT_ZSET_STRING = "chat:recent:zset:";
@@ -110,6 +111,7 @@ public class MessageServiceImpl implements MessageService {
     private static final String ERROR_MSG_DELETE_FORBIDDEN_STRING = "error.msg.delete_forbidden";
     private static final String ERROR_MSG_EDIT_DELETED_STRING = "error.msg.edit_deleted";
     private static final String ERROR_MSG_INVALID_TYPE_STRING = "error.msg.invalid_type";
+    private static final String ERROR_MSG_SYSTEM_OVERLOAD_STRING = "error.msg.system_overload";
 
     @Override
     public ChatMessageResponse getMessageById(String messageId, String currentUsername) {
@@ -221,6 +223,21 @@ public class MessageServiceImpl implements MessageService {
         }
         String convId = generateConversationId(recipientUsername, senderUsername);
         LocalDateTime now = LocalDateTime.now(ZoneId.systemDefault());
+        String receiptId = convId + DELIMITER_COLON_STRING + recipientUsername;
+
+        try {
+            Query query = new Query(Criteria.where(FIELD_ID_STRING).is(receiptId));
+            Update update = new Update()
+                    .max(FIELD_LAST_READ_TIMESTAMP_STRING, now)
+                    .setOnInsert(FIELD_CONVERSATION_ID_STRING, convId)
+                    .setOnInsert(FIELD_USERNAME_STRING, recipientUsername);
+
+            mongoTemplate.upsert(query, update, ReadReceipt.class);
+            log.debug("Persisted ReadReceipt with $max to MongoDB for conv '{}' and user '{}'", convId, recipientUsername);
+        } catch (Exception ex) {
+            log.error("Failed to persist ReadReceipt to MongoDB for conv '{}'", convId, ex);
+            throw new SystemOverloadException(Translator.tolocale(ERROR_MSG_SYSTEM_OVERLOAD_STRING), request, ex);
+        }
 
         try {
             String readReceiptKey = READ_RECEIPT_KEY_STRING + convId + DELIMITER_COLON_STRING + recipientUsername;
@@ -230,19 +247,6 @@ public class MessageServiceImpl implements MessageService {
             redisTemplate.opsForHash().delete(unreadKey, senderUsername);
         } catch (Exception e) {
             log.warn("Failed to update read receipt in Redis for conv '{}'", convId, e);
-        }
-
-        try {
-            ReadReceipt receipt = ReadReceipt.builder()
-                    .id(convId + DELIMITER_COLON_STRING + recipientUsername)
-                    .conversationId(convId)
-                    .username(recipientUsername)
-                    .lastReadTimestamp(now)
-                    .build();
-            readReceiptRepository.save(receipt);
-            log.debug("Persisted ReadReceipt to MongoDB for conv '{}' and user '{}'", convId, recipientUsername);
-        } catch (Exception ex) {
-            log.error("Failed to persist ReadReceipt to MongoDB for conv '{}'", convId, ex);
         }
 
         eventPublisher.publishEvent(ReadReceiptResponse.builder()
@@ -297,19 +301,7 @@ public class MessageServiceImpl implements MessageService {
             return null;
         }
 
-        updateMessageInRedisCache(convId, updatedMsg.getId(), m -> {
-            m.setContent(updatedMsg.getContent());
-            m.setEdited(true);
-            if (updatedMsg.getIv() != null) {
-                m.setIv(updatedMsg.getIv());
-            }
-            if (updatedMsg.getWrappedKeyRecipient() != null) {
-                m.setWrappedKeyRecipient(updatedMsg.getWrappedKeyRecipient());
-            }
-            if (updatedMsg.getWrappedKeySender() != null) {
-                m.setWrappedKeySender(updatedMsg.getWrappedKeySender());
-            }
-        });
+        putMessageIfCached(convId, updatedMsg);
 
         eventPublisher.publishEvent(UpdateMessagePayload.builder()
                 .relatedUsername(senderUsername)
@@ -371,17 +363,7 @@ public class MessageServiceImpl implements MessageService {
             }
         }
 
-        updateMessageInRedisCache(convId, updatedMsg.getId(), m -> {
-            m.setContent(EMPTY_STRING);
-            m.setFileUrl(null);
-            m.setFileName(null);
-            m.setFileSize(null);
-            m.setReactions(null);
-            m.setIv(null);
-            m.setWrappedKeyRecipient(null);
-            m.setWrappedKeySender(null);
-            m.setDeleted(true);
-        });
+        putMessageIfCached(convId, updatedMsg);
 
         eventPublisher.publishEvent(UpdateMessagePayload.builder()
                 .relatedUsername(senderUsername)
@@ -434,8 +416,7 @@ public class MessageServiceImpl implements MessageService {
             return null;
         }
 
-        updateMessageInRedisCache(convId, updatedMsg.getId(),
-                m -> applyReactionToMessage(m, senderUsername, request));
+        putMessageIfCached(convId, updatedMsg);
 
         eventPublisher.publishEvent(UpdateMessagePayload.builder()
                 .relatedUsername(senderUsername)
@@ -588,18 +569,21 @@ public class MessageServiceImpl implements MessageService {
         return new CursorResponse<>(responseList, nextCursor, hasMore);
     }
 
-    private void updateMessageInRedisCache(String conversationId, String messageId,
-            Consumer<ChatMessage> updateAction) {
+    private void putMessageIfCached(String conversationId, ChatMessage updatedMsg) {
+        if (updatedMsg == null || updatedMsg.getId() == null) {
+            return;
+        }
         try {
             String hashKey = CHAT_RECENT_HASH_STRING + conversationId;
-            Object obj = redisTemplate.opsForHash().get(hashKey, messageId);
-            if (obj != null) {
-                ChatMessage msg = (ChatMessage) obj;
-                updateAction.accept(msg);
-                redisTemplate.opsForHash().put(hashKey, messageId, msg);
+            Boolean exists = redisTemplate.opsForHash().hasKey(hashKey, updatedMsg.getId());
+            if (Boolean.TRUE.equals(exists)) {
+                redisTemplate.opsForHash().put(hashKey, updatedMsg.getId(), updatedMsg);
+                log.debug("Synchronized updated message '{}' to Redis cache for conv '{}'", updatedMsg.getId(),
+                        conversationId);
             }
         } catch (Exception e) {
-            log.warn("Failed to update message '{}' in Redis cache", messageId, e);
+            log.warn("Failed to update message '{}' in Redis cache for conv '{}'", updatedMsg.getId(), conversationId,
+                    e);
         }
     }
 
@@ -614,19 +598,5 @@ public class MessageServiceImpl implements MessageService {
             return (ChatMessage) redisObj;
         }
         throw new ResourceNotFoundException(Translator.tolocale(ERROR_MSG_NOT_FOUND_STRING));
-    }
-
-    private void applyReactionToMessage(ChatMessage message, String senderUsername, ReactionRequest request) {
-        Map<String, String> reactions = message.getReactions();
-        if (reactions == null) {
-            reactions = new HashMap<>();
-            message.setReactions(reactions);
-        }
-        if (request.getReactionType() != null) {
-            reactions.put(senderUsername, request.getReactionType().toString());
-        } else {
-            reactions.remove(senderUsername);
-        }
-        message.setReacted(!reactions.isEmpty());
     }
 }
