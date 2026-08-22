@@ -60,6 +60,9 @@ class ChatUploadControllerTest {
     @MockBean
     private org.springframework.messaging.simp.SimpMessagingTemplate simpMessagingTemplate;
 
+    @MockBean
+    private com.web.backend.service.WebSocketRoutingService webSocketRoutingService;
+
     @BeforeEach
     void setUp() {
         ResourceBundleMessageSource messageSource = new ResourceBundleMessageSource();

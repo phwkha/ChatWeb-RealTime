@@ -70,6 +70,9 @@ class KeyControllerTest {
     @MockBean
     private SimpMessagingTemplate simpMessagingTemplate;
 
+    @MockBean
+    private com.web.backend.service.WebSocketRoutingService webSocketRoutingService;
+
     private UsernamePasswordAuthenticationToken mockAuth;
     private UserEntity mockUser;
 

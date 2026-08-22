@@ -7,9 +7,14 @@ import lombok.Getter;
 import lombok.Setter;
 
 @Entity
-@Table(name = "friendships", uniqueConstraints = {
-        @UniqueConstraint(columnNames = { "requester_id", "addressee_id" })
-})
+@Table(name = "friendships",
+        uniqueConstraints = {
+                @UniqueConstraint(columnNames = { "requester_id", "addressee_id" })
+        },
+        indexes = {
+                @Index(name = "idx_friendship_requester_status", columnList = "requester_id, status"),
+                @Index(name = "idx_friendship_addressee_status", columnList = "addressee_id, status")
+        })
 @Getter
 @Setter
 public class FriendshipEntity extends AbstractEntity<Long> {

@@ -14,7 +14,11 @@ import java.util.*;
 import java.time.LocalDate;
 
 @Entity
-@Table(name = "users")
+@Table(name = "users",
+        indexes = {
+                @Index(name = "idx_user_status", columnList = "user_status"),
+                @Index(name = "idx_user_role_id", columnList = "role_id")
+        })
 @Getter
 @Setter
 public class UserEntity extends AbstractEntity<Long> implements UserDetails {

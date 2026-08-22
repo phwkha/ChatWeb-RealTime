@@ -7,7 +7,10 @@ import java.util.HashSet;
 import java.util.Set;
 
 @Entity
-@Table(name = "roles")
+@Table(name = "roles",
+        indexes = {
+                @Index(name = "idx_role_name", columnList = "name")
+        })
 @Getter
 @Setter
 public class RoleEntity extends AbstractEntity<Long> {

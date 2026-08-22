@@ -73,6 +73,9 @@ class UserControllerTest {
     @MockBean
     private RedisTemplate<String, Object> redisTemplate;
 
+    @MockBean
+    private com.web.backend.service.WebSocketRoutingService webSocketRoutingService;
+
     private UsernamePasswordAuthenticationToken mockAuth;
     private UserEntity mockUser;
 

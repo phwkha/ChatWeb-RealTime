@@ -6,7 +6,10 @@ import jakarta.persistence.*;
 import lombok.*;
 
 @Entity
-@Table(name = "addresses")
+@Table(name = "addresses",
+        indexes = {
+                @Index(name = "idx_address_user_id", columnList = "user_id")
+        })
 @Getter
 @Setter
 public class AddressEntity extends AbstractEntity<Long> {

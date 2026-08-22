@@ -11,7 +11,10 @@ import java.util.Set;
 @Getter
 @Setter
 @Entity
-@Table(name = "permissions")
+@Table(name = "permissions",
+        indexes = {
+                @Index(name = "idx_permission_name", columnList = "name")
+        })
 public class PermissionEntity extends AbstractEntity<Long> {
 
     @Column(name = "name")
