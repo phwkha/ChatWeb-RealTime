@@ -16,6 +16,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.support.ResourceBundleMessageSource;
 import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.data.redis.core.ListOperations;
 import org.springframework.data.redis.core.HashOperations;
 import org.springframework.data.redis.core.ValueOperations;
@@ -484,7 +486,7 @@ class MessageServiceTest {
 
         verify(valueOperations).set(eq("read_receipt:recipient_sender:recipient"), anyString(), any());
         verify(hashOperations).delete("unread_counts:recipient", "sender");
-        verify(readReceiptRepository).save(any(ReadReceipt.class));
+        verify(mongoTemplate).upsert(any(Query.class), any(Update.class), eq(ReadReceipt.class));
         verify(eventPublisher).publishEvent(any(ReadReceiptResponse.class));
     }
 

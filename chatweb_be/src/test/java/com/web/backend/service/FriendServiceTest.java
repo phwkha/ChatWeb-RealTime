@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+import java.time.Duration;
 import java.util.Optional;
 import java.util.List;
 
@@ -15,7 +16,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.support.ResourceBundleMessageSource;
-import org.springframework.data.redis.core.SetOperations;
+import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -52,7 +53,7 @@ class FriendServiceTest {
     @Mock
     private UserMapper userMapper;
     @Mock
-    private SetOperations<String, Object> setOperations;
+    private ValueOperations<String, Object> valueOperations;
 
     @InjectMocks
     private FriendServiceImpl friendService;
@@ -97,10 +98,12 @@ class FriendServiceTest {
         when(userRepository.findByUsername("userA")).thenReturn(Optional.of(userA));
         when(userRepository.findByUsername("userB")).thenReturn(Optional.of(userB));
         when(friendshipRepository.findByUsers(userA, userB)).thenReturn(Optional.empty());
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
 
         friendService.sendFriendRequest("userA", "userB");
 
         verify(friendshipRepository).save(any(FriendshipEntity.class));
+        verify(valueOperations).set(eq("relation:userA:userB"), eq("PENDING:userA"), eq(Duration.ofDays(1)));
         verify(eventPublisher).publishEvent(any(FriendPayload.class));
     }
 
@@ -127,14 +130,13 @@ class FriendServiceTest {
         pendingReq.setStatus(FriendshipStatus.PENDING);
         when(friendshipRepository.findByUsers(userA, userB)).thenReturn(Optional.of(pendingReq));
 
-        when(redisTemplate.opsForSet()).thenReturn(setOperations);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
 
         friendService.acceptFriendRequest("userA", "userB");
 
         assertEquals(FriendshipStatus.ACCEPTED, pendingReq.getStatus());
         verify(friendshipRepository).save(pendingReq);
-        verify(setOperations).add("friends:userA", "userB");
-        verify(setOperations).add("friends:userB", "userA");
+        verify(valueOperations).set(eq("relation:userA:userB"), eq("ACCEPTED"), eq(Duration.ofDays(7)));
         verify(eventPublisher).publishEvent(any(FriendPayload.class));
     }
 
@@ -164,13 +166,12 @@ class FriendServiceTest {
         f.setAddressee(userB);
 
         when(friendshipRepository.findByUsers(userA, userB)).thenReturn(Optional.of(f));
-        when(redisTemplate.opsForSet()).thenReturn(setOperations);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
 
         friendService.deleteFriendship("userA", "userB");
 
         verify(friendshipRepository).delete(f);
-        verify(setOperations).remove("friends:userA", "userB");
-        verify(setOperations).remove("friends:userB", "userA");
+        verify(valueOperations).set(eq("relation:userA:userB"), eq("NONE"), eq(Duration.ofHours(1)));
         verify(eventPublisher).publishEvent(any(FriendPayload.class));
     }
 
@@ -179,31 +180,34 @@ class FriendServiceTest {
         when(userRepository.findByUsername("userA")).thenReturn(Optional.of(userA));
         when(userRepository.findByUsername("userB")).thenReturn(Optional.of(userB));
         when(friendshipRepository.findByUsers(userA, userB)).thenReturn(Optional.empty());
-        when(redisTemplate.opsForSet()).thenReturn(setOperations);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
 
         friendService.blockUser("userA", "userB");
 
         verify(friendshipRepository).save(argThat(f -> f.getStatus() == FriendshipStatus.BLOCKED));
-        verify(setOperations).remove("friends:userA", "userB");
+        verify(valueOperations).set(eq("relation:userA:userB"), eq("BLOCKED:userA"), eq(Duration.ofDays(7)));
     }
 
     @Test
     void testIsFriend_RedisHit() {
-        when(redisTemplate.opsForSet()).thenReturn(setOperations);
-        when(setOperations.isMember("friends:userA", "userB")).thenReturn(true);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get("relation:userA:userB")).thenReturn("ACCEPTED");
 
         assertTrue(friendService.isFriend("userA", "userB"));
-        verify(friendshipRepository, never()).existsFriendship(anyString(), anyString());
+        verify(friendshipRepository, never()).findByUsernames(anyString(), anyString());
     }
 
     @Test
     void testIsFriend_DbFallback() {
-        when(redisTemplate.opsForSet()).thenReturn(setOperations);
-        when(setOperations.isMember("friends:userA", "userB")).thenReturn(false);
-        when(friendshipRepository.existsFriendship("userA", "userB")).thenReturn(true);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get("relation:userA:userB")).thenReturn(null);
+
+        FriendshipEntity f = new FriendshipEntity();
+        f.setStatus(FriendshipStatus.ACCEPTED);
+        when(friendshipRepository.findByUsernames("userA", "userB")).thenReturn(Optional.of(f));
 
         assertTrue(friendService.isFriend("userA", "userB"));
-        verify(setOperations).add("friends:userA", "userB");
+        verify(valueOperations).set(eq("relation:userA:userB"), eq("ACCEPTED"), eq(Duration.ofDays(7)));
     }
 
     // =====================================
@@ -330,9 +334,10 @@ class FriendServiceTest {
         f.setRequester(userA);
         f.setAddressee(userB);
         when(friendshipRepository.findByUsers(userA, userB)).thenReturn(Optional.of(f));
-        when(redisTemplate.opsForSet()).thenReturn(setOperations);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
 
         friendService.deleteFriendship("userA", "userB");
+        verify(valueOperations).set(eq("relation:userA:userB"), eq("NONE"), eq(Duration.ofHours(1)));
         verify(eventPublisher).publishEvent(any(FriendPayload.class));
     }
 
@@ -346,19 +351,59 @@ class FriendServiceTest {
         f.setRequester(userA); // userA is requester
         f.setAddressee(userB); // userB is current user
         when(friendshipRepository.findByUsers(userB, userA)).thenReturn(Optional.of(f));
-        when(redisTemplate.opsForSet()).thenReturn(setOperations);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
 
         friendService.deleteFriendship("userB", "userA");
+        verify(valueOperations).set(eq("relation:userA:userB"), eq("NONE"), eq(Duration.ofHours(1)));
         verify(eventPublisher).publishEvent(any(FriendPayload.class));
     }
 
     @Test
-    void testIsFriend_DbFallback_False() {
-        when(redisTemplate.opsForSet()).thenReturn(setOperations);
-        when(setOperations.isMember("friends:userA", "userB")).thenReturn(false);
-        when(friendshipRepository.existsFriendship("userA", "userB")).thenReturn(false);
+    void testIsFriend_RedisHit_False() {
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get("relation:userA:userB")).thenReturn("NONE");
 
         assertFalse(friendService.isFriend("userA", "userB"));
-        verify(setOperations, never()).add(anyString(), anyString());
+        verify(friendshipRepository, never()).findByUsernames(anyString(), anyString());
+    }
+
+    @Test
+    void testIsFriend_DbFallback_Pending() {
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get("relation:userA:userB")).thenReturn(null);
+
+        FriendshipEntity f = new FriendshipEntity();
+        f.setStatus(FriendshipStatus.PENDING);
+        f.setRequester(userA);
+        f.setAddressee(userB);
+        when(friendshipRepository.findByUsernames("userA", "userB")).thenReturn(Optional.of(f));
+
+        assertFalse(friendService.isFriend("userA", "userB"));
+        verify(valueOperations).set(eq("relation:userA:userB"), eq("PENDING:userA"), eq(Duration.ofDays(1)));
+    }
+
+    @Test
+    void testIsFriend_DbFallback_Blocked() {
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get("relation:userA:userB")).thenReturn(null);
+
+        FriendshipEntity f = new FriendshipEntity();
+        f.setStatus(FriendshipStatus.BLOCKED);
+        f.setRequester(userA);
+        f.setAddressee(userB);
+        when(friendshipRepository.findByUsernames("userA", "userB")).thenReturn(Optional.of(f));
+
+        assertFalse(friendService.isFriend("userA", "userB"));
+        verify(valueOperations).set(eq("relation:userA:userB"), eq("BLOCKED:userA"), eq(Duration.ofDays(7)));
+    }
+
+    @Test
+    void testIsFriend_DbFallback_False_AntiPenetration() {
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get("relation:userA:userB")).thenReturn(null);
+        when(friendshipRepository.findByUsernames("userA", "userB")).thenReturn(Optional.empty());
+
+        assertFalse(friendService.isFriend("userA", "userB"));
+        verify(valueOperations).set(eq("relation:userA:userB"), eq("NONE"), eq(Duration.ofHours(1)));
     }
 }

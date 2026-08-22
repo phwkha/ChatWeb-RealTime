@@ -20,6 +20,11 @@ public interface FriendshipRepository extends JpaRepository<FriendshipEntity, Lo
                         "(f.requester = :user2 AND f.addressee = :user1)")
         Optional<FriendshipEntity> findByUsers(UserEntity user1, UserEntity user2);
 
+        @Query("SELECT f FROM FriendshipEntity f WHERE " +
+                        "(f.requester.username = :u1 AND f.addressee.username = :u2) OR " +
+                        "(f.requester.username = :u2 AND f.addressee.username = :u1)")
+        Optional<FriendshipEntity> findByUsernames(@Param("u1") String u1, @Param("u2") String u2);
+
         @Query("SELECT COUNT(f) > 0 FROM FriendshipEntity f WHERE " +
                         "((f.requester.username = :u1 AND f.addressee.username = :u2) OR " +
                         "(f.requester.username = :u2 AND f.addressee.username = :u1)) " +

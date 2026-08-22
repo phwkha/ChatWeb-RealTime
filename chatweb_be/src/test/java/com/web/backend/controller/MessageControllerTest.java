@@ -74,6 +74,9 @@ class MessageControllerTest {
         private UserServiceDetail userServiceDetail;
 
         @MockBean
+        private com.web.backend.service.WebSocketRoutingService webSocketRoutingService;
+
+        @MockBean
         private RedisTemplate<String, Object> redisTemplate;
 
         private UsernamePasswordAuthenticationToken mockAuth;

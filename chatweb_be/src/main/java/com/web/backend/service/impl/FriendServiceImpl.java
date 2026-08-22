@@ -30,6 +30,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.dao.DataIntegrityViolationException;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 
@@ -48,7 +49,16 @@ public class FriendServiceImpl implements FriendService {
 
         private final UserMapper userMapper;
 
-        private static final String FRIENDS_STRING = "friends:";
+        private static final String RELATION_KEY_PREFIX = "relation:";
+        private static final String RELATION_NONE = "NONE";
+        private static final String RELATION_ACCEPTED = "ACCEPTED";
+        private static final String RELATION_PENDING_PREFIX = "PENDING:";
+        private static final String RELATION_BLOCKED_PREFIX = "BLOCKED:";
+
+        private static final Duration TTL_ACCEPTED = Duration.ofDays(7);
+        private static final Duration TTL_PENDING = Duration.ofDays(1);
+        private static final Duration TTL_BLOCKED = Duration.ofDays(7);
+        private static final Duration TTL_NONE = Duration.ofHours(1);
 
         private static final String DESC_STRING = "desc";
 
@@ -108,6 +118,11 @@ public class FriendServiceImpl implements FriendService {
                         throw new ResourceConflictException(Translator.tolocale(ERROR_FRIEND_INVITE_EXISTS_STRING));
                 }
 
+                redisTemplate.opsForValue().set(
+                                buildRelationKey(requesterUsername, addresseeUsername),
+                                RELATION_PENDING_PREFIX + requesterUsername,
+                                TTL_PENDING);
+
                 eventPublisher.publishEvent(FriendPayload.builder()
                                 .senderUsername(requesterUsername)
                                 .recipientUsername(addresseeUsername)
@@ -143,8 +158,10 @@ public class FriendServiceImpl implements FriendService {
                 friendship.setStatus(FriendshipStatus.ACCEPTED);
                 friendshipRepository.save(friendship);
 
-                redisTemplate.opsForSet().add(FRIENDS_STRING + acceptorUsername, requesterUsername);
-                redisTemplate.opsForSet().add(FRIENDS_STRING + requesterUsername, acceptorUsername);
+                redisTemplate.opsForValue().set(
+                                buildRelationKey(acceptorUsername, requesterUsername),
+                                RELATION_ACCEPTED,
+                                TTL_ACCEPTED);
 
                 eventPublisher.publishEvent(FriendPayload.builder()
                                 .senderUsername(acceptorUsername)
@@ -236,10 +253,12 @@ public class FriendServiceImpl implements FriendService {
                 boolean isAccepted = friendship.getStatus() == FriendshipStatus.ACCEPTED;
                 boolean isRequester = friendship.getRequester().getUsername().equals(currentUsername);
 
-                redisTemplate.opsForSet().remove(FRIENDS_STRING + currentUsername, targetUsername);
-                redisTemplate.opsForSet().remove(FRIENDS_STRING + targetUsername, currentUsername);
-
                 friendshipRepository.delete(friendship);
+
+                redisTemplate.opsForValue().set(
+                                buildRelationKey(currentUsername, targetUsername),
+                                RELATION_NONE,
+                                TTL_NONE);
 
                 if (isAccepted) {
                         eventPublisher.publishEvent(FriendPayload.builder()
@@ -284,26 +303,47 @@ public class FriendServiceImpl implements FriendService {
 
                 friendshipRepository.save(friendship);
 
-                redisTemplate.opsForSet().remove(FRIENDS_STRING + blockerUsername, targetUsername);
-                redisTemplate.opsForSet().remove(FRIENDS_STRING + targetUsername, blockerUsername);
+                redisTemplate.opsForValue().set(
+                                buildRelationKey(blockerUsername, targetUsername),
+                                RELATION_BLOCKED_PREFIX + blockerUsername,
+                                TTL_BLOCKED);
 
                 log.info("User '{}' blocked '{}'", blockerUsername, targetUsername);
         }
 
         @Override
         public boolean isFriend(@NonNull String user1, @NonNull String user2) {
-
-                Boolean isMember = redisTemplate.opsForSet().isMember(FRIENDS_STRING + user1, user2);
-                if (Boolean.TRUE.equals(isMember))
-                        return true;
-
-                boolean existsInDb = friendshipRepository.existsFriendship(user1, user2);
-
-                if (existsInDb) {
-                        redisTemplate.opsForSet().add(FRIENDS_STRING + user1, user2);
-                        redisTemplate.opsForSet().add(FRIENDS_STRING + user2, user1);
+                String key = buildRelationKey(user1, user2);
+                Object cached = redisTemplate.opsForValue().get(key);
+                if (cached != null) {
+                        return RELATION_ACCEPTED.equals(cached.toString());
                 }
-                return existsInDb;
+
+                Optional<FriendshipEntity> relationOpt = friendshipRepository.findByUsernames(user1, user2);
+                if (relationOpt.isPresent()) {
+                        FriendshipEntity relation = relationOpt.get();
+                        if (relation.getStatus() == FriendshipStatus.ACCEPTED) {
+                                redisTemplate.opsForValue().set(key, RELATION_ACCEPTED, TTL_ACCEPTED);
+                                return true;
+                        } else if (relation.getStatus() == FriendshipStatus.PENDING) {
+                                redisTemplate.opsForValue().set(key,
+                                                RELATION_PENDING_PREFIX + relation.getRequester().getUsername(),
+                                                TTL_PENDING);
+                                return false;
+                        } else if (relation.getStatus() == FriendshipStatus.BLOCKED) {
+                                redisTemplate.opsForValue().set(key,
+                                                RELATION_BLOCKED_PREFIX + relation.getRequester().getUsername(),
+                                                TTL_BLOCKED);
+                                return false;
+                        }
+                }
+
+                redisTemplate.opsForValue().set(key, RELATION_NONE, TTL_NONE);
+                return false;
+        }
+
+        private String buildRelationKey(@NonNull String user1, @NonNull String user2) {
+                return RELATION_KEY_PREFIX + (user1.compareTo(user2) <= 0 ? user1 + ":" + user2 : user2 + ":" + user1);
         }
 
         private UserEntity getUser(String username) {
