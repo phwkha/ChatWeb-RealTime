@@ -23,30 +23,10 @@ import java.util.List;
 @Profile({ "dev", "test" })
 public class OpenApiConfig {
 
-    private static final String APACE_2_0_STRING = "Apace 2.0";
-    private static final String API_DOCUMENT_FOR_BACKEND_STRING = "API Document for backend";
-    private static final String BAD_REQUEST_D_LI_U_KH_NG_H_P_L_STRING = "Bad Request - Dữ liệu không hợp lệ";
-
-    private static final String BEARERAUTH_STRING = "bearerAuth";
-    private static final String BEARER_STRING = "bearer";
-
-    private static final String COM_WEB_BACKEND_CONTROLLER_STRING = "com.web.backend.controller";
-    private static final String FORBIDDEN_KH_NG_C_QUY_N_TRUY_C_P_STRING = "Forbidden - Không có quyền truy cập";
-    private static final String HTTPS_SPRINGDOC_ORG_STRING = "https://springdoc.org";
-    private static final String INTERNAL_SERVER_ERROR_L_I_H_TH_NG_STRING = "Internal Server Error - Lỗi hệ thống";
-    private static final String JWT_STRING = "JWT";
-
-    private static final String STR_400_STRING = "400";
-    private static final String STR_401_STRING = "401";
-    private static final String STR_403_STRING = "403";
-    private static final String STR_500_STRING = "500";
-
-    private static final String UNAUTHORIZED_CH_A_X_C_TH_C_STRING = "Unauthorized - Chưa xác thực";
-
     @Bean
     public GroupedOpenApi groupedOpenApi(@Value("${openapi.service.api-docs}") String apiDocs) {
         return GroupedOpenApi.builder().group(apiDocs)
-                .packagesToScan(COM_WEB_BACKEND_CONTROLLER_STRING)
+                .packagesToScan("com.web.backend.controller")
                 .build();
     }
 
@@ -55,7 +35,7 @@ public class OpenApiConfig {
             @Value("${openapi.service.title}") String title,
             @Value("${openapi.service.version}") String version,
             @Value("${openapi.service.server}") String serverUrl) {
-        final String securitySchemeName = BEARERAUTH_STRING;
+        final String securitySchemeName = "bearerAuth";
         return new OpenAPI()
                 .servers(List.of(new Server().url(serverUrl)))
                 .components(
@@ -64,13 +44,13 @@ public class OpenApiConfig {
                                         securitySchemeName,
                                         new SecurityScheme()
                                                 .type(SecurityScheme.Type.HTTP)
-                                                .scheme(BEARER_STRING)
-                                                .bearerFormat(JWT_STRING)))
+                                                .scheme("bearer")
+                                                .bearerFormat("JWT")))
                 .security(List.of(new SecurityRequirement().addList(securitySchemeName)))
                 .info(new Info().title(title)
                         .version(version)
-                        .description(API_DOCUMENT_FOR_BACKEND_STRING)
-                        .license(new License().name(APACE_2_0_STRING).url(HTTPS_SPRINGDOC_ORG_STRING)));
+                        .description("API Document for backend")
+                        .license(new License().name("Apache 2.0").url("https://springdoc.org")));
     }
 
     @Bean
@@ -90,10 +70,10 @@ public class OpenApiConfig {
             apiResponses = new ApiResponses();
             operation.setResponses(apiResponses);
         }
-        addApiResponseIfMissing(apiResponses, STR_400_STRING, BAD_REQUEST_D_LI_U_KH_NG_H_P_L_STRING);
-        addApiResponseIfMissing(apiResponses, STR_401_STRING, UNAUTHORIZED_CH_A_X_C_TH_C_STRING);
-        addApiResponseIfMissing(apiResponses, STR_403_STRING, FORBIDDEN_KH_NG_C_QUY_N_TRUY_C_P_STRING);
-        addApiResponseIfMissing(apiResponses, STR_500_STRING, INTERNAL_SERVER_ERROR_L_I_H_TH_NG_STRING);
+        addApiResponseIfMissing(apiResponses, "400", "Bad Request - Dữ liệu không hợp lệ");
+        addApiResponseIfMissing(apiResponses, "401", "Unauthorized - Chưa xác thực");
+        addApiResponseIfMissing(apiResponses, "403", "Forbidden - Không có quyền truy cập");
+        addApiResponseIfMissing(apiResponses, "500", "Internal Server Error - Lỗi hệ thống");
     }
 
     private void addApiResponseIfMissing(ApiResponses apiResponses, String code, String description) {

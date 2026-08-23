@@ -48,20 +48,6 @@ public class DataSeeder implements CommandLineRunner {
     @Value("${app.admin.default-password}")
     private String adminPassword;
 
-    private static final String ADMIN_2_STRING = "admin";
-    private static final String ADMIN_3_STRING = "Admin";
-    private static final String ADMIN_EXAMPLE_COM_STRING = "admin@example.com";
-    private static final String NG_I_D_NG_C_B_N_STRING = "Người dùng cơ bản";
-    private static final String ONLINE_USERS_COUNT_STRING = "online_users_count";
-    private static final String ONLINE_USERS_STRING = "online_users";
-    private static final String QU_N_TR_VI_N_H_TH_NG_STRING = "Quản trị viên hệ thống";
-    private static final String SUPER_STRING = "Super";
-    private static final String USER_STRING = "USER";
-    private static final String ADMIN_STRING = "ADMIN";
-
-    private static final String FILTER_EMAILS_STRING = "filter:emails";
-    private static final String FILTER_USERNAMES_STRING = "filter:usernames";
-
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void run(String... args) throws Exception {
@@ -89,23 +75,23 @@ public class DataSeeder implements CommandLineRunner {
         // Chat permissions
         PermissionEntity pAdminSendMessage = createPermissionIfNotFound("ADMIN_SEND-MESSAGE", "Gửi tin nhắn hệ thống");
 
-        RoleEntity roleAdmin = createRoleIfNotFound(ADMIN_STRING, QU_N_TR_VI_N_H_TH_NG_STRING);
-        createRoleIfNotFound(USER_STRING, NG_I_D_NG_C_B_N_STRING);
+        RoleEntity roleAdmin = createRoleIfNotFound("ADMIN", "Quản trị viên hệ thống");
+        createRoleIfNotFound("USER", "Người dùng cơ bản");
 
         assignPermissionToRole(roleAdmin,
                 pAdminView, pAdminCreate, pAdminUpdate, pAdminDelete, pAdminLock, pAdminUnlock, pAdminDeleteAvatar,
                 pRoleViewAll, pRoleViewAllPermission, pRoleAdd, pRoleUpdate, pRoleDelete,
                 pSendEmail, pAdminSendMessage);
 
-        if (!userRepository.existsByUsername(ADMIN_2_STRING)) {
+        if (!userRepository.existsByUsername("admin")) {
             UserEntity admin = new UserEntity();
-            admin.setUsername(ADMIN_2_STRING);
+            admin.setUsername("admin");
             admin.setPassword(passwordEncoder.encode(adminPassword));
-            admin.setEmail(ADMIN_EXAMPLE_COM_STRING);
+            admin.setEmail("admin@example.com");
             admin.setUserStatus(UserStatus.ACTIVE);
             admin.setAuthProvider(AuthProvider.LOCAL);
-            admin.setFirstName(SUPER_STRING);
-            admin.setLastName(ADMIN_3_STRING);
+            admin.setFirstName("Super");
+            admin.setLastName("Admin");
 
             admin.setRole(roleAdmin);
 
@@ -113,12 +99,12 @@ public class DataSeeder implements CommandLineRunner {
         }
         log.info("Database seeding completed successfully");
 
-        if (!Boolean.TRUE.equals(redisTemplate.hasKey(FILTER_EMAILS_STRING))) {
+        if (!Boolean.TRUE.equals(redisTemplate.hasKey("filter:emails"))) {
             log.info("Initializing Cuckoo filter in Redis...");
             List<UserEntity> allUsers = userRepository.findAll();
             for (UserEntity u : allUsers) {
-                cuckooFilterService.add(FILTER_EMAILS_STRING, u.getEmail());
-                cuckooFilterService.add(FILTER_USERNAMES_STRING, u.getUsername());
+                cuckooFilterService.add("filter:emails", u.getEmail());
+                cuckooFilterService.add("filter:usernames", u.getUsername());
             }
             log.info("Cuckoo filter initialized with {} existing users", allUsers.size());
         }
@@ -157,14 +143,11 @@ public class DataSeeder implements CommandLineRunner {
     @Bean
     public CommandLineRunner cleanupOnlineStatus() {
         return args -> {
-            String onlineUsersKey = ONLINE_USERS_STRING;
-            String onlineUsersCountKey = ONLINE_USERS_COUNT_STRING;
-
-            if (Boolean.TRUE.equals(redisTemplate.hasKey(onlineUsersKey))) {
-                redisTemplate.delete(onlineUsersKey);
+            if (Boolean.TRUE.equals(redisTemplate.hasKey("online_users"))) {
+                redisTemplate.delete("online_users");
             }
-            if (Boolean.TRUE.equals(redisTemplate.hasKey(onlineUsersCountKey))) {
-                redisTemplate.delete(onlineUsersCountKey);
+            if (Boolean.TRUE.equals(redisTemplate.hasKey("online_users_count"))) {
+                redisTemplate.delete("online_users_count");
             }
             log.info("Reset online user states in Redis to prevent phantom data");
 

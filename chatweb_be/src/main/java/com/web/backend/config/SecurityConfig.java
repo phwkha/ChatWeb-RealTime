@@ -59,25 +59,6 @@ public class SecurityConfig {
         @Value("${app.cors.allowed-origins}")
         private String allowedOrigins;
 
-        private static final String ACTUATOR_STRING = "/actuator/**";
-        private static final String API_AUTH_LOGOUT_ALL_DEVICES_STRING = "/api/auth/logout-all-devices";
-        private static final String API_AUTH_LOGOUT_STRING = "/api/auth/logout";
-        private static final String API_AUTH_STRING = "/api/auth/**";
-        private static final String DELETE_STRING = "DELETE";
-        private static final String FAVICON_ICO_STRING = "/favicon.ico";
-        private static final String GET_STRING = "GET";
-        private static final String LOGIN_OAUTH2_STRING = "/login/oauth2/**";
-        private static final String OAUTH2_STRING = "/oauth2/**";
-        private static final String OPTIONS_STRING = "OPTIONS";
-        private static final String POST_STRING = "POST";
-        private static final String PUT_STRING = "PUT";
-        private static final String SET_COOKIE_STRING = "Set-Cookie";
-        private static final String SWAGGER_UI_STRING = "/swagger-ui/**";
-        private static final String SWAGGER_UI_SWAGGER_INITIALIZER_JS_STRING = "/swagger-ui*/*swagger-initializer.js";
-        private static final String V3_STRING = "/v3/**";
-        private static final String WEBJARS_STRING = "/webjars/**";
-        private static final String WS_STRING = "/ws/**";
-
         @Bean
         @SuppressWarnings("java:S4502")
         public SecurityFilterChain configure(HttpSecurity http) throws Exception {
@@ -87,11 +68,8 @@ public class SecurityConfig {
                                 .exceptionHandling(ex -> ex.authenticationEntryPoint(jwtAuthenticationEntryPoint)
                                                 .accessDeniedHandler(jwtAccessDeniedHandler))
                                 .authorizeHttpRequests(auth -> auth
-                                                .requestMatchers(API_AUTH_LOGOUT_STRING).authenticated()
-                                                .requestMatchers(API_AUTH_LOGOUT_ALL_DEVICES_STRING).authenticated()
-                                                .requestMatchers(WS_STRING).permitAll()
-                                                .requestMatchers(OAUTH2_STRING, LOGIN_OAUTH2_STRING).permitAll()
-                                                .requestMatchers(API_AUTH_STRING).permitAll()
+                                                .requestMatchers("/api/auth/logout", "/api/auth/logout-all-devices").authenticated()
+                                                .requestMatchers("/ws/**", "/oauth2/**", "/login/oauth2/**", "/api/auth/**").permitAll()
                                                 .anyRequest().authenticated())
                                 .sessionManagement(session -> session
                                                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -99,7 +77,7 @@ public class SecurityConfig {
                                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                                 .oauth2Login(oauth2 -> oauth2
                                                 .userInfoEndpoint(userInfo -> userInfo
-                                                                .userService(customOAuth2UserService))
+                                                                 .userService(customOAuth2UserService))
                                                 .successHandler(oAuth2AuthenticationSuccessHandler)
                                                 .failureHandler(oauth2AuthenticationFailureHandler));
 
@@ -124,21 +102,19 @@ public class SecurityConfig {
         public WebSecurityCustomizer ignoreResources() {
                 return webSecurity -> webSecurity
                                 .ignoring()
-                                .requestMatchers(ACTUATOR_STRING, V3_STRING, WEBJARS_STRING, SWAGGER_UI_STRING,
-                                                FAVICON_ICO_STRING,
-                                                SWAGGER_UI_SWAGGER_INITIALIZER_JS_STRING);
+                                .requestMatchers("/actuator/**", "/v3/**", "/webjars/**", "/swagger-ui/**",
+                                                "/favicon.ico",
+                                                "/swagger-ui*/*swagger-initializer.js");
         }
 
         @Bean
         public CorsConfigurationSource addConfigurationSource() {
                 CorsConfiguration configuration = new CorsConfiguration();
                 configuration.setAllowedOriginPatterns(Arrays.asList(allowedOrigins.split(",")));
-                configuration
-                                .setAllowedMethods(Arrays.asList(GET_STRING, POST_STRING, PUT_STRING, DELETE_STRING,
-                                                OPTIONS_STRING));
+                configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
                 configuration.setAllowedHeaders(Arrays.asList("*"));
                 configuration.setAllowCredentials(true);
-                configuration.setExposedHeaders(Arrays.asList(SET_COOKIE_STRING));
+                configuration.setExposedHeaders(Arrays.asList("Set-Cookie"));
 
                 UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
                 source.registerCorsConfiguration("/**", configuration);

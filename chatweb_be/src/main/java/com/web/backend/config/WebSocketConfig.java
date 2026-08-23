@@ -54,37 +54,23 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     private final ObjectMapper objectMapper;
 
-    private static final String TOPIC_STRING = "/topic";
-    private static final String QUEUE_STRING = "/queue";
-    private static final String USER_STRING = "/user";
-    private static final String APP_STRING = "/app";
-    private static final String WS_STRING = "/ws";
+    private static final String WS_LOCALE_ATTR = "WS_LOCALE";
+    private static final String ONLINE_USERS_KEY = "online_users";
 
-    private static final String WS_LOCALE_STRING = "WS_LOCALE";
-
-    private static final String VERSION_STRING = "v";
-    private static final String ONLINE_USERS = "online_users";
-
-    private static final String JWT_TOKEN_COOKIE_STRING = "jwt_token_cookie";
-    private static final String BLACKLIST_STRING = "blacklist:";
-    private static final String AUTHORIZATION_STRING = "Authorization";
-    private static final String BEARER_STRING = "Bearer ";
-    private static final String ACCEPT_LANGUAGE_STRING = "Accept-Language";
-    private static final String DELIMITER_COMMA_STRING = ",";
-    private static final String ERROR_WS_AUTH_FAILED_STRING = "error.ws.auth_failed";
-    private static final String ERROR_WS_BLACKLISTED_STRING = "error.ws.blacklisted";
-    private static final String ERROR_WS_INVALID_TOKEN_VERSION_STRING = "error.ws.invalid_token_version";
-    private static final String ERROR_WS_MISSING_TOKEN_STRING = "error.ws.missing_token";
-
-    @Override
-    public void configureMessageBroker(MessageBrokerRegistry registry) {
-        registry.enableSimpleBroker(TOPIC_STRING, QUEUE_STRING);
-        registry.setApplicationDestinationPrefixes(APP_STRING);
-        registry.setUserDestinationPrefix(USER_STRING);
-    }
+    private static final String ERR_WS_AUTH_FAILED = "error.ws.auth_failed";
+    private static final String ERR_WS_BLACKLISTED = "error.ws.blacklisted";
+    private static final String ERR_WS_INVALID_TOKEN_VERSION = "error.ws.invalid_token_version";
+    private static final String ERR_WS_MISSING_TOKEN = "error.ws.missing_token";
 
     @Value("${app.cors.allowed-origins:http://localhost:5173}")
     private String allowedOrigins;
+
+    @Override
+    public void configureMessageBroker(MessageBrokerRegistry registry) {
+        registry.enableSimpleBroker("/topic", "/queue");
+        registry.setApplicationDestinationPrefixes("/app");
+        registry.setUserDestinationPrefix("/user");
+    }
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
@@ -113,8 +99,8 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
             }
         });
 
-        registry.addEndpoint(WS_STRING)
-                .setAllowedOriginPatterns(allowedOrigins.split(DELIMITER_COMMA_STRING))
+        registry.addEndpoint("/ws")
+                .setAllowedOriginPatterns(allowedOrigins.split(","))
                 .addInterceptors(jwtHandshakeInterceptor)
                 .withSockJS();
     }
@@ -151,13 +137,13 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         }
 
         if (StompCommand.CONNECT.equals(accessor.getCommand())) {
-            String lang = accessor.getFirstNativeHeader(ACCEPT_LANGUAGE_STRING);
+            String lang = accessor.getFirstNativeHeader(org.springframework.http.HttpHeaders.ACCEPT_LANGUAGE);
             if (lang != null) {
-                sessionAttributes.put(WS_LOCALE_STRING, lang);
+                sessionAttributes.put(WS_LOCALE_ATTR, lang);
                 LocaleContextHolder.setLocale(StringUtils.parseLocaleString(lang));
             }
-        } else if (sessionAttributes.containsKey(WS_LOCALE_STRING)) {
-            String lang = (String) sessionAttributes.get(WS_LOCALE_STRING);
+        } else if (sessionAttributes.containsKey(WS_LOCALE_ATTR)) {
+            String lang = (String) sessionAttributes.get(WS_LOCALE_ATTR);
             LocaleContextHolder.setLocale(StringUtils.parseLocaleString(lang));
         }
     }
@@ -168,14 +154,14 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         }
 
         Map<String, Object> sessionAttributes = accessor.getSessionAttributes();
-        String token = sessionAttributes != null ? (String) sessionAttributes.get(JWT_TOKEN_COOKIE_STRING) : null;
+        String token = sessionAttributes != null ? (String) sessionAttributes.get("jwt_token_cookie") : null;
 
         if (token == null) {
             token = extractTokenFromHeader(accessor);
         }
 
         if (token == null) {
-            throw new MessagingException(Objects.requireNonNull(Translator.tolocale(ERROR_WS_MISSING_TOKEN_STRING)));
+            throw new MessagingException(Objects.requireNonNull(Translator.tolocale(ERR_WS_MISSING_TOKEN)));
         }
 
         try {
@@ -183,15 +169,15 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         } catch (Exception e) {
             log.warn("WebSocket authentication handshake failed: {}", e.getMessage());
             throw new MessagingException(
-                    Objects.requireNonNull(Translator.tolocale(ERROR_WS_AUTH_FAILED_STRING, e.getMessage())));
+                    Objects.requireNonNull(Translator.tolocale(ERR_WS_AUTH_FAILED, e.getMessage())));
         }
     }
 
     private void validateAndAuthenticateToken(String token, StompHeaderAccessor accessor) {
-        String key = BLACKLIST_STRING + token;
+        String key = "blacklist:" + token;
         if (Boolean.TRUE.equals(redisTemplate.hasKey(key))) {
             log.warn("WebSocket authentication rejected: Token is blacklisted");
-            throw new MessagingException(Objects.requireNonNull(Translator.tolocale(ERROR_WS_BLACKLISTED_STRING)));
+            throw new MessagingException(Objects.requireNonNull(Translator.tolocale(ERR_WS_BLACKLISTED)));
         }
 
         String username = jwtService.extractUsername(token, TokenType.ACCESS_TOKEN);
@@ -211,7 +197,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     private void checkTokenVersion(String token, UserEntity userEntity, String username) {
         Integer tokenVersionInJwt = jwtService.extractClaim(token, TokenType.ACCESS_TOKEN,
-                claims -> claims.get(VERSION_STRING, Integer.class));
+                claims -> claims.get("v", Integer.class));
         Integer currentVersion = userEntity.getTokenVersion();
         if (currentVersion == null) {
             currentVersion = 0;
@@ -220,7 +206,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         if (tokenVersionInJwt == null || !tokenVersionInJwt.equals(currentVersion)) {
             log.warn("WebSocket token version mismatch for user '{}'", username);
             throw new MessagingException(
-                    Objects.requireNonNull(Translator.tolocale(ERROR_WS_INVALID_TOKEN_VERSION_STRING)));
+                    Objects.requireNonNull(Translator.tolocale(ERR_WS_INVALID_TOKEN_VERSION)));
         }
     }
 
@@ -229,14 +215,14 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         if (user != null
                 && user.getName() != null
                 && !StompCommand.DISCONNECT.equals(accessor.getCommand())) {
-            redisTemplate.opsForZSet().add(ONLINE_USERS, user.getName(),
+            redisTemplate.opsForZSet().add(ONLINE_USERS_KEY, user.getName(),
                     System.currentTimeMillis());
         }
     }
 
     private String extractTokenFromHeader(StompHeaderAccessor accessor) {
-        String authHeader = accessor.getFirstNativeHeader(AUTHORIZATION_STRING);
-        if (authHeader != null && authHeader.startsWith(BEARER_STRING)) {
+        String authHeader = accessor.getFirstNativeHeader(org.springframework.http.HttpHeaders.AUTHORIZATION);
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
             return authHeader.substring(7);
         }
         return null;
