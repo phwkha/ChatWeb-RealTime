@@ -5,7 +5,7 @@ spring:
 
   data:
     mongodb:
-      uri: mongodb://${MONGO_USER}:${MONGO_PASSWORD}@${MONGO_HOST:localhost}:27017/${MONGO_DB:chatdb}?authSource=admin
+      uri: mongodb://${MONGO_USER}:${MONGO_PASSWORD}@${MONGO_HOST}:27017/${MONGO_DB}?authSource=admin
       auto-index-creation: true
     redis:
       host: ${REDIS_HOST}
@@ -17,7 +17,7 @@ spring:
         time-to-live: 10m
         cache-null-values: false
   datasource:
-    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:5432/${POSTGRES_DB:postgres}
+    url: jdbc:postgresql://${POSTGRES_HOST}:5432/${POSTGRES_DB}
     username: ${POSTGRES_USER}
     password: ${POSTGRES_PASSWORD}
   jpa:
@@ -58,7 +58,7 @@ spring:
         friend-topic: friend-notifications
         friend-group-id: friend-websocket-group
     properties:
-      schema.registry.url: ${SCHEMA_REGISTRY_URL:http://localhost:8081}
+      schema.registry.url: ${SCHEMA_REGISTRY_URL}
   security:
     oauth2:
       client:
@@ -81,7 +81,7 @@ openapi:
     api-docs: backend
     title: Backend API document
     version: v1.0.0
-    server: http://localhost:${server.port}
+    server: ${OPENAPI_SERVER_URL}
 
 jwt:
   secret-key-access: ${JWT_SECRET_ACCESS}
@@ -98,7 +98,7 @@ app:
   oauth2:
     redirect-uri: ${OAUTH2_REDIRECT_URI}
   cors:
-    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173}
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS}
   upload:
     avatar:
       max-size: 5242880
