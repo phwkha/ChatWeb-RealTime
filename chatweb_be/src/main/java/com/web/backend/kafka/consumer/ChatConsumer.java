@@ -1,8 +1,8 @@
 package com.web.backend.kafka.consumer;
 
-import org.springframework.kafka.annotation.DltHandler;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.annotation.RetryableTopic;
+import org.springframework.kafka.retrytopic.DltStrategy;
 import org.springframework.kafka.retrytopic.SameIntervalTopicReuseStrategy;
 import org.springframework.kafka.support.KafkaHeaders;
 import org.springframework.messaging.handler.annotation.Header;
@@ -35,7 +35,7 @@ public class ChatConsumer {
 
     private static final String TOPIC_PUBLIC_STRING = "/topic/public";
 
-    @RetryableTopic(attempts = "5", backoff = @Backoff(delay = 200), sameIntervalTopicReuseStrategy = SameIntervalTopicReuseStrategy.SINGLE_TOPIC, autoCreateTopics = "true")
+    @RetryableTopic(attempts = "5", backoff = @Backoff(delay = 200), sameIntervalTopicReuseStrategy = SameIntervalTopicReuseStrategy.SINGLE_TOPIC, dltStrategy = DltStrategy.NO_DLT, autoCreateTopics = "true")
     @KafkaListener(topics = "${spring.kafka.topic.chat.messages}", groupId = "${spring.kafka.topic.chat.messages-group-id}", containerFactory = "chatAvroListenerContainerFactory")
     public void listenChatMessages(
             @Payload ChatMessageAvro message,
@@ -59,13 +59,7 @@ public class ChatConsumer {
         }
     }
 
-    @DltHandler
-    public void handleChatDlt(ChatMessageAvro message) {
-        log.error("Dead Letter Topic: Failed to deliver real-time WebSocket chat from '{}' to '{}'",
-                message.getSender(), message.getRecipient());
-    }
-
-    @RetryableTopic(attempts = "5", backoff = @Backoff(delay = 200), sameIntervalTopicReuseStrategy = SameIntervalTopicReuseStrategy.SINGLE_TOPIC, autoCreateTopics = "true")
+    @RetryableTopic(attempts = "5", backoff = @Backoff(delay = 200), sameIntervalTopicReuseStrategy = SameIntervalTopicReuseStrategy.SINGLE_TOPIC, dltStrategy = DltStrategy.NO_DLT, autoCreateTopics = "true")
     @KafkaListener(topics = "${spring.kafka.topic.chat.system-messages}", groupId = "${spring.kafka.topic.chat.system-messages-group-id}-${random.uuid}", containerFactory = "jsonKafkaListenerContainerFactory")
     public void listenSystemMessages(SystemMessage systemMessage) {
         if (systemMessage == null)
@@ -82,11 +76,5 @@ public class ChatConsumer {
             log.error("Failed to broadcast system message to '{}'", TOPIC_PUBLIC_STRING, e);
             throw new RuntimeException(e);
         }
-    }
-
-    @DltHandler
-    public void handleSystemMessageDlt(SystemMessage systemMessage) {
-        log.error("Dead Letter Topic: Failed to broadcast system message from '{}'",
-                systemMessage.getSender());
     }
 }

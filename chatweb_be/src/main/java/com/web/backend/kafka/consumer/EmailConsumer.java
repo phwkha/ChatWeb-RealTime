@@ -1,12 +1,10 @@
 package com.web.backend.kafka.consumer;
 
-import org.springframework.kafka.annotation.DltHandler;
 import org.springframework.kafka.annotation.KafkaListener;
-import org.springframework.kafka.support.KafkaHeaders;
 import org.springframework.kafka.support.Acknowledgment;
-import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.kafka.annotation.RetryableTopic;
 import org.springframework.retry.annotation.Backoff;
+import org.springframework.kafka.retrytopic.DltStrategy;
 import org.springframework.kafka.retrytopic.SameIntervalTopicReuseStrategy;
 import com.web.backend.kafka.payload.EmailPayload;
 
@@ -28,7 +26,7 @@ public class EmailConsumer {
 
     private static final String TEXT_STRING = "TEXT";
 
-    @RetryableTopic(attempts = "10", backoff = @Backoff(delay = 30000), sameIntervalTopicReuseStrategy = SameIntervalTopicReuseStrategy.SINGLE_TOPIC, autoCreateTopics = "true")
+    @RetryableTopic(attempts = "10", backoff = @Backoff(delay = 30000), sameIntervalTopicReuseStrategy = SameIntervalTopicReuseStrategy.SINGLE_TOPIC, dltStrategy = DltStrategy.NO_DLT, autoCreateTopics = "true")
     @KafkaListener(topics = "${spring.kafka.topic.email.email-topic}", groupId = "${spring.kafka.topic.email.group-id}", containerFactory = "emailKafkaListenerContainerFactory")
     public void consumeEmailTask(EmailPayload emailEvent, Acknowledgment ack) {
         log.debug("Consumed email task: type='{}', recipient='{}'", emailEvent.type(), emailEvent.to());
@@ -41,11 +39,5 @@ public class EmailConsumer {
 
         ack.acknowledge();
         log.info("Email task processed successfully for recipient '{}' [type={}]", emailEvent.to(), emailEvent.type());
-    }
-
-    @DltHandler
-    public void handleEmailDlt(EmailPayload emailEvent, @Header(KafkaHeaders.RECEIVED_TOPIC) String topic) {
-        log.error("Dead Letter Topic: Failed to process email task for recipient '{}' [topic={}]", emailEvent.to(),
-                topic);
     }
 }

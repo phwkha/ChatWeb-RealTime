@@ -142,14 +142,4 @@ class UpdateMessageConsumerTest {
         verify(webSocketRoutingService).routeMessage(eq("recipient1"), eq("/queue/notifications"), any(NotificationResponse.class));
     }
 
-    @Test
-    void testHandleChatDlt() {
-        UpdateMessagePayload payload = UpdateMessagePayload.builder()
-                .type(UpdateMessageType.EDIT)
-                .relatedUsername("sender1")
-                .updateEvent(new ChatMessage())
-                .build();
-
-        updateMessageConsumer.handleChatDlt(payload);
-    }
 }

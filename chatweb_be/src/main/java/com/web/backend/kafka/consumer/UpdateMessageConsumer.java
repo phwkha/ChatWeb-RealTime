@@ -1,8 +1,8 @@
 package com.web.backend.kafka.consumer;
 
-import org.springframework.kafka.annotation.DltHandler;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.annotation.RetryableTopic;
+import org.springframework.kafka.retrytopic.DltStrategy;
 import org.springframework.kafka.retrytopic.SameIntervalTopicReuseStrategy;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.stereotype.Component;
@@ -38,7 +38,7 @@ public class UpdateMessageConsumer {
     private static final String SYS_MSG_REACT_MESSAGE_STRING = "sys.msg.react_message";
     private static final String SYS_MSG_STATUS_MESSAGE_STRING = "sys.msg.status_message";
 
-    @RetryableTopic(attempts = "5", backoff = @Backoff(delay = 500), sameIntervalTopicReuseStrategy = SameIntervalTopicReuseStrategy.SINGLE_TOPIC, autoCreateTopics = "true")
+    @RetryableTopic(attempts = "5", backoff = @Backoff(delay = 500), sameIntervalTopicReuseStrategy = SameIntervalTopicReuseStrategy.SINGLE_TOPIC, dltStrategy = DltStrategy.NO_DLT, autoCreateTopics = "true")
     @KafkaListener(topics = "${spring.kafka.topic.update-message.update}", groupId = "${spring.kafka.topic.update-message.group-id}", containerFactory = "jsonKafkaListenerContainerFactory")
     public void handleMessageUpdates(UpdateMessagePayload updateEvent) {
         if (updateEvent == null || updateEvent.updateEvent() == null) {
@@ -151,14 +151,5 @@ public class UpdateMessageConsumer {
             response.setData(messageMapper.toResponse(chatMessage));
         }
         return response;
-    }
-
-    @DltHandler
-    public void handleChatDlt(UpdateMessagePayload updateEvent) {
-        if (updateEvent == null) {
-            return;
-        }
-        log.error("Dead Letter Topic: Failed to process update event [type='{}', user='{}'] after retries exhausted",
-                updateEvent.type(), updateEvent.relatedUsername());
     }
 }

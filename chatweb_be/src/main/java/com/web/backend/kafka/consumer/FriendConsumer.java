@@ -1,9 +1,9 @@
 package com.web.backend.kafka.consumer;
 
-import org.springframework.kafka.annotation.DltHandler;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.annotation.RetryableTopic;
 import org.springframework.retry.annotation.Backoff;
+import org.springframework.kafka.retrytopic.DltStrategy;
 import org.springframework.kafka.retrytopic.SameIntervalTopicReuseStrategy;
 import org.springframework.stereotype.Component;
 
@@ -38,7 +38,7 @@ public class FriendConsumer {
     private static final String SYS_MSG_USER_OFFLINE_STRING = "sys.msg.user_offline";
     private static final String EMPTY_STRING = "";
 
-    @RetryableTopic(attempts = "5", backoff = @Backoff(delay = 500), sameIntervalTopicReuseStrategy = SameIntervalTopicReuseStrategy.SINGLE_TOPIC, autoCreateTopics = "true")
+    @RetryableTopic(attempts = "5", backoff = @Backoff(delay = 500), sameIntervalTopicReuseStrategy = SameIntervalTopicReuseStrategy.SINGLE_TOPIC, dltStrategy = DltStrategy.NO_DLT, autoCreateTopics = "true")
     @KafkaListener(topics = "${spring.kafka.topic.friend.friend-topic}", groupId = "${spring.kafka.topic.friend.friend-group-id}", containerFactory = "jsonKafkaListenerContainerFactory")
     public void listenFriendNotifications(FriendPayload friendEvent) {
         if (friendEvent == null) {
@@ -117,9 +117,4 @@ public class FriendConsumer {
         return NotificationResponse.notificationData(type, relatedUsername, Translator.tolocale(translationKey));
     }
 
-    @DltHandler
-    public void handleFriendDlt(FriendPayload friendEvent) {
-        log.error("Dead Letter Topic: Failed to process friend notification from '{}' to '{}' [type={}]",
-                friendEvent.senderUsername(), friendEvent.recipientUsername(), friendEvent.recipientType());
-    }
 }
