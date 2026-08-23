@@ -69,7 +69,7 @@ public class DatabaseWriteBehindConsumer {
         }
     }
 
-    @KafkaListener(topics = "chat.messages.dlt", groupId = "${spring.kafka.topic.chat.messages-save-group-id}-dlt", containerFactory = "dltChatAvroListenerContainerFactory")
+    @KafkaListener(topics = "${spring.kafka.topic.chat.messages}-save-dlt", groupId = "${spring.kafka.topic.chat.messages-save-group-id}-dlt", containerFactory = "dltChatAvroListenerContainerFactory")
     public void handleDltPersistence(ChatMessageAvro message) {
         if (message == null || !MessageType.CHAT.name().equalsIgnoreCase(message.getMessageType())) {
             return;

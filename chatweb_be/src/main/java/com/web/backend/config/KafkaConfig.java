@@ -37,6 +37,9 @@ public class KafkaConfig {
     @Value("${spring.kafka.properties.schema.registry.url:http://localhost:8081}")
     private String schemaRegistryUrl;
 
+    @Value("${spring.kafka.topic.chat.messages}")
+    private String chatMessagesTopic;
+
     @Bean
     public ProducerFactory<String, ChatMessageAvro> avroChatProducerFactory() {
         Map<String, Object> props = new HashMap<>();
@@ -100,7 +103,7 @@ public class KafkaConfig {
     @Bean
     public DefaultErrorHandler batchChatAvroErrorHandler(KafkaTemplate<String, ChatMessageAvro> avroChatKafkaTemplate) {
         DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(avroChatKafkaTemplate,
-                (r, e) -> new TopicPartition("chat.messages.dlt", r.partition()));
+                (r, e) -> new TopicPartition(chatMessagesTopic + "-save-dlt", r.partition()));
         DefaultErrorHandler errorHandler = new DefaultErrorHandler(recoverer, new FixedBackOff(500L, 4L));
         errorHandler.addNotRetryableExceptions(
                 SerializationException.class,
