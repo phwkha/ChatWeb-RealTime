@@ -2,8 +2,7 @@ spring:
   config:
     activate:
       on-profile: dev
-  devtools:
-    add-properties: true
+
   data:
     mongodb:
       uri: mongodb://${MONGO_USER}:${MONGO_PASSWORD}@${MONGO_HOST:localhost}:27017/${MONGO_DB:chatdb}?authSource=admin

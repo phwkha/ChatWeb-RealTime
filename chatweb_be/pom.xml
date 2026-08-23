@@ -136,6 +136,10 @@
 					<groupId>log4j</groupId>
 					<artifactId>log4j</artifactId>
 				</exclusion>
+				<exclusion>
+					<groupId>io.swagger.core.v3</groupId>
+					<artifactId>swagger-annotations</artifactId>
+				</exclusion>
 			</exclusions>
 		</dependency>
 
@@ -189,15 +193,6 @@
 			<version>2.7.0</version>
 		</dependency>
 
-		<!-- ========================================================== -->
-		<!-- Developer Tools                                            -->
-		<!-- ========================================================== -->
-		<dependency>
-			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-devtools</artifactId>
-			<scope>runtime</scope>
-			<optional>true</optional>
-		</dependency>
 
 		<!-- ========================================================== -->
 		<!-- Logging (ELK)                                              -->
