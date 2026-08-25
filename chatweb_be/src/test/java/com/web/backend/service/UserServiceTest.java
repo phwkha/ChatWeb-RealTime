@@ -215,7 +215,7 @@ class UserServiceTest {
 
         userService.addAddress("testuser", req);
         assertTrue(activeUser.getAddresses().contains(address));
-        verify(userRepository).save(activeUser);
+        verify(addressRepository).save(address);
     }
 
     @Test

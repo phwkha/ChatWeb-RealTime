@@ -7,6 +7,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.LockedException;
@@ -35,6 +36,7 @@ import com.web.backend.exception.custom.SystemOverloadException;
 import com.web.backend.exception.custom.TooManyRequestsException;
 import org.springframework.http.HttpHeaders;
 
+import jakarta.persistence.OptimisticLockException;
 import jakarta.validation.ConstraintViolationException;
 
 import io.jsonwebtoken.ExpiredJwtException;
@@ -111,6 +113,16 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.CONFLICT)
     public ApiResponse<Void> handleDataIntegrityViolationException(DataIntegrityViolationException ex) {
         log.error("Database integrity constraint violation: {}", ex.getMessage(), ex);
+        return ApiResponse.error(HttpStatus.CONFLICT.value(), Translator.tolocale(ERROR_SYS_CONFLICT_STRING));
+    }
+
+    @ExceptionHandler({
+            ObjectOptimisticLockingFailureException.class,
+            OptimisticLockException.class
+    })
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ApiResponse<Void> handleOptimisticLockException(Exception ex) {
+        log.warn("Optimistic lock conflict detected: {}", ex.getMessage());
         return ApiResponse.error(HttpStatus.CONFLICT.value(), Translator.tolocale(ERROR_SYS_CONFLICT_STRING));
     }
 

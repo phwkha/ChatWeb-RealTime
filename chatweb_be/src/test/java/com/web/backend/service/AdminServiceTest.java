@@ -200,11 +200,10 @@ class AdminServiceTest {
 
     @Test
     void testDeleteAvatar() {
-        activeUser.setAvatar("avatar.jpg");
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(activeUser));
+        when(userRepository.findAvatarByUsername("testuser")).thenReturn(Optional.of("avatar.jpg"));
         adminService.deleteAvatar("testuser");
+        verify(userRepository).updateAvatar("testuser", null);
         verify(storageService).delete("avatar.jpg", "avatars");
-        assertNull(activeUser.getAvatar());
     }
 
     @Test
@@ -332,7 +331,7 @@ class AdminServiceTest {
 
     @Test
     void testDeleteAvatar_NotFound() {
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.empty());
+        when(userRepository.findAvatarByUsername("testuser")).thenReturn(Optional.empty());
         assertThrows(ResourceNotFoundException.class, () -> adminService.deleteAvatar("testuser"));
     }
 

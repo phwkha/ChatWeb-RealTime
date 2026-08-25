@@ -25,4 +25,8 @@ public abstract class AbstractEntity<T extends Serializable> implements Serializ
     @Column(name = "update_at")
     @UpdateTimestamp
     private Instant updateAt;
+
+    @Version
+    @Column(name = "version", nullable = false)
+    private Long version = 0L;
 }

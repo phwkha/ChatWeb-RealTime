@@ -267,15 +267,15 @@ public class AdminServiceImpl implements AdminService {
     @Transactional
     @CacheEvict(value = USER_DETAILS_STRING, key = USERNAME_STRING)
     public void deleteAvatar(String username) {
-        UserEntity userEntity = userRepository.findByUsername(username)
+        String urlAvatar = userRepository.findAvatarByUsername(username)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         Translator.tolocale(ERROR_USER_NOT_FOUND_WITH_STRING, username)));
 
-        String urlAvatar = userEntity.getAvatar();
+        userRepository.updateAvatar(username, null);
 
-        userEntity.setAvatar(null);
-
-        storageService.delete(urlAvatar, AVATARS_STRING);
+        if (urlAvatar != null) {
+            storageService.delete(urlAvatar, AVATARS_STRING);
+        }
 
         log.info("Admin deleted avatar for user '{}'", username);
     }

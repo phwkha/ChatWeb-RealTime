@@ -236,8 +236,7 @@ public class UserServiceImpl implements UserService {
         AddressEntity newAddress = userMapper.toAddressEntity(request);
 
         user.addAddress(newAddress);
-
-        userRepository.save(user);
+        addressRepository.save(newAddress);
         log.info("User '{}' added new address", username);
         return userMapper.toUserDetailResponse(user);
     }
