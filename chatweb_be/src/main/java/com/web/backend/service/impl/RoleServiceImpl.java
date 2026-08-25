@@ -45,6 +45,7 @@ public class RoleServiceImpl implements RoleService {
     private static final String ERROR_ROLE_IN_USE_STRING = "error.role.in_use";
 
     @Override
+    @Transactional(readOnly = true)
     public List<RoleResponse> getAllRoles() {
         return roleRepository.findAll().stream()
                 .map(userMapper::toRoleResponse)
@@ -52,6 +53,7 @@ public class RoleServiceImpl implements RoleService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<PermissionResponse> getAllPermissions() {
         return permissionRepository.findAll().stream()
                 .map(userMapper::toPermissionResponse)

@@ -67,6 +67,7 @@ public class SearchUserServiceImpl implements SearchUserService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public PageResponse<UserDetailResponse> advanceSearchWithSpecifications(Pageable pageable, String[] user,
             String[] address) {
 

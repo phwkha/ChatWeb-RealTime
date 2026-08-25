@@ -39,6 +39,7 @@ import com.web.backend.mapper.UserMapper;
 import com.web.backend.model.postgres.AddressEntity;
 import com.web.backend.model.postgres.RoleEntity;
 import com.web.backend.model.postgres.UserEntity;
+import com.web.backend.repository.AddressRepository;
 import com.web.backend.repository.MessageRepository;
 import com.web.backend.repository.RoleRepository;
 import com.web.backend.repository.UserRepository;
@@ -49,6 +50,8 @@ class AdminServiceTest {
 
     @Mock
     private UserRepository userRepository;
+    @Mock
+    private AddressRepository addressRepository;
     @Mock
     private MessageRepository messageRepository;
     @Mock
@@ -119,7 +122,7 @@ class AdminServiceTest {
 
     @Test
     void testGetUserByUsername_Success() {
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(activeUser));
+        when(userRepository.findWithAuthoritiesByUsername("testuser")).thenReturn(Optional.of(activeUser));
         when(userMapper.toUserDetailResponse(activeUser)).thenReturn(new UserDetailResponse());
 
         assertNotNull(adminService.getUserByUsername("testuser"));
@@ -128,7 +131,7 @@ class AdminServiceTest {
     @Test
     void testGetUserByUsername_Inactive() {
         activeUser.setUserStatus(UserStatus.INACTIVE);
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(activeUser));
+        when(userRepository.findWithAuthoritiesByUsername("testuser")).thenReturn(Optional.of(activeUser));
         assertThrows(ResourceNotFoundException.class, () -> adminService.getUserByUsername("testuser"));
     }
 
@@ -212,7 +215,7 @@ class AdminServiceTest {
         req.setEmail("new@example.com");
         req.setRoleId(1L);
 
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(activeUser));
+        when(userRepository.findWithAuthoritiesByUsername("testuser")).thenReturn(Optional.of(activeUser));
         when(userRepository.existsByEmail("new@example.com")).thenReturn(false);
         when(roleRepository.findById(1L)).thenReturn(Optional.of(new RoleEntity()));
         when(userRepository.save(activeUser)).thenReturn(activeUser);
@@ -226,7 +229,7 @@ class AdminServiceTest {
         AdminUpdateUserRequest req = new AdminUpdateUserRequest();
         req.setEmail("new@example.com");
 
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(activeUser));
+        when(userRepository.findWithAuthoritiesByUsername("testuser")).thenReturn(Optional.of(activeUser));
         when(userRepository.existsByEmail("new@example.com")).thenReturn(true);
 
         assertThrows(ResourceConflictException.class, () -> adminService.adminUpdateUser("testuser", req));
@@ -258,8 +261,9 @@ class AdminServiceTest {
     void testAdminGetAllAddresses() {
         AddressEntity addr = new AddressEntity();
         addr.setId(1L);
-        activeUser.addAddress(addr);
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(activeUser));
+        when(userRepository.existsByUsername("testuser")).thenReturn(true);
+        when(addressRepository.findAllByUser_Username("testuser")).thenReturn(List.of(addr));
+        when(userMapper.toAddressResponse(addr)).thenReturn(new AddressResponse());
 
         List<AddressResponse> res = adminService.adminGetAllAddresses("testuser");
         assertEquals(1, res.size());
@@ -269,8 +273,8 @@ class AdminServiceTest {
     void testAdminGetAddressById() {
         AddressEntity addr = new AddressEntity();
         addr.setId(1L);
-        activeUser.addAddress(addr);
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(activeUser));
+        when(userRepository.existsByUsername("testuser")).thenReturn(true);
+        when(addressRepository.findByIdAndUser_Username(1L, "testuser")).thenReturn(Optional.of(addr));
         when(userMapper.toAddressResponse(addr)).thenReturn(new AddressResponse());
 
         assertNotNull(adminService.adminGetAddressById("testuser", 1L));
@@ -278,7 +282,8 @@ class AdminServiceTest {
 
     @Test
     void testAdminGetAddressById_NotOwned() {
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(activeUser));
+        when(userRepository.existsByUsername("testuser")).thenReturn(true);
+        when(addressRepository.findByIdAndUser_Username(1L, "testuser")).thenReturn(Optional.empty());
         assertThrows(AccessForbiddenException.class, () -> adminService.adminGetAddressById("testuser", 1L));
     }
 
@@ -286,19 +291,20 @@ class AdminServiceTest {
     void testAdminUpdateAddress() {
         AddressEntity addr = new AddressEntity();
         addr.setId(1L);
-        activeUser.addAddress(addr);
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(activeUser));
+        when(userRepository.findWithAuthoritiesByUsername("testuser")).thenReturn(Optional.of(activeUser));
+        when(addressRepository.findByIdAndUser_Username(1L, "testuser")).thenReturn(Optional.of(addr));
 
         AddressRequest req = new AddressRequest();
         adminService.adminUpdateAddress("testuser", 1L, req);
 
         verify(userMapper).updateAddressFromRequest(req, addr);
-        verify(userRepository).save(activeUser);
+        verify(addressRepository).save(addr);
     }
 
     @Test
     void testAdminUpdateAddress_NotOwned() {
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(activeUser));
+        when(userRepository.findWithAuthoritiesByUsername("testuser")).thenReturn(Optional.of(activeUser));
+        when(addressRepository.findByIdAndUser_Username(1L, "testuser")).thenReturn(Optional.empty());
         AddressRequest req = new AddressRequest();
         assertThrows(ResourceNotFoundException.class, () -> adminService.adminUpdateAddress("testuser", 1L, req));
     }
@@ -307,17 +313,16 @@ class AdminServiceTest {
     void testAdminDeleteAddress() {
         AddressEntity addr = new AddressEntity();
         addr.setId(1L);
-        activeUser.addAddress(addr);
         when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(activeUser));
+        when(addressRepository.findByIdAndUser_Username(1L, "testuser")).thenReturn(Optional.of(addr));
 
         adminService.adminDeleteAddress("testuser", 1L);
-        assertFalse(activeUser.getAddresses().contains(addr));
-        verify(userRepository).save(activeUser);
+        verify(addressRepository).delete(addr);
     }
 
     @Test
     void testGetUserByUsername_NotFound() {
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.empty());
+        when(userRepository.findWithAuthoritiesByUsername("testuser")).thenReturn(Optional.empty());
         assertThrows(ResourceNotFoundException.class, () -> adminService.getUserByUsername("testuser"));
     }
 
@@ -341,7 +346,7 @@ class AdminServiceTest {
 
     @Test
     void testAdminUpdateUser_NotFound() {
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.empty());
+        when(userRepository.findWithAuthoritiesByUsername("testuser")).thenReturn(Optional.empty());
         assertThrows(ResourceNotFoundException.class,
                 () -> adminService.adminUpdateUser("testuser", new AdminUpdateUserRequest()));
     }

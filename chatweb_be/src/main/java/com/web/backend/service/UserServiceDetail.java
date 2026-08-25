@@ -32,7 +32,7 @@ public class UserServiceDetail implements UserDetailsService {
     @Override
     @Cacheable(value = USER_DETAILS_STRING, key = USERNAME_STRING)
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        UserEntity user = userRepository.findByUsername(username)
+        UserEntity user = userRepository.findWithAuthoritiesByUsername(username)
                 .orElseThrow(() -> new UsernameNotFoundException(
                         Translator.tolocale(ERROR_USER_NOT_FOUND_WITH_STRING, username)));
         if (!user.isAccountNonLocked()) {

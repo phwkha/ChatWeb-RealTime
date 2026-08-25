@@ -6,6 +6,7 @@ import com.web.backend.common.UserStatus;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.BatchSize;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -49,7 +50,7 @@ public class UserEntity extends AbstractEntity<Long> implements UserDetails {
     @Enumerated(EnumType.STRING)
     private UserStatus userStatus;
 
-    @ManyToOne(fetch = FetchType.EAGER)
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "role_id", nullable = false)
     private RoleEntity role;
 
@@ -78,6 +79,7 @@ public class UserEntity extends AbstractEntity<Long> implements UserDetails {
     private Integer tokenVersion = 0;
 
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    @BatchSize(size = 20)
     @ToString.Exclude
     private List<AddressEntity> addresses = new ArrayList<>();
 

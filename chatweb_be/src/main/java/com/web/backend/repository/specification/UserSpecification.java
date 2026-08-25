@@ -1,6 +1,7 @@
 package com.web.backend.repository.specification;
 
 import java.util.List;
+import java.util.Set;
 
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.lang.NonNull;
@@ -10,6 +11,7 @@ import com.web.backend.model.postgres.UserEntity;
 
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.Path;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import lombok.AllArgsConstructor;
@@ -23,45 +25,76 @@ public class UserSpecification implements Specification<UserEntity> {
 
     private static final String PERCENT_STRING = "%";
 
+    private static final Set<String> ALLOWED_USER_FIELDS = Set.of(
+            "username", "email", "phone", "firstName", "lastName",
+            "gender", "userStatus", "authProvider", "birthday"
+    );
+
     @Override
-    @SuppressWarnings({ "unchecked", "rawtypes" })
     public Predicate toPredicate(@NonNull final Root<UserEntity> root, @Nullable final CriteriaQuery<?> query,
             @NonNull final CriteriaBuilder builder) {
-        Predicate finalPredicate = null;
-        for (SpecSearchCriteria criteria : criteriaList) {
-            Class<?> javaType = root.get(criteria.getKey()).getJavaType();
-            Object value = criteria.getValue();
 
-            if (javaType.isEnum() && value instanceof String string) {
-                try {
-                    value = Enum.valueOf((Class<Enum>) javaType, (string).toUpperCase());
-                } catch (IllegalArgumentException e) {
-                    return builder.disjunction();
-                }
+        Predicate finalPredicate = null;
+
+        for (SpecSearchCriteria criteria : criteriaList) {
+            if (!ALLOWED_USER_FIELDS.contains(criteria.getKey())) {
+                continue;
             }
 
-            Predicate currentPredicate = switch (criteria.getOperation()) {
-                case EQUALITY -> builder.equal(root.get(criteria.getKey()), value);
-                case NEGATION -> builder.notEqual(root.get(criteria.getKey()), value);
-                case GREATER_THAN ->
-                    builder.greaterThan(root.get(criteria.getKey()), value.toString().toLowerCase());
-                case LESS_THAN -> builder.lessThan(root.get(criteria.getKey()), value.toString().toLowerCase());
-                case LIKE ->
-                    builder.like(root.get(criteria.getKey()), PERCENT_STRING + value.toString().toLowerCase() + PERCENT_STRING);
-                case STARTS_WITH -> builder.like(root.get(criteria.getKey()), value + PERCENT_STRING);
-                case ENDS_WITH -> builder.like(root.get(criteria.getKey()), PERCENT_STRING + value);
-                case CONTAINS -> builder.like(root.get(criteria.getKey()), PERCENT_STRING + value + PERCENT_STRING);
-            };
-            if (finalPredicate == null) {
-                finalPredicate = currentPredicate;
-            } else {
-                if (criteria.isOrPredicate()) {
-                    finalPredicate = builder.or(finalPredicate, currentPredicate);
-                } else {
-                    finalPredicate = builder.and(finalPredicate, currentPredicate);
-                }
+            Predicate currentPredicate = buildPredicate(root, criteria, builder);
+            if (currentPredicate != null) {
+                finalPredicate = combinePredicates(builder, finalPredicate, currentPredicate, criteria.isOrPredicate());
             }
         }
-        return finalPredicate;
+
+        return finalPredicate != null ? finalPredicate : builder.conjunction();
+    }
+
+    private Predicate buildPredicate(Path<UserEntity> path, SpecSearchCriteria criteria, CriteriaBuilder builder) {
+        Path<?> fieldPath;
+        try {
+            fieldPath = path.get(criteria.getKey());
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+
+        Object value = resolveValue(fieldPath.getJavaType(), criteria.getValue(), builder);
+        if (value instanceof Predicate predicateValue) {
+            return predicateValue;
+        }
+
+        return createOperationPredicate(fieldPath, criteria.getOperation(), value, builder);
+    }
+
+    @SuppressWarnings({ "unchecked", "rawtypes" })
+    private Object resolveValue(Class<?> javaType, Object rawValue, CriteriaBuilder builder) {
+        if (javaType.isEnum() && rawValue instanceof String stringVal) {
+            try {
+                return Enum.valueOf((Class<Enum>) javaType, stringVal.toUpperCase());
+            } catch (IllegalArgumentException e) {
+                return builder.disjunction();
+            }
+        }
+        return rawValue;
+    }
+
+    private Predicate createOperationPredicate(Path<?> path, SearchOperation operation, Object value, CriteriaBuilder builder) {
+        String strVal = value != null ? value.toString().toLowerCase() : "";
+        return switch (operation) {
+            case EQUALITY -> builder.equal(path, value);
+            case NEGATION -> builder.notEqual(path, value);
+            case GREATER_THAN -> builder.greaterThan(builder.lower(path.as(String.class)), strVal);
+            case LESS_THAN -> builder.lessThan(builder.lower(path.as(String.class)), strVal);
+            case LIKE, CONTAINS -> builder.like(builder.lower(path.as(String.class)), PERCENT_STRING + strVal + PERCENT_STRING);
+            case STARTS_WITH -> builder.like(builder.lower(path.as(String.class)), strVal + PERCENT_STRING);
+            case ENDS_WITH -> builder.like(builder.lower(path.as(String.class)), PERCENT_STRING + strVal);
+        };
+    }
+
+    private Predicate combinePredicates(CriteriaBuilder builder, Predicate current, Predicate next, boolean isOr) {
+        if (current == null) {
+            return next;
+        }
+        return isOr ? builder.or(current, next) : builder.and(current, next);
     }
 }

@@ -44,6 +44,15 @@ public interface FriendshipRepository extends JpaRepository<FriendshipEntity, Lo
         Page<FriendshipEntity> findByRequesterAndStatus(UserEntity requester, FriendshipStatus status,
                         Pageable pageable);
 
+        @Query(value = "SELECT CASE WHEN f.requester.username = :username THEN f.addressee ELSE f.requester END " +
+                        "FROM FriendshipEntity f " +
+                        "WHERE (f.requester.username = :username OR f.addressee.username = :username) " +
+                        "AND f.status = 'ACCEPTED'",
+               countQuery = "SELECT count(f) FROM FriendshipEntity f " +
+                        "WHERE (f.requester.username = :username OR f.addressee.username = :username) " +
+                        "AND f.status = 'ACCEPTED'")
+        Page<UserEntity> findFriendsByUsername(@Param("username") String username, Pageable pageable);
+
         @Query("SELECT CASE WHEN f.requester.username = :username THEN f.addressee.username ELSE f.requester.username END "
                         +
                         "FROM FriendshipEntity f " +

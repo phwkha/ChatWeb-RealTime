@@ -103,7 +103,7 @@ class ChatServiceTest {
 
     @Test
     void testSendPrivateMessage_RecipientNotFound() {
-        when(userRepository.findByUsername("recipient")).thenReturn(Optional.empty());
+        when(userRepository.findUserStatusByUsername("recipient")).thenReturn(Optional.empty());
 
         ChatMessageRequest request = new ChatMessageRequest();
         request.setRecipient("recipient");
@@ -133,8 +133,7 @@ class ChatServiceTest {
 
     @Test
     void testSendPrivateMessage_RecipientInactive() {
-        recipientUser.setUserStatus(UserStatus.INACTIVE);
-        when(userRepository.findByUsername("recipient")).thenReturn(Optional.of(recipientUser));
+        when(userRepository.findUserStatusByUsername("recipient")).thenReturn(Optional.of(UserStatus.INACTIVE));
 
         ChatMessageRequest request = new ChatMessageRequest();
         request.setRecipient("recipient");
@@ -145,8 +144,7 @@ class ChatServiceTest {
 
     @Test
     void testSendPrivateMessage_RecipientLocked() {
-        recipientUser.setUserStatus(UserStatus.LOCKED);
-        when(userRepository.findByUsername("recipient")).thenReturn(Optional.of(recipientUser));
+        when(userRepository.findUserStatusByUsername("recipient")).thenReturn(Optional.of(UserStatus.LOCKED));
 
         ChatMessageRequest request = new ChatMessageRequest();
         request.setRecipient("recipient");
@@ -157,7 +155,7 @@ class ChatServiceTest {
 
     @Test
     void testSendPrivateMessage_NotFriends() {
-        when(userRepository.findByUsername("recipient")).thenReturn(Optional.of(recipientUser));
+        when(userRepository.findUserStatusByUsername("recipient")).thenReturn(Optional.of(UserStatus.ACTIVE));
         when(friendService.isFriend("sender", "recipient")).thenReturn(false);
 
         ChatMessageRequest request = new ChatMessageRequest();
@@ -169,7 +167,7 @@ class ChatServiceTest {
 
     @Test
     void testSendPrivateMessage_Success() {
-        when(userRepository.findByUsername("recipient")).thenReturn(Optional.of(recipientUser));
+        when(userRepository.findUserStatusByUsername("recipient")).thenReturn(Optional.of(UserStatus.ACTIVE));
         when(friendService.isFriend("sender", "recipient")).thenReturn(true);
 
         ChatMessageRequest request = new ChatMessageRequest();
@@ -213,7 +211,7 @@ class ChatServiceTest {
 
     @Test
     void testSendPrivateMessage_KafkaException() {
-        when(userRepository.findByUsername("recipient")).thenReturn(Optional.of(recipientUser));
+        when(userRepository.findUserStatusByUsername("recipient")).thenReturn(Optional.of(UserStatus.ACTIVE));
         when(friendService.isFriend("sender", "recipient")).thenReturn(true);
 
         ChatMessageRequest request = new ChatMessageRequest();
@@ -266,7 +264,7 @@ class ChatServiceTest {
 
     @Test
     void testBuildChatMessage_NullFields() {
-        when(userRepository.findByUsername("recipient")).thenReturn(Optional.of(recipientUser));
+        when(userRepository.findUserStatusByUsername("recipient")).thenReturn(Optional.of(UserStatus.ACTIVE));
         when(friendService.isFriend("sender", "recipient")).thenReturn(true);
 
         ChatMessageRequest request = new ChatMessageRequest();

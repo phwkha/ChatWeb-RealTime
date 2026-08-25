@@ -34,6 +34,7 @@ import com.web.backend.mapper.UserMapper;
 import com.web.backend.model.postgres.AddressEntity;
 import com.web.backend.model.postgres.RoleEntity;
 import com.web.backend.model.postgres.UserEntity;
+import com.web.backend.repository.AddressRepository;
 import com.web.backend.repository.MessageRepository;
 import com.web.backend.repository.RoleRepository;
 import com.web.backend.repository.UserRepository;
@@ -49,6 +50,8 @@ import lombok.extern.slf4j.Slf4j;
 public class AdminServiceImpl implements AdminService {
 
     private final UserRepository userRepository;
+
+    private final AddressRepository addressRepository;
 
     private final MessageRepository messageRepository;
 
@@ -176,7 +179,7 @@ public class AdminServiceImpl implements AdminService {
 
     @Override
     public UserDetailResponse getUserByUsername(String username) {
-        UserEntity userEntity = userRepository.findByUsername(username)
+        UserEntity userEntity = userRepository.findWithAuthoritiesByUsername(username)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         Translator.tolocale(ERROR_USER_NOT_FOUND_WITH_STRING, username)));
 
@@ -280,7 +283,7 @@ public class AdminServiceImpl implements AdminService {
     @Transactional
     @CacheEvict(value = USER_DETAILS_STRING, key = USERNAME_STRING)
     public UserResponse adminUpdateUser(String username, AdminUpdateUserRequest request) {
-        UserEntity userEntity = userRepository.findByUsername(username)
+        UserEntity userEntity = userRepository.findWithAuthoritiesByUsername(username)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         Translator.tolocale(ERROR_USER_NOT_FOUND_WITH_STRING, username)));
 
@@ -330,12 +333,12 @@ public class AdminServiceImpl implements AdminService {
     @Override
     @Transactional(readOnly = true)
     public List<AddressResponse> adminGetAllAddresses(String targetUsername) {
-        UserEntity user = userRepository.findByUsername(targetUsername)
-                .orElseThrow(
-                        () -> new ResourceNotFoundException(
-                                Translator.tolocale(ERROR_USER_TARGET_NOT_FOUND_WITH_STRING, targetUsername)));
+        if (!userRepository.existsByUsername(targetUsername)) {
+            throw new ResourceNotFoundException(
+                    Translator.tolocale(ERROR_USER_TARGET_NOT_FOUND_WITH_STRING, targetUsername));
+        }
 
-        return user.getAddresses().stream()
+        return addressRepository.findAllByUser_Username(targetUsername).stream()
                 .map(userMapper::toAddressResponse)
                 .toList();
     }
@@ -343,14 +346,12 @@ public class AdminServiceImpl implements AdminService {
     @Override
     @Transactional(readOnly = true)
     public AddressResponse adminGetAddressById(String targetUsername, Long addressId) {
-        UserEntity user = userRepository.findByUsername(targetUsername)
-                .orElseThrow(
-                        () -> new ResourceNotFoundException(
-                                Translator.tolocale(ERROR_USER_TARGET_NOT_FOUND_WITH_STRING, targetUsername)));
+        if (!userRepository.existsByUsername(targetUsername)) {
+            throw new ResourceNotFoundException(
+                    Translator.tolocale(ERROR_USER_TARGET_NOT_FOUND_WITH_STRING, targetUsername));
+        }
 
-        AddressEntity address = user.getAddresses().stream()
-                .filter(a -> a.getId().equals(addressId))
-                .findFirst()
+        AddressEntity address = addressRepository.findByIdAndUser_Username(addressId, targetUsername)
                 .orElseThrow(() -> new AccessForbiddenException(
                         Translator.tolocale(ERROR_ADMIN_ADDRESS_NOT_OWNED_STRING)));
 
@@ -361,20 +362,18 @@ public class AdminServiceImpl implements AdminService {
     @Transactional
     @CacheEvict(value = USER_DETAILS_STRING, key = USERNAME_STRING)
     public UserDetailResponse adminUpdateAddress(String targetUsername, Long addressId, AddressRequest request) {
-        UserEntity user = userRepository.findByUsername(targetUsername)
+        UserEntity user = userRepository.findWithAuthoritiesByUsername(targetUsername)
                 .orElseThrow(
                         () -> new ResourceNotFoundException(
                                 Translator.tolocale(ERROR_USER_TARGET_NOT_FOUND_WITH_STRING, targetUsername)));
 
-        AddressEntity addressToUpdate = user.getAddresses().stream()
-                .filter(a -> a.getId().equals(addressId))
-                .findFirst()
+        AddressEntity addressToUpdate = addressRepository.findByIdAndUser_Username(addressId, targetUsername)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         Translator.tolocale(ERROR_ADMIN_ADDRESS_NOT_OWNED_STRING)));
 
         userMapper.updateAddressFromRequest(request, addressToUpdate);
 
-        userRepository.save(user);
+        addressRepository.save(addressToUpdate);
         log.info("Admin updated address id={} for user '{}'", addressId, targetUsername);
         return userMapper.toUserDetailResponse(user);
     }
@@ -388,15 +387,13 @@ public class AdminServiceImpl implements AdminService {
                         () -> new ResourceNotFoundException(
                                 Translator.tolocale(ERROR_USER_TARGET_NOT_FOUND_WITH_STRING, targetUsername)));
 
-        AddressEntity addressToDelete = user.getAddresses().stream()
-                .filter(a -> a.getId().equals(addressId))
-                .findFirst()
+        AddressEntity addressToDelete = addressRepository.findByIdAndUser_Username(addressId, targetUsername)
                 .orElseThrow(
                         () -> new ResourceNotFoundException(Translator.tolocale(ERROR_USER_ADDRESS_NOT_FOUND_STRING)));
 
         user.removeAddress(addressToDelete);
+        addressRepository.delete(addressToDelete);
 
-        userRepository.save(user);
         log.info("Admin deleted address id={} for user '{}'", addressId, targetUsername);
     }
 

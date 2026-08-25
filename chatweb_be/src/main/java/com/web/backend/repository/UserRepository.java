@@ -21,8 +21,10 @@ import java.util.Optional;
 
 public interface UserRepository extends JpaRepository<UserEntity, Long>, JpaSpecificationExecutor<UserEntity> {
 
-        @EntityGraph(attributePaths = { "role", "role.permissions" })
         Optional<UserEntity> findByUsername(String username);
+
+        @EntityGraph(attributePaths = { "role", "role.permissions" })
+        Optional<UserEntity> findWithAuthoritiesByUsername(String username);
 
         Optional<UserEntity> findByEmail(String email);
 
@@ -30,7 +32,9 @@ public interface UserRepository extends JpaRepository<UserEntity, Long>, JpaSpec
 
         List<UserEntity> findByUsernameIn(Collection<String> usernames);
 
-        @EntityGraph(attributePaths = { "role", "role.permissions" })
+        @Query("SELECT u.userStatus FROM UserEntity u WHERE u.username = :username")
+        Optional<UserStatus> findUserStatusByUsername(@Param("username") String username);
+
         Page<UserEntity> findAllByUserStatusNot(UserStatus status, Pageable pageable);
 
         boolean existsByUsername(String username);
@@ -44,14 +48,21 @@ public interface UserRepository extends JpaRepository<UserEntity, Long>, JpaSpec
         @Query("UPDATE UserEntity u SET u.isOnline = :isOnline WHERE u.username = :username")
         void updateOnlineStatus(String username, boolean isOnline);
 
-        @EntityGraph(attributePaths = { "role", "role.permissions" })
-        @Query("SELECT u FROM UserEntity u WHERE u.userStatus != :status " +
+        @Query(value = "SELECT u FROM UserEntity u WHERE u.userStatus != :status " +
                         "AND (:currentUsername IS NULL OR u.username != :currentUsername) " +
-                        "AND (:currentUsername IS NULL OR u.id NOT IN (" +
-                        "    SELECT f.addressee.id FROM FriendshipEntity f WHERE f.requester.username = :currentUsername AND f.status = 'BLOCKED'" +
+                        "AND (:currentUsername IS NULL OR NOT EXISTS (" +
+                        "    SELECT 1 FROM FriendshipEntity f WHERE ((f.requester.username = :currentUsername AND f.addressee = u) " +
+                        "    OR (f.addressee.username = :currentUsername AND f.requester = u)) AND f.status = 'BLOCKED'" +
                         ")) " +
-                        "AND (:currentUsername IS NULL OR u.id NOT IN (" +
-                        "    SELECT f.requester.id FROM FriendshipEntity f WHERE f.addressee.username = :currentUsername AND f.status = 'BLOCKED'" +
+                        "AND (LOWER(u.username) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
+                        "     LOWER(u.email) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
+                        "     LOWER(u.firstName) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
+                        "     LOWER(u.lastName) LIKE LOWER(CONCAT('%', :keyword, '%')))",
+               countQuery = "SELECT count(u) FROM UserEntity u WHERE u.userStatus != :status " +
+                        "AND (:currentUsername IS NULL OR u.username != :currentUsername) " +
+                        "AND (:currentUsername IS NULL OR NOT EXISTS (" +
+                        "    SELECT 1 FROM FriendshipEntity f WHERE ((f.requester.username = :currentUsername AND f.addressee = u) " +
+                        "    OR (f.addressee.username = :currentUsername AND f.requester = u)) AND f.status = 'BLOCKED'" +
                         ")) " +
                         "AND (LOWER(u.username) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
                         "     LOWER(u.email) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +

@@ -239,7 +239,7 @@ class AuthenticationServiceTest {
         // Arrange
         String oldRefreshToken = "oldRefresh";
         when(jwtService.extractUsername(oldRefreshToken, TokenType.REFRESH_TOKEN)).thenReturn("testuser");
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(mockUser));
+        when(userRepository.findWithAuthoritiesByUsername("testuser")).thenReturn(Optional.of(mockUser));
         when(redisTemplate.hasKey("blacklist:" + oldRefreshToken)).thenReturn(false);
 
         // Mock extractClaim for token version
@@ -272,7 +272,7 @@ class AuthenticationServiceTest {
         // Arrange
         String badToken = "badToken";
         when(jwtService.extractUsername(badToken, TokenType.REFRESH_TOKEN)).thenReturn("testuser");
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(mockUser));
+        when(userRepository.findWithAuthoritiesByUsername("testuser")).thenReturn(Optional.of(mockUser));
         when(redisTemplate.hasKey("blacklist:" + badToken)).thenReturn(true);
         when(cacheManager.getCache("user_details")).thenReturn(userCache);
 
@@ -290,7 +290,7 @@ class AuthenticationServiceTest {
         // Arrange
         String oldRefreshToken = "oldRefresh";
         when(jwtService.extractUsername(oldRefreshToken, TokenType.REFRESH_TOKEN)).thenReturn("testuser");
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(mockUser));
+        when(userRepository.findWithAuthoritiesByUsername("testuser")).thenReturn(Optional.of(mockUser));
         when(redisTemplate.hasKey("blacklist:" + oldRefreshToken)).thenReturn(false);
 
         // Mock extractClaim: JWT has version 0, but DB has version 1 (from setUp)

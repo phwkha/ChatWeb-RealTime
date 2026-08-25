@@ -30,7 +30,6 @@ import com.web.backend.kafka.producer.ChatProducer;
 import com.web.backend.mapper.MessageMapper;
 import com.web.backend.model.mongodb.ChatMessage;
 import com.web.backend.model.mongodb.SystemMessage;
-import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.repository.SystemMessageRepository;
 import com.web.backend.repository.UserRepository;
 import com.web.backend.service.ChatService;
@@ -128,15 +127,15 @@ public class ChatServiceImpl implements ChatService {
             throw new InvalidDataException(Translator.tolocale(ERROR_MSG_EMPTY_CONTENT_STRING), request);
         }
 
-        UserEntity recipientEntity = userRepository.findByUsername(request.getRecipient())
+        UserStatus recipientStatus = userRepository.findUserStatusByUsername(request.getRecipient())
                 .orElseThrow(
                         () -> new ResourceNotFoundException(Translator.tolocale(ERROR_MSG_RECIPIENT_NOT_FOUND_STRING),
                                 request));
 
-        if (recipientEntity.getUserStatus() == UserStatus.INACTIVE) {
+        if (recipientStatus == UserStatus.INACTIVE) {
             throw new AccessForbiddenException(Translator.tolocale(ERROR_MSG_SEND_DELETED_STRING), request);
         }
-        if (recipientEntity.getUserStatus() == UserStatus.LOCKED) {
+        if (recipientStatus == UserStatus.LOCKED) {
             throw new AccessForbiddenException(Translator.tolocale(ERROR_MSG_SEND_LOCKED_STRING), request);
         }
         if (!friendService.isFriend(Objects.requireNonNull(sender),

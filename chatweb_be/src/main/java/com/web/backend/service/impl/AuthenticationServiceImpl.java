@@ -244,7 +244,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             throw new InvalidDataException(Translator.tolocale(ERROR_AUTH_MISSING_REFRESH_STRING));
         }
         String username = jwtService.extractUsername(refreshToken, TokenType.REFRESH_TOKEN);
-        UserEntity user = userRepository.findByUsername(username)
+        UserEntity user = userRepository.findWithAuthoritiesByUsername(username)
                 .orElseThrow(() -> new ResourceNotFoundException(Translator.tolocale(ERROR_USER_NOT_FOUND_STRING)));
 
         String blacklistKey = BLACKLIST_STRING + refreshToken;

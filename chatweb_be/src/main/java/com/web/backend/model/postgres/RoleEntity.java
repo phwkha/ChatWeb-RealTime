@@ -3,6 +3,8 @@ package com.web.backend.model.postgres;
 import jakarta.persistence.*;
 import lombok.*;
 
+import org.hibernate.annotations.BatchSize;
+
 import java.util.HashSet;
 import java.util.Set;
 
@@ -21,7 +23,8 @@ public class RoleEntity extends AbstractEntity<Long> {
     @Column(name = "description")
     private String description;
 
-    @ManyToMany(fetch = FetchType.EAGER)
+    @ManyToMany(fetch = FetchType.LAZY)
+    @BatchSize(size = 20)
     @JoinTable(name = "role_has_permission", joinColumns = @JoinColumn(name = "role_id"), inverseJoinColumns = @JoinColumn(name = "permission_id"))
     private Set<PermissionEntity> permissions = new HashSet<>();
 

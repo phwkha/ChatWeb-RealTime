@@ -220,22 +220,19 @@ public class FriendServiceImpl implements FriendService {
         @Transactional(readOnly = true)
         public PageResponse<UserSummaryResponse> getFriendsList(String currentUsername, int page, int size,
                         String sortDir) {
-                UserEntity currentUser = getUser(currentUsername);
+                if (!userRepository.existsByUsername(currentUsername)) {
+                        throw new ResourceNotFoundException(
+                                        Translator.tolocale(ERROR_USER_NOT_FOUND_STRING));
+                }
                 Pageable pageable = PageRequest.of(page, size,
                                 Sort.by((sortDir.equalsIgnoreCase(DESC_STRING)) ? Sort.Direction.DESC
                                                 : Sort.Direction.ASC,
                                                 CREATEAT_STRING));
 
-                Page<FriendshipEntity> pageResult = friendshipRepository.findAllAcceptedFriendships(currentUser,
-                                pageable);
+                Page<UserEntity> pageResult = friendshipRepository.findFriendsByUsername(currentUsername, pageable);
 
                 List<UserSummaryResponse> content = pageResult.getContent().stream()
-                                .map(f -> {
-                                        UserEntity friend = f.getRequester().getUsername().equals(currentUsername)
-                                                        ? f.getAddressee()
-                                                        : f.getRequester();
-                                        return userMapper.toUserSummaryResponse(friend);
-                                })
+                                .map(userMapper::toUserSummaryResponse)
                                 .toList();
 
                 return buildPageResponse(pageResult, content);

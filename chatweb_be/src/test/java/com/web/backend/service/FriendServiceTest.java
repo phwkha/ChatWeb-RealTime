@@ -215,14 +215,11 @@ class FriendServiceTest {
     // =====================================
     @Test
     void testGetFriendsList() {
-        when(userRepository.findByUsername("userA")).thenReturn(Optional.of(userA));
+        when(userRepository.existsByUsername("userA")).thenReturn(true);
 
-        FriendshipEntity f = new FriendshipEntity();
-        f.setRequester(userA);
-        f.setAddressee(userB);
-        Page<FriendshipEntity> page = new PageImpl<>(List.of(f));
+        Page<UserEntity> page = new PageImpl<>(List.of(userB));
 
-        when(friendshipRepository.findAllAcceptedFriendships(eq(userA), any(Pageable.class))).thenReturn(page);
+        when(friendshipRepository.findFriendsByUsername(eq("userA"), any(Pageable.class))).thenReturn(page);
 
         UserSummaryResponse response = UserSummaryResponse.builder().username("userB").build();
         when(userMapper.toUserSummaryResponse(userB)).thenReturn(response);
