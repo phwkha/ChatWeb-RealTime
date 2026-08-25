@@ -11,7 +11,7 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 
 import com.web.backend.kafka.avro.ChatMessageAvro;
-import com.web.backend.model.mongo.SystemMessage;
+import com.web.backend.model.mongodb.SystemMessage;
 
 @Component
 @Slf4j(topic = "CHAT-KAFKA-PRODUCER")

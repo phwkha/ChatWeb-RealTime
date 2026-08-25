@@ -2,10 +2,10 @@ package com.web.backend.config;
 
 import com.web.backend.common.AuthProvider;
 import com.web.backend.common.UserStatus;
+import com.web.backend.model.mongodb.ChatMessage;
 import com.web.backend.model.postgres.PermissionEntity;
 import com.web.backend.model.postgres.RoleEntity;
 import com.web.backend.model.postgres.UserEntity;
-import com.web.backend.model.mongo.ChatMessage;
 import com.web.backend.repository.PermissionRepository;
 import com.web.backend.repository.RoleRepository;
 import com.web.backend.repository.UserRepository;

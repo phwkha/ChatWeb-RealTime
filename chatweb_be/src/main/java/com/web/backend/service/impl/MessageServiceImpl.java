@@ -47,9 +47,9 @@ import com.web.backend.exception.custom.ResourceNotFoundException;
 import com.web.backend.exception.custom.SystemOverloadException;
 import com.web.backend.kafka.payload.UpdateMessagePayload;
 import com.web.backend.mapper.MessageMapper;
-import com.web.backend.model.mongo.ChatMessage;
-import com.web.backend.model.mongo.ReadReceipt;
-import com.web.backend.model.mongo.SystemMessage;
+import com.web.backend.model.mongodb.ChatMessage;
+import com.web.backend.model.mongodb.ReadReceipt;
+import com.web.backend.model.mongodb.SystemMessage;
 import com.web.backend.repository.MessageRepository;
 import com.web.backend.repository.ReadReceiptRepository;
 import com.web.backend.repository.SystemMessageRepository;
@@ -233,7 +233,8 @@ public class MessageServiceImpl implements MessageService {
                     .setOnInsert(FIELD_USERNAME_STRING, recipientUsername);
 
             mongoTemplate.upsert(query, update, ReadReceipt.class);
-            log.debug("Persisted ReadReceipt with $max to MongoDB for conv '{}' and user '{}'", convId, recipientUsername);
+            log.debug("Persisted ReadReceipt with $max to MongoDB for conv '{}' and user '{}'", convId,
+                    recipientUsername);
         } catch (Exception ex) {
             log.error("Failed to persist ReadReceipt to MongoDB for conv '{}'", convId, ex);
             throw new SystemOverloadException(Translator.tolocale(ERROR_MSG_SYSTEM_OVERLOAD_STRING), request, ex);

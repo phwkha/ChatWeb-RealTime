@@ -24,7 +24,7 @@ import org.springframework.kafka.support.SendResult;
 import com.web.backend.common.UpdateMessageType;
 import com.web.backend.controller.response.ReadReceiptResponse;
 import com.web.backend.kafka.payload.UpdateMessagePayload;
-import com.web.backend.model.mongo.ChatMessage;
+import com.web.backend.model.mongodb.ChatMessage;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)

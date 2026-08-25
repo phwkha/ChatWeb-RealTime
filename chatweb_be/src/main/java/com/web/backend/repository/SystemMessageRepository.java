@@ -4,7 +4,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.mongodb.repository.MongoRepository;
 import org.springframework.data.mongodb.repository.Query;
 
-import com.web.backend.model.mongo.SystemMessage;
+import com.web.backend.model.mongodb.SystemMessage;
 
 import java.time.Instant;
 import java.util.List;

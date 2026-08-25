@@ -16,7 +16,7 @@ import com.web.backend.controller.response.NotificationResponse;
 import com.web.backend.controller.response.ReadReceiptResponse;
 import com.web.backend.kafka.payload.UpdateMessagePayload;
 import com.web.backend.mapper.MessageMapper;
-import com.web.backend.model.mongo.ChatMessage;
+import com.web.backend.model.mongodb.ChatMessage;
 import com.web.backend.service.WebSocketRoutingService;
 
 import lombok.RequiredArgsConstructor;

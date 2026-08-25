@@ -1,6 +1,5 @@
 package com.web.backend.repository;
 
-import com.web.backend.model.mongo.ChatMessage;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,12 +15,13 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import java.time.LocalDateTime;
 import java.util.List;
 import com.web.backend.common.MessageType;
+import com.web.backend.model.mongodb.ChatMessage;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 @Testcontainers
 @DataMongoTest
- class MessageRepositoryTest {
+class MessageRepositoryTest {
 
     @Container
     static MongoDBContainer mongoDBContainer = new MongoDBContainer("mongo:6.0").withExposedPorts(27017);
@@ -81,7 +81,8 @@ import static org.assertj.core.api.Assertions.assertThat;
         msg2.setTimestamp(now.minusMinutes(5));
         mongoTemplate.save(msg2);
 
-        List<ChatMessage> messages = messageRepository.findByConversationIdAndTimestampBefore("conv2", now.minusMinutes(2), PageRequest.of(0, 10));
+        List<ChatMessage> messages = messageRepository.findByConversationIdAndTimestampBefore("conv2",
+                now.minusMinutes(2), PageRequest.of(0, 10));
 
         assertThat(messages).hasSize(2);
     }

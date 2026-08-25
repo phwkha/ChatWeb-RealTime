@@ -57,7 +57,7 @@ chatweb_be/
 │   │   │   ├── listener/                   # Spring application event listeners
 │   │   │   ├── mapper/                     # Model-to-DTO mappers (MapStruct / manual)
 │   │   │   ├── model/                      # Data Models
-│   │   │   │   ├── mongo/                  # MongoDB @Document models (ChatMessage, ReadReceipt, SystemMessage)
+│   │   │   │   ├── mongodb/                # MongoDB @Document models (ChatMessage, ReadReceipt, SystemMessage)
 │   │   │   │   ├── postgres/               # JPA @Entity models (UserEntity, RoleEntity, FriendshipEntity, etc.)
 │   │   │   │   └── redis/                  # Redis cached data models (RegisterData, RedisWsMessage)
 │   │   │   ├── oauth2/                     # Custom OAuth2 success/failure handlers & services

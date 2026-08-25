@@ -1,7 +1,8 @@
 package com.web.backend.repository;
 
+import com.web.backend.model.mongodb.ChatMessage;
 import com.web.backend.repository.projection.UnreadCountProjection;
-import com.web.backend.model.mongo.ChatMessage;
+
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.mongodb.repository.Aggregation;
 import org.springframework.data.mongodb.repository.MongoRepository;

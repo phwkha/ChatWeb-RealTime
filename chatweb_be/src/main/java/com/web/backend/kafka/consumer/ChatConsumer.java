@@ -14,7 +14,7 @@ import com.web.backend.controller.response.ChatMessageResponse;
 import com.web.backend.controller.response.MessageSystemResponse;
 import com.web.backend.kafka.avro.ChatMessageAvro;
 import com.web.backend.mapper.MessageMapper;
-import com.web.backend.model.mongo.SystemMessage;
+import com.web.backend.model.mongodb.SystemMessage;
 import com.web.backend.service.WebSocketRoutingService;
 
 import lombok.RequiredArgsConstructor;

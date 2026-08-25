@@ -42,3 +42,5 @@ mongo/
 
 # Bỏ qua thư mục sinh ra file logs của hệ thống
 logs/
+
+vandecangiaiquyet.txt

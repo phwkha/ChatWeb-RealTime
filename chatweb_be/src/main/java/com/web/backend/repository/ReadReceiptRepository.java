@@ -2,7 +2,7 @@ package com.web.backend.repository;
 
 import org.springframework.data.mongodb.repository.MongoRepository;
 
-import com.web.backend.model.mongo.ReadReceipt;
+import com.web.backend.model.mongodb.ReadReceipt;
 
 import java.util.List;
 import java.util.Optional;

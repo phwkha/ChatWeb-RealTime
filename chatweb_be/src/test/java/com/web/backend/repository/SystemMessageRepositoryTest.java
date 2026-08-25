@@ -12,7 +12,7 @@ import org.testcontainers.containers.MongoDBContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-import com.web.backend.model.mongo.SystemMessage;
+import com.web.backend.model.mongodb.SystemMessage;
 
 import java.time.Instant;
 import java.util.List;
