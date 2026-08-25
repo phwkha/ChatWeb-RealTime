@@ -90,7 +90,13 @@ public class AdminServiceImpl implements AdminService {
 
     private static final String ONLINE_USERS_KEY = "online_users";
 
+    private static final Set<String> ALLOWED_SORT_FIELDS = Set.of(
+            "id", "username", "email", "phone", "firstName", "lastName",
+            "gender", "userStatus", "authProvider", "birthday", "createAt", "updateAt"
+    );
+
     @Override
+    @Transactional(readOnly = true)
     public PageResponse<UserSummaryResponse> getOnlineUsers(int pageNo, int pageSize) {
         int start = pageNo * pageSize;
         int end = start + pageSize - 1;
@@ -137,13 +143,14 @@ public class AdminServiceImpl implements AdminService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public PageResponse<UserSummaryResponse> getAllUsers(int pageNo, int pageSize, String... sorts) {
 
         List<Sort.Order> orders = new ArrayList<>();
         if (sorts != null) {
             for (String sortBy : sorts) {
                 String[] parts = sortBy.split(DELIMITE_STRING, 2);
-                if (parts.length == 2 && !parts[0].isEmpty()) {
+                if (parts.length == 2 && !parts[0].isEmpty() && ALLOWED_SORT_FIELDS.contains(parts[0])) {
                     if (parts[1].equalsIgnoreCase(ASC_STRING)) {
                         orders.add(new Sort.Order(Sort.Direction.ASC, parts[0]));
                     } else {
@@ -178,6 +185,7 @@ public class AdminServiceImpl implements AdminService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public UserDetailResponse getUserByUsername(String username) {
         UserEntity userEntity = userRepository.findWithAuthoritiesByUsername(username)
                 .orElseThrow(() -> new ResourceNotFoundException(

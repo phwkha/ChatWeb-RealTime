@@ -15,6 +15,7 @@ import java.util.Set;
         })
 @Getter
 @Setter
+@BatchSize(size = 20)
 public class RoleEntity extends AbstractEntity<Long> {
 
     @Column(name = "name")

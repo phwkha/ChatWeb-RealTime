@@ -6,6 +6,7 @@ import com.web.backend.model.postgres.UserEntity;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 
@@ -31,6 +32,7 @@ public interface FriendshipRepository extends JpaRepository<FriendshipEntity, Lo
                         "AND f.status = 'ACCEPTED'")
         boolean existsFriendship(String u1, String u2);
 
+        @EntityGraph(attributePaths = { "requester" })
         Page<FriendshipEntity> findByAddresseeAndStatus(UserEntity addressee, FriendshipStatus status,
                         Pageable pageable);
 
@@ -41,6 +43,7 @@ public interface FriendshipRepository extends JpaRepository<FriendshipEntity, Lo
                         "(f.requester = :user OR f.addressee = :user) AND f.status = 'ACCEPTED'")
         Page<FriendshipEntity> findAllAcceptedFriendships(UserEntity user, Pageable pageable);
 
+        @EntityGraph(attributePaths = { "addressee" })
         Page<FriendshipEntity> findByRequesterAndStatus(UserEntity requester, FriendshipStatus status,
                         Pageable pageable);
 

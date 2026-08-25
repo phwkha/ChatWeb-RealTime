@@ -110,6 +110,7 @@ public class UserServiceImpl implements UserService {
     private static final String SYS_DELETED_STRING = "sys.deleted";
 
     @Override
+    @Transactional(readOnly = true)
     public UserResponse getMe(String username) {
         UserEntity user = userRepository.findWithAuthoritiesByUsername(username)
                 .orElseThrow(() -> new ResourceNotFoundException(
@@ -123,6 +124,7 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public UserDetailResponse getProfileUser(String username) {
         UserEntity user = userRepository.findWithAuthoritiesByUsername(username)
                 .orElseThrow(() -> new ResourceNotFoundException(
