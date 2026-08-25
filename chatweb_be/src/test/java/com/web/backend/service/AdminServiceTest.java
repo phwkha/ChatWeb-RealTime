@@ -100,21 +100,19 @@ class AdminServiceTest {
         when(zSetOperations.reverseRange("online_users", 0, 9)).thenReturn(Set.of("testuser"));
         when(zSetOperations.size("online_users")).thenReturn(1L);
 
-        when(userRepository.findByUsernameIn(anyList())).thenReturn(List.of(activeUser));
-        when(userMapper.toUserSummaryResponse(activeUser))
-                .thenReturn(org.mockito.Mockito.mock(UserSummaryResponse.class));
+        UserSummaryResponse summary = UserSummaryResponse.builder().username("testuser").build();
+        when(userRepository.findSummaryByUsernameIn(anyList())).thenReturn(List.of(summary));
 
         PageResponse<UserSummaryResponse> res = adminService.getOnlineUsers(0, 10);
         assertEquals(1, res.getTotalElements());
-        assertTrue(activeUser.isOnline());
+        assertTrue(summary.isOnline());
     }
 
     @Test
     void testGetAllUsers_Success() {
-        Page<UserEntity> page = new PageImpl<>(List.of(activeUser));
-        when(userRepository.findAllByUserStatusNot(eq(UserStatus.INACTIVE), any(Pageable.class))).thenReturn(page);
-        when(userMapper.toUserSummaryResponse(activeUser))
-                .thenReturn(org.mockito.Mockito.mock(UserSummaryResponse.class));
+        UserSummaryResponse summary = UserSummaryResponse.builder().username("testuser").build();
+        Page<UserSummaryResponse> page = new PageImpl<>(List.of(summary));
+        when(userRepository.findSummaryByUserStatusNot(eq(UserStatus.INACTIVE), any(Pageable.class))).thenReturn(page);
 
         PageResponse<UserSummaryResponse> res = adminService.getAllUsers(0, 10, "id:asc");
         assertEquals(1, res.getTotalElements());
@@ -259,11 +257,8 @@ class AdminServiceTest {
 
     @Test
     void testAdminGetAllAddresses() {
-        AddressEntity addr = new AddressEntity();
-        addr.setId(1L);
         when(userRepository.existsByUsername("testuser")).thenReturn(true);
-        when(addressRepository.findAllByUser_Username("testuser")).thenReturn(List.of(addr));
-        when(userMapper.toAddressResponse(addr)).thenReturn(new AddressResponse());
+        when(addressRepository.findAddressResponsesByUsername("testuser")).thenReturn(List.of(new AddressResponse()));
 
         List<AddressResponse> res = adminService.adminGetAllAddresses("testuser");
         assertEquals(1, res.size());
@@ -271,11 +266,8 @@ class AdminServiceTest {
 
     @Test
     void testAdminGetAddressById() {
-        AddressEntity addr = new AddressEntity();
-        addr.setId(1L);
         when(userRepository.existsByUsername("testuser")).thenReturn(true);
-        when(addressRepository.findByIdAndUser_Username(1L, "testuser")).thenReturn(Optional.of(addr));
-        when(userMapper.toAddressResponse(addr)).thenReturn(new AddressResponse());
+        when(addressRepository.findAddressResponseByIdAndUsername(1L, "testuser")).thenReturn(Optional.of(new AddressResponse()));
 
         assertNotNull(adminService.adminGetAddressById("testuser", 1L));
     }
@@ -283,7 +275,7 @@ class AdminServiceTest {
     @Test
     void testAdminGetAddressById_NotOwned() {
         when(userRepository.existsByUsername("testuser")).thenReturn(true);
-        when(addressRepository.findByIdAndUser_Username(1L, "testuser")).thenReturn(Optional.empty());
+        when(addressRepository.findAddressResponseByIdAndUsername(1L, "testuser")).thenReturn(Optional.empty());
         assertThrows(AccessForbiddenException.class, () -> adminService.adminGetAddressById("testuser", 1L));
     }
 

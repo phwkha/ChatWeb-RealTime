@@ -67,59 +67,44 @@ class FriendshipRepositoryTest {
     }
 
     @Test
-    void testExistsFriendship_Success() {
+    void testFindFriendsSummaryByUsername_Success() {
         FriendshipEntity friendship = new FriendshipEntity();
         friendship.setRequester(user1);
         friendship.setAddressee(user2);
         friendship.setStatus(FriendshipStatus.ACCEPTED);
         entityManager.persistAndFlush(friendship);
 
-        boolean exists = friendshipRepository.existsFriendship("user1", "user2");
-        assertThat(exists).isTrue();
-
-        boolean existsReverse = friendshipRepository.existsFriendship("user2", "user1");
-        assertThat(existsReverse).isTrue();
-
-        boolean notExists = friendshipRepository.existsFriendship("user1", "unknown");
-        assertThat(notExists).isFalse();
+        Page<com.web.backend.controller.response.UserSummaryResponse> page =
+                friendshipRepository.findFriendsSummaryByUsername("user1", PageRequest.of(0, 10));
+        assertThat(page.getTotalElements()).isEqualTo(1);
+        assertThat(page.getContent().get(0).getUsername()).isEqualTo("user2");
     }
 
     @Test
-    void testFindByAddresseeAndStatus_Success() {
+    void testFindAddresseeSummaryByRequesterAndStatus_Success() {
+        FriendshipEntity friendship = new FriendshipEntity();
+        friendship.setRequester(user1);
+        friendship.setAddressee(user2);
+        friendship.setStatus(FriendshipStatus.BLOCKED);
+        entityManager.persistAndFlush(friendship);
+
+        Page<com.web.backend.controller.response.UserSummaryResponse> page =
+                friendshipRepository.findAddresseeSummaryByRequesterAndStatus(user1, FriendshipStatus.BLOCKED, PageRequest.of(0, 10));
+        assertThat(page.getTotalElements()).isEqualTo(1);
+        assertThat(page.getContent().get(0).getUsername()).isEqualTo("user2");
+    }
+
+    @Test
+    void testFindRequesterSummaryByAddresseeAndStatus_Success() {
         FriendshipEntity friendship = new FriendshipEntity();
         friendship.setRequester(user1);
         friendship.setAddressee(user2);
         friendship.setStatus(FriendshipStatus.PENDING);
         entityManager.persistAndFlush(friendship);
 
-        Page<FriendshipEntity> page = friendshipRepository.findByAddresseeAndStatus(user2, FriendshipStatus.PENDING,
-                PageRequest.of(0, 10));
+        Page<com.web.backend.controller.response.UserSummaryResponse> page =
+                friendshipRepository.findRequesterSummaryByAddresseeAndStatus(user2, FriendshipStatus.PENDING, PageRequest.of(0, 10));
         assertThat(page.getTotalElements()).isEqualTo(1);
-        assertThat(page.getContent().get(0).getRequester().getUsername()).isEqualTo("user1");
-    }
-
-    @Test
-    void testExistsByRequesterAndAddresseeAndStatus_Success() {
-        FriendshipEntity friendship = new FriendshipEntity();
-        friendship.setRequester(user1);
-        friendship.setAddressee(user2);
-        friendship.setStatus(FriendshipStatus.PENDING);
-        entityManager.persistAndFlush(friendship);
-
-        boolean exists = friendshipRepository.existsByRequesterAndAddresseeAndStatus(user1, user2,
-                FriendshipStatus.PENDING);
-        assertThat(exists).isTrue();
-    }
-
-    @Test
-    void testFindAllAcceptedFriendships_Success() {
-        FriendshipEntity friendship = new FriendshipEntity();
-        friendship.setRequester(user1);
-        friendship.setAddressee(user2);
-        friendship.setStatus(FriendshipStatus.ACCEPTED);
-        entityManager.persistAndFlush(friendship);
-
-        Page<FriendshipEntity> page = friendshipRepository.findAllAcceptedFriendships(user1, PageRequest.of(0, 10));
-        assertThat(page.getTotalElements()).isEqualTo(1);
+        assertThat(page.getContent().get(0).getUsername()).isEqualTo("user1");
     }
 }

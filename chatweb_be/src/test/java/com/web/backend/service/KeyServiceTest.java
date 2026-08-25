@@ -17,8 +17,8 @@ import com.web.backend.common.UserStatus;
 import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.exception.custom.AccessForbiddenException;
 import com.web.backend.exception.custom.ResourceNotFoundException;
-import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.repository.UserRepository;
+import com.web.backend.repository.projection.UserRsaKeyProjection;
 import com.web.backend.service.impl.KeyServiceImpl;
 
 @ExtendWith(MockitoExtension.class)
@@ -30,38 +30,31 @@ class KeyServiceTest {
     @InjectMocks
     private KeyServiceImpl keyService;
 
-    private UserEntity activeUser;
-
     @BeforeEach
     void setUp() {
         ResourceBundleMessageSource messageSource = mock(ResourceBundleMessageSource.class);
         lenient().when(messageSource.getMessage(anyString(), any(), any())).thenReturn("Mocked Error Message");
         Translator.setStaticMessageSource(messageSource);
-
-        activeUser = new UserEntity();
-        activeUser.setUsername("testuser");
-        activeUser.setUserStatus(UserStatus.ACTIVE);
     }
 
     @Test
     void testSaveRsaKey_Success() {
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(activeUser));
-        when(userRepository.save(activeUser)).thenReturn(activeUser);
+        when(userRepository.existsByUsername("testuser")).thenReturn(true);
 
         keyService.saveRsaKey("testuser", "encrypted_key");
-        assertEquals("encrypted_key", activeUser.getEncryptedRsaPrivateKey());
+        verify(userRepository).updateEncryptedRsaPrivateKey("testuser", "encrypted_key");
     }
 
     @Test
     void testSaveRsaKey_NotFound() {
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.empty());
+        when(userRepository.existsByUsername("testuser")).thenReturn(false);
         assertThrows(ResourceNotFoundException.class, () -> keyService.saveRsaKey("testuser", "key"));
     }
 
     @Test
     void testGetRsaKey_Success() {
-        activeUser.setEncryptedRsaPrivateKey("encrypted_key");
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(activeUser));
+        when(userRepository.findRsaKeyProjectionByUsername("testuser"))
+                .thenReturn(Optional.of(new UserRsaKeyProjection(UserStatus.ACTIVE, "encrypted_key")));
 
         String key = keyService.getRsaKey("testuser");
         assertEquals("encrypted_key", key);
@@ -69,21 +62,21 @@ class KeyServiceTest {
 
     @Test
     void testGetRsaKey_NotFound() {
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.empty());
+        when(userRepository.findRsaKeyProjectionByUsername("testuser")).thenReturn(Optional.empty());
         assertThrows(ResourceNotFoundException.class, () -> keyService.getRsaKey("testuser"));
     }
 
     @Test
     void testGetRsaKey_Inactive() {
-        activeUser.setUserStatus(UserStatus.LOCKED);
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(activeUser));
+        when(userRepository.findRsaKeyProjectionByUsername("testuser"))
+                .thenReturn(Optional.of(new UserRsaKeyProjection(UserStatus.LOCKED, "encrypted_key")));
         assertThrows(AccessForbiddenException.class, () -> keyService.getRsaKey("testuser"));
     }
 
     @Test
     void testGetRsaKey_NullKey() {
-        activeUser.setEncryptedRsaPrivateKey(null);
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(activeUser));
+        when(userRepository.findRsaKeyProjectionByUsername("testuser"))
+                .thenReturn(Optional.of(new UserRsaKeyProjection(UserStatus.ACTIVE, null)));
 
         String key = keyService.getRsaKey("testuser");
         assertNull(key);
@@ -91,8 +84,8 @@ class KeyServiceTest {
 
     @Test
     void testGetPublicKey_Success() {
-        activeUser.setPublicKey("pub_key");
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(activeUser));
+        when(userRepository.existsByUsername("testuser")).thenReturn(true);
+        when(userRepository.findPublicKeyByUsername("testuser")).thenReturn(Optional.of("pub_key"));
 
         String key = keyService.getPublicKey("testuser");
         assertEquals("pub_key", key);
@@ -100,22 +93,21 @@ class KeyServiceTest {
 
     @Test
     void testGetPublicKey_NotFound() {
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.empty());
+        when(userRepository.existsByUsername("testuser")).thenReturn(false);
         assertThrows(ResourceNotFoundException.class, () -> keyService.getPublicKey("testuser"));
     }
 
     @Test
     void testSavePublicKey_Success() {
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(activeUser));
-        when(userRepository.save(activeUser)).thenReturn(activeUser);
+        when(userRepository.existsByUsername("testuser")).thenReturn(true);
 
         keyService.savePublicKey("testuser", "pub_key");
-        assertEquals("pub_key", activeUser.getPublicKey());
+        verify(userRepository).updatePublicKey("testuser", "pub_key");
     }
 
     @Test
     void testSavePublicKey_NotFound() {
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.empty());
+        when(userRepository.existsByUsername("testuser")).thenReturn(false);
         assertThrows(ResourceNotFoundException.class, () -> keyService.savePublicKey("testuser", "pub_key"));
     }
 }

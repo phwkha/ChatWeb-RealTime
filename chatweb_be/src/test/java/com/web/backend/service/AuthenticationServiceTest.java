@@ -337,17 +337,14 @@ class AuthenticationServiceTest {
     void testLogoutAllDevices_Success() {
         // Arrange
         String username = "testuser";
-        when(userRepository.findByUsername(username)).thenReturn(Optional.of(mockUser));
+        when(userRepository.existsByUsername(username)).thenReturn(true);
         when(cacheManager.getCache("user_details")).thenReturn(userCache);
-
-        Integer initialVersion = mockUser.getTokenVersion(); // which is 1 from setUp
 
         // Act
         authenticationService.logoutAllDevices(username);
 
         // Assert
-        assertEquals(initialVersion + 1, mockUser.getTokenVersion());
-        verify(userRepository).save(mockUser);
+        verify(userRepository).incrementTokenVersion(username);
         verify(userCache).evict(username);
     }
 
@@ -355,11 +352,11 @@ class AuthenticationServiceTest {
     void testLogoutAllDevices_UserNotFound_ThrowsException() {
         // Arrange
         String username = "unknownuser";
-        when(userRepository.findByUsername(username)).thenReturn(Optional.empty());
+        when(userRepository.existsByUsername(username)).thenReturn(false);
 
         // Act & Assert
         assertThrows(ResourceNotFoundException.class, () -> authenticationService.logoutAllDevices(username));
-        verify(userRepository, never()).save(any());
+        verify(userRepository, never()).incrementTokenVersion(any());
     }
 
     // ==========================================

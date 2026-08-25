@@ -217,12 +217,10 @@ class FriendServiceTest {
     void testGetFriendsList() {
         when(userRepository.existsByUsername("userA")).thenReturn(true);
 
-        Page<UserEntity> page = new PageImpl<>(List.of(userB));
-
-        when(friendshipRepository.findFriendsByUsername(eq("userA"), any(Pageable.class))).thenReturn(page);
-
         UserSummaryResponse response = UserSummaryResponse.builder().username("userB").build();
-        when(userMapper.toUserSummaryResponse(userB)).thenReturn(response);
+        Page<UserSummaryResponse> page = new PageImpl<>(List.of(response));
+
+        when(friendshipRepository.findFriendsSummaryByUsername(eq("userA"), any(Pageable.class))).thenReturn(page);
 
         PageResponse<UserSummaryResponse> result = friendService.getFriendsList("userA", 0, 10, "asc");
 
@@ -288,12 +286,10 @@ class FriendServiceTest {
     @Test
     void testGetSentRequests() {
         when(userRepository.findByUsername("userA")).thenReturn(Optional.of(userA));
-        FriendshipEntity f = new FriendshipEntity();
-        f.setAddressee(userB);
-        Page<FriendshipEntity> page = new PageImpl<>(List.of(f));
-        when(friendshipRepository.findByRequesterAndStatus(eq(userA), eq(FriendshipStatus.PENDING),
+        UserSummaryResponse summary = UserSummaryResponse.builder().username("userB").build();
+        Page<UserSummaryResponse> page = new PageImpl<>(List.of(summary));
+        when(friendshipRepository.findAddresseeSummaryByRequesterAndStatus(eq(userA), eq(FriendshipStatus.PENDING),
                 any(Pageable.class))).thenReturn(page);
-        when(userMapper.toUserSummaryResponse(userB)).thenReturn(mock(UserSummaryResponse.class));
 
         PageResponse<UserSummaryResponse> res = friendService.getSentRequests("userA", 0, 10, "asc");
         assertEquals(1, res.getTotalElements());
@@ -302,12 +298,10 @@ class FriendServiceTest {
     @Test
     void testGetPendingRequests() {
         when(userRepository.findByUsername("userA")).thenReturn(Optional.of(userA));
-        FriendshipEntity f = new FriendshipEntity();
-        f.setRequester(userB);
-        Page<FriendshipEntity> page = new PageImpl<>(List.of(f));
-        when(friendshipRepository.findByAddresseeAndStatus(eq(userA), eq(FriendshipStatus.PENDING),
+        UserSummaryResponse summary = UserSummaryResponse.builder().username("userB").build();
+        Page<UserSummaryResponse> page = new PageImpl<>(List.of(summary));
+        when(friendshipRepository.findRequesterSummaryByAddresseeAndStatus(eq(userA), eq(FriendshipStatus.PENDING),
                 any(Pageable.class))).thenReturn(page);
-        when(userMapper.toUserSummaryResponse(userB)).thenReturn(mock(UserSummaryResponse.class));
 
         PageResponse<UserSummaryResponse> res = friendService.getPendingRequests("userA", 0, 10, "desc");
         assertEquals(1, res.getTotalElements());
@@ -469,15 +463,10 @@ class FriendServiceTest {
     void testGetBlockedList_Success() {
         when(userRepository.findByUsername("userA")).thenReturn(Optional.of(userA));
 
-        FriendshipEntity f = new FriendshipEntity();
-        f.setRequester(userA);
-        f.setAddressee(userB);
-        f.setStatus(FriendshipStatus.BLOCKED);
-
-        Page<FriendshipEntity> page = new PageImpl<>(List.of(f));
-        when(friendshipRepository.findByRequesterAndStatus(eq(userA), eq(FriendshipStatus.BLOCKED), any(Pageable.class)))
+        UserSummaryResponse summary = UserSummaryResponse.builder().username("userB").build();
+        Page<UserSummaryResponse> page = new PageImpl<>(List.of(summary));
+        when(friendshipRepository.findAddresseeSummaryByRequesterAndStatus(eq(userA), eq(FriendshipStatus.BLOCKED), any(Pageable.class)))
                 .thenReturn(page);
-        when(userMapper.toUserSummaryResponse(userB)).thenReturn(mock(UserSummaryResponse.class));
 
         PageResponse<UserSummaryResponse> res = friendService.getBlockedList("userA", 0, 10, "desc");
 

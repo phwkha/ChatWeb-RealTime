@@ -104,14 +104,13 @@ class UserServiceTest {
 
     @Test
     void testUpdateAvatar_Success() {
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(activeUser));
+        when(userRepository.findAvatarByUsername("testuser")).thenReturn(Optional.of("old-avatar.jpg"));
         MultipartFile file = mock(MultipartFile.class);
         when(storageService.uploadAvatar(file)).thenReturn("http://new-avatar.jpg");
-        when(userRepository.save(any())).thenReturn(activeUser);
 
         String url = userService.updateAvatar("testuser", file);
         assertEquals("http://new-avatar.jpg", url);
-        assertEquals("http://new-avatar.jpg", activeUser.getAvatar());
+        verify(userRepository).updateAvatar("testuser", "http://new-avatar.jpg");
     }
 
     @Test
@@ -138,21 +137,20 @@ class UserServiceTest {
 
     @Test
     void testVerifyEmailChange_Success() {
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(activeUser));
+        when(userRepository.findEmailByUsername("testuser")).thenReturn(Optional.of("test@example.com"));
         when(valueOperations.get("otp:EMAIL_CHANGE:testuser")).thenReturn("123456:new@example.com");
 
         userService.verifyEmailChange("testuser", "123456");
 
-        assertEquals("new@example.com", activeUser.getEmail());
+        verify(userRepository).updateEmail("testuser", "new@example.com");
         verify(cuckooFilterService).delete(anyString(), eq("test@example.com"));
         verify(cuckooFilterService).add(anyString(), eq("new@example.com"));
-        verify(userRepository).save(activeUser);
         verify(redisTemplate).delete("otp:EMAIL_CHANGE:testuser");
     }
 
     @Test
     void testVerifyEmailChange_WrongOtp_IncrementsAttempts() {
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(activeUser));
+        when(userRepository.findEmailByUsername("testuser")).thenReturn(Optional.of("test@example.com"));
         when(valueOperations.get("otp:EMAIL_CHANGE:testuser")).thenReturn("123456:new@example.com");
         when(valueOperations.increment("otp:EMAIL_CHANGE:testuser:attempts")).thenReturn(1L);
 
@@ -294,19 +292,18 @@ class UserServiceTest {
 
     @Test
     void testVerifyPhoneChange_Success() {
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(activeUser));
+        when(userRepository.existsByUsername("testuser")).thenReturn(true);
         when(valueOperations.get("otp:PHONE_CHANGE:testuser")).thenReturn("123456:0123456789");
 
         userService.verifyPhoneChange("testuser", "123456");
 
-        assertEquals("0123456789", activeUser.getPhone());
-        verify(userRepository).save(activeUser);
+        verify(userRepository).updatePhone("testuser", "0123456789");
         verify(redisTemplate).delete("otp:PHONE_CHANGE:testuser");
     }
 
     @Test
     void testVerifyPhoneChange_InvalidOtp() {
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(activeUser));
+        when(userRepository.existsByUsername("testuser")).thenReturn(true);
         when(valueOperations.get("otp:PHONE_CHANGE:testuser")).thenReturn(null);
 
         assertThrows(InvalidOtpException.class, () -> userService.verifyPhoneChange("testuser", "123456"));
@@ -314,7 +311,7 @@ class UserServiceTest {
 
     @Test
     void testVerifyPhoneChange_MissingData() {
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(activeUser));
+        when(userRepository.existsByUsername("testuser")).thenReturn(true);
         when(valueOperations.get("otp:PHONE_CHANGE:testuser")).thenReturn("123456"); // Missing newPhone data
 
         assertThrows(InvalidDataException.class, () -> userService.verifyPhoneChange("testuser", "123456"));
@@ -322,7 +319,7 @@ class UserServiceTest {
 
     @Test
     void testVerifyEmailChange_MaxAttempts() {
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(activeUser));
+        when(userRepository.findEmailByUsername("testuser")).thenReturn(Optional.of("old@example.com"));
         when(valueOperations.get("otp:EMAIL_CHANGE:testuser")).thenReturn("123456:new@example.com");
         when(valueOperations.increment("otp:EMAIL_CHANGE:testuser:attempts")).thenReturn(5L);
 
@@ -333,7 +330,7 @@ class UserServiceTest {
 
     @Test
     void testResendEmailChangeOtp_Success() {
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(activeUser));
+        when(userRepository.existsByUsername("testuser")).thenReturn(true);
         when(valueOperations.get("otp:EMAIL_CHANGE:testuser")).thenReturn("111111:new@example.com");
         when(redisTemplate.hasKey("cooldown:resend:testuser")).thenReturn(false);
 
@@ -347,7 +344,7 @@ class UserServiceTest {
 
     @Test
     void testResendEmailChangeOtp_Cooldown() {
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(activeUser));
+        when(userRepository.existsByUsername("testuser")).thenReturn(true);
         when(valueOperations.get("otp:EMAIL_CHANGE:testuser")).thenReturn("111111:new@example.com");
         when(redisTemplate.hasKey("cooldown:resend:testuser")).thenReturn(true);
         assertThrows(ResourceConflictException.class, () -> userService.resendEmailChangeOtp("testuser"));
@@ -355,21 +352,21 @@ class UserServiceTest {
 
     @Test
     void testResendEmailChangeOtp_NotFoundInRedis() {
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(activeUser));
+        when(userRepository.existsByUsername("testuser")).thenReturn(true);
         when(valueOperations.get("otp:EMAIL_CHANGE:testuser")).thenReturn(null);
         assertThrows(ResourceNotFoundException.class, () -> userService.resendEmailChangeOtp("testuser"));
     }
 
     @Test
     void testResendEmailChangeOtp_MissingDataInRedis() {
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(activeUser));
+        when(userRepository.existsByUsername("testuser")).thenReturn(true);
         when(valueOperations.get("otp:EMAIL_CHANGE:testuser")).thenReturn("111111"); // Missing new email string
         assertThrows(InvalidDataException.class, () -> userService.resendEmailChangeOtp("testuser"));
     }
 
     @Test
     void testResendPhoneChangeOtp_Success() {
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(activeUser));
+        when(userRepository.findEmailByUsername("testuser")).thenReturn(Optional.of("test@example.com"));
         when(valueOperations.get("otp:PHONE_CHANGE:testuser")).thenReturn("111111:0123456789");
         when(redisTemplate.hasKey("cooldown:resend:testuser")).thenReturn(false);
 
@@ -425,11 +422,8 @@ class UserServiceTest {
 
     @Test
     void testGetAllAddresses() {
-        AddressEntity address = new AddressEntity();
-        address.setId(1L);
         when(userRepository.existsByUsername("testuser")).thenReturn(true);
-        when(addressRepository.findAllByUser_Username("testuser")).thenReturn(List.of(address));
-        when(userMapper.toAddressResponse(address)).thenReturn(new AddressResponse());
+        when(addressRepository.findAddressResponsesByUsername("testuser")).thenReturn(List.of(new AddressResponse()));
 
         List<AddressResponse> list = userService.getAllAddresses("testuser");
         assertEquals(1, list.size());
@@ -437,11 +431,8 @@ class UserServiceTest {
 
     @Test
     void testGetAddressById_Success() {
-        AddressEntity address = new AddressEntity();
-        address.setId(1L);
         when(userRepository.existsByUsername("testuser")).thenReturn(true);
-        when(addressRepository.findByIdAndUser_Username(1L, "testuser")).thenReturn(Optional.of(address));
-        when(userMapper.toAddressResponse(address)).thenReturn(new AddressResponse());
+        when(addressRepository.findAddressResponseByIdAndUsername(1L, "testuser")).thenReturn(Optional.of(new AddressResponse()));
 
         assertNotNull(userService.getAddressById("testuser", 1L));
     }
@@ -449,7 +440,7 @@ class UserServiceTest {
     @Test
     void testGetAddressById_NotFound() {
         when(userRepository.existsByUsername("testuser")).thenReturn(true);
-        when(addressRepository.findByIdAndUser_Username(1L, "testuser")).thenReturn(Optional.empty());
+        when(addressRepository.findAddressResponseByIdAndUsername(1L, "testuser")).thenReturn(Optional.empty());
         assertThrows(AccessForbiddenException.class, () -> userService.getAddressById("testuser", 1L));
     }
 
@@ -473,33 +464,31 @@ class UserServiceTest {
 
     @Test
     void testUpdateAvatar_WithOldAvatar_Success() {
-        activeUser.setAvatar("old-avatar.jpg");
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(activeUser));
+        when(userRepository.findAvatarByUsername("testuser")).thenReturn(Optional.of("old-avatar.jpg"));
         MultipartFile file = mock(MultipartFile.class);
         when(storageService.uploadAvatar(file)).thenReturn("http://new-avatar.jpg");
-        when(userRepository.save(any())).thenReturn(activeUser);
 
         String url = userService.updateAvatar("testuser", file);
         assertEquals("http://new-avatar.jpg", url);
         verify(storageService).delete("old-avatar.jpg", "avatars");
+        verify(userRepository).updateAvatar("testuser", "http://new-avatar.jpg");
     }
 
     @Test
     void testUpdateAvatar_WithOldAvatar_DeleteFails() {
-        activeUser.setAvatar("old-avatar.jpg");
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(activeUser));
+        when(userRepository.findAvatarByUsername("testuser")).thenReturn(Optional.of("old-avatar.jpg"));
         MultipartFile file = mock(MultipartFile.class);
         when(storageService.uploadAvatar(file)).thenReturn("http://new-avatar.jpg");
         doThrow(new RuntimeException("delete failed")).when(storageService).delete(anyString(), anyString());
-        when(userRepository.save(any())).thenReturn(activeUser);
 
         String url = userService.updateAvatar("testuser", file);
-        assertEquals("http://new-avatar.jpg", url); // Should still succeed
+        assertEquals("http://new-avatar.jpg", url);
+        verify(userRepository).updateAvatar("testuser", "http://new-avatar.jpg");
     }
 
     @Test
     void testVerifyEmailChange_EmptyEmail() {
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(activeUser));
+        when(userRepository.findEmailByUsername("testuser")).thenReturn(Optional.of("old@example.com"));
         when(valueOperations.get("otp:EMAIL_CHANGE:testuser")).thenReturn("123456:"); // Empty email
 
         assertThrows(InvalidDataException.class, () -> userService.verifyEmailChange("testuser", "123456"));
@@ -520,7 +509,7 @@ class UserServiceTest {
 
     @Test
     void testUpdateAvatar_UserNotFound() {
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.empty());
+        when(userRepository.findAvatarByUsername("testuser")).thenReturn(Optional.empty());
         assertThrows(ResourceNotFoundException.class,
                 () -> userService.updateAvatar("testuser", mock(MultipartFile.class)));
     }
@@ -534,7 +523,7 @@ class UserServiceTest {
 
     @Test
     void testVerifyEmailChange_UserNotFound() {
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.empty());
+        when(userRepository.findEmailByUsername("testuser")).thenReturn(Optional.empty());
         assertThrows(ResourceNotFoundException.class, () -> userService.verifyEmailChange("testuser", "123456"));
     }
 
@@ -578,7 +567,7 @@ class UserServiceTest {
 
     @Test
     void testVerifyPhoneChange_UserNotFound() {
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.empty());
+        when(userRepository.existsByUsername("testuser")).thenReturn(false);
         assertThrows(ResourceNotFoundException.class, () -> userService.verifyPhoneChange("testuser", "123456"));
     }
 

@@ -224,12 +224,11 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     @Override
     @Transactional
     public void logoutAllDevices(String username) {
-        UserEntity user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new ResourceNotFoundException(Translator.tolocale(ERROR_USER_NOT_FOUND_STRING)));
+        if (!userRepository.existsByUsername(username)) {
+            throw new ResourceNotFoundException(Translator.tolocale(ERROR_USER_NOT_FOUND_STRING));
+        }
 
-        Integer currentVersion = user.getTokenVersion() == null ? 0 : user.getTokenVersion();
-        user.setTokenVersion(currentVersion + 1);
-        userRepository.save(user);
+        userRepository.incrementTokenVersion(username);
 
         Cache userCache = cacheManager.getCache(USER_DETAILS_STRING);
         if (userCache != null) {

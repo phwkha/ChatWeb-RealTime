@@ -12,6 +12,7 @@ import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.repository.UserRepository;
 import com.web.backend.repository.specification.AddressSpecification;
 import com.web.backend.repository.specification.SearchSpecificationsBuilder;
+import com.web.backend.repository.specification.UserSearchSpecifications;
 import com.web.backend.repository.specification.UserSpecification;
 import com.web.backend.service.SearchUserService;
 
@@ -49,20 +50,21 @@ public class SearchUserServiceImpl implements SearchUserService {
         Sort.Direction direction = sortDir.equalsIgnoreCase(DESC_STRING) ? Sort.Direction.DESC : Sort.Direction.ASC;
         Pageable pageable = PageRequest.of(page, size, Sort.by(direction, USERNAME_STRING));
 
-        Page<UserEntity> pageResult = userRepository.searchUsersByKeyword(currentUsername, keyword,
-                UserStatus.INACTIVE, pageable);
+        Specification<UserEntity> spec = UserSearchSpecifications.isNotStatus(UserStatus.INACTIVE)
+                .and(UserSearchSpecifications.isNotCurrentUsername(currentUsername))
+                .and(UserSearchSpecifications.notBlockedWith(currentUsername))
+                .and(UserSearchSpecifications.containsKeyword(keyword));
 
-        List<UserSummaryResponse> content = pageResult.getContent().stream()
-                .map(userMapper::toUserSummaryResponse)
-                .toList();
+        Page<UserEntity> pageResult = userRepository.findAll(spec, pageable);
+        Page<UserSummaryResponse> responsePage = pageResult.map(userMapper::toUserSummaryResponse);
 
         return PageResponse.<UserSummaryResponse>builder()
-                .content(content)
-                .pageNo(pageResult.getNumber())
-                .pageSize(pageResult.getSize())
-                .totalElements(pageResult.getTotalElements())
-                .totalPages(pageResult.getTotalPages())
-                .last(pageResult.isLast())
+                .content(responsePage.getContent())
+                .pageNo(responsePage.getNumber())
+                .pageSize(responsePage.getSize())
+                .totalElements(responsePage.getTotalElements())
+                .totalPages(responsePage.getTotalPages())
+                .last(responsePage.isLast())
                 .build();
     }
 

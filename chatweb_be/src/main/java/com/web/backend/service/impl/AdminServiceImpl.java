@@ -120,13 +120,12 @@ public class AdminServiceImpl implements AdminService {
                 .map(String::valueOf)
                 .toList();
 
-        List<UserEntity> userEntities = userRepository.findByUsernameIn(usernames);
+        List<UserSummaryResponse> userSummaries = userRepository.findSummaryByUsernameIn(usernames);
 
-        userEntities.forEach(entity -> entity.setOnline(true));
+        userSummaries.forEach(dto -> dto.setOnline(true));
 
-        List<UserSummaryResponse> content = userEntities.stream()
-                .sorted(Comparator.comparingInt(entity -> usernames.indexOf(entity.getUsername())))
-                .map(userMapper::toUserSummaryResponse)
+        List<UserSummaryResponse> content = userSummaries.stream()
+                .sorted(Comparator.comparingInt(dto -> usernames.indexOf(dto.getUsername())))
                 .toList();
 
         long total = totalOnline != null ? totalOnline : 0;
@@ -166,16 +165,10 @@ public class AdminServiceImpl implements AdminService {
         Pageable pageable = PageRequest.of(pageNo, pageSize,
                 Sort.by(orders));
 
-        Page<UserEntity> pageResult;
-
-        pageResult = userRepository.findAllByUserStatusNot(UserStatus.INACTIVE, pageable);
-
-        List<UserSummaryResponse> content = pageResult.getContent().stream()
-                .map(userMapper::toUserSummaryResponse)
-                .toList();
+        Page<UserSummaryResponse> pageResult = userRepository.findSummaryByUserStatusNot(UserStatus.INACTIVE, pageable);
 
         return PageResponse.<UserSummaryResponse>builder()
-                .content(content)
+                .content(pageResult.getContent())
                 .pageNo(pageResult.getNumber())
                 .pageSize(pageResult.getSize())
                 .totalElements(pageResult.getTotalElements())
@@ -346,9 +339,7 @@ public class AdminServiceImpl implements AdminService {
                     Translator.tolocale(ERROR_USER_TARGET_NOT_FOUND_WITH_STRING, targetUsername));
         }
 
-        return addressRepository.findAllByUser_Username(targetUsername).stream()
-                .map(userMapper::toAddressResponse)
-                .toList();
+        return addressRepository.findAddressResponsesByUsername(targetUsername);
     }
 
     @Override
@@ -359,11 +350,9 @@ public class AdminServiceImpl implements AdminService {
                     Translator.tolocale(ERROR_USER_TARGET_NOT_FOUND_WITH_STRING, targetUsername));
         }
 
-        AddressEntity address = addressRepository.findByIdAndUser_Username(addressId, targetUsername)
+        return addressRepository.findAddressResponseByIdAndUsername(addressId, targetUsername)
                 .orElseThrow(() -> new AccessForbiddenException(
                         Translator.tolocale(ERROR_ADMIN_ADDRESS_NOT_OWNED_STRING)));
-
-        return userMapper.toAddressResponse(address);
     }
 
     @Override

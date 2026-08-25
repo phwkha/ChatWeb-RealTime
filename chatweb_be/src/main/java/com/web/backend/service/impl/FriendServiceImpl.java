@@ -11,7 +11,6 @@ import com.web.backend.exception.custom.AccessForbiddenException;
 import com.web.backend.exception.custom.InvalidDataException;
 import com.web.backend.exception.custom.ResourceConflictException;
 import com.web.backend.exception.custom.ResourceNotFoundException;
-import com.web.backend.mapper.UserMapper;
 import com.web.backend.model.postgres.FriendshipEntity;
 import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.repository.FriendshipRepository;
@@ -46,8 +45,6 @@ public class FriendServiceImpl implements FriendService {
         private final RedisTemplate<String, Object> redisTemplate;
 
         private final ApplicationEventPublisher eventPublisher;
-
-        private final UserMapper userMapper;
 
         private static final String RELATION_KEY_PREFIX = "relation:";
         private static final String RELATION_NONE = "NONE";
@@ -186,14 +183,10 @@ public class FriendServiceImpl implements FriendService {
                                                 : Sort.Direction.ASC,
                                                 CREATEAT_STRING));
 
-                Page<FriendshipEntity> pageResult = friendshipRepository.findByRequesterAndStatus(currentUser,
-                                FriendshipStatus.PENDING, pageable);
+                Page<UserSummaryResponse> pageResult = friendshipRepository.findAddresseeSummaryByRequesterAndStatus(
+                                currentUser, FriendshipStatus.PENDING, pageable);
 
-                List<UserSummaryResponse> content = pageResult.getContent().stream()
-                                .map(f -> userMapper.toUserSummaryResponse(f.getAddressee()))
-                                .toList();
-
-                return buildPageResponse(pageResult, content);
+                return buildPageResponse(pageResult, pageResult.getContent());
         }
 
         @Override
@@ -206,14 +199,10 @@ public class FriendServiceImpl implements FriendService {
                                                 : Sort.Direction.ASC,
                                                 CREATEAT_STRING));
 
-                Page<FriendshipEntity> pageResult = friendshipRepository.findByAddresseeAndStatus(currentUser,
-                                FriendshipStatus.PENDING, pageable);
+                Page<UserSummaryResponse> pageResult = friendshipRepository.findRequesterSummaryByAddresseeAndStatus(
+                                currentUser, FriendshipStatus.PENDING, pageable);
 
-                List<UserSummaryResponse> content = pageResult.getContent().stream()
-                                .map(f -> userMapper.toUserSummaryResponse(f.getRequester()))
-                                .toList();
-
-                return buildPageResponse(pageResult, content);
+                return buildPageResponse(pageResult, pageResult.getContent());
         }
 
         @Override
@@ -229,13 +218,10 @@ public class FriendServiceImpl implements FriendService {
                                                 : Sort.Direction.ASC,
                                                 CREATEAT_STRING));
 
-                Page<UserEntity> pageResult = friendshipRepository.findFriendsByUsername(currentUsername, pageable);
+                Page<UserSummaryResponse> pageResult = friendshipRepository
+                                .findFriendsSummaryByUsername(currentUsername, pageable);
 
-                List<UserSummaryResponse> content = pageResult.getContent().stream()
-                                .map(userMapper::toUserSummaryResponse)
-                                .toList();
-
-                return buildPageResponse(pageResult, content);
+                return buildPageResponse(pageResult, pageResult.getContent());
         }
 
         @Override
@@ -344,14 +330,10 @@ public class FriendServiceImpl implements FriendService {
                                                 : Sort.Direction.ASC,
                                                 CREATEAT_STRING));
 
-                Page<FriendshipEntity> pageResult = friendshipRepository.findByRequesterAndStatus(currentUser,
-                                FriendshipStatus.BLOCKED, pageable);
+                Page<UserSummaryResponse> pageResult = friendshipRepository.findAddresseeSummaryByRequesterAndStatus(
+                                currentUser, FriendshipStatus.BLOCKED, pageable);
 
-                List<UserSummaryResponse> content = pageResult.getContent().stream()
-                                .map(f -> userMapper.toUserSummaryResponse(f.getAddressee()))
-                                .toList();
-
-                return buildPageResponse(pageResult, content);
+                return buildPageResponse(pageResult, pageResult.getContent());
         }
 
         @Override
