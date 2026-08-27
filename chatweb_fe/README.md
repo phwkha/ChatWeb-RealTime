@@ -1,38 +1,16 @@
-# ChatWeb Frontend
+# React + Vite
 
-Giao diện người dùng cho hệ thống ChatWeb. Được thiết kế tập trung vào trải nghiệm mượt mà, kết nối thời gian thực (real-time) và giao diện hiện đại.
+This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
 
-## 🚀 Công nghệ sử dụng
-- **Core**: React 19, Vite (Trình đóng gói và môi trường phát triển siêu tốc)
-- **Giao diện (UI/CSS)**: Tailwind CSS 4, Framer Motion (Animation mượt mà), Lucide React (Icons)
-- **Quản lý trạng thái (State)**: Redux Toolkit, React-Redux
-- **Định tuyến (Routing)**: React Router DOM 7
-- **Kết nối thời gian thực (WebSockets)**: `@stomp/stompjs`, `sockjs-client`
-- **Đa ngôn ngữ (i18n)**: i18next, react-i18next
-- **Call API**: Axios
-- **Công cụ kiểm tra mã (Linting)**: Oxlint (Linter hiệu suất cao)
+Currently, two official plugins are available:
 
-## 🛠 Hướng dẫn chạy cục bộ
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
 
-### 1. Yêu cầu
-- Node.js (khuyến nghị phiên bản LTS mới nhất)
+## React Compiler
 
-### 2. Cài đặt và Khởi chạy
-1. Cài đặt các gói phụ thuộc (dependencies):
-   ```bash
-   npm install
-   ```
+The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
 
-2. Khởi chạy máy chủ phát triển (Development Server):
-   ```bash
-   npm run dev
-   ```
+## Expanding the Oxlint configuration
 
-3. Mở trình duyệt và truy cập vào địa chỉ (thường là `http://localhost:5173`):
-   👉 **[http://localhost:5173](http://localhost:5173)**
-
-## 📜 Các lệnh cơ bản
-- `npm run dev`: Chạy ứng dụng ở chế độ phát triển (HMR).
-- `npm run build`: Đóng gói ứng dụng tối ưu hóa cho môi trường Production (vào thư mục `dist`).
-- `npm run preview`: Chạy thử bản build production trên máy local.
-- `npm run lint`: Chạy Oxlint để kiểm tra lỗi code và quy tắc chuẩn.
+If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.

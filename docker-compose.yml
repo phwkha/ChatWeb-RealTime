@@ -285,21 +285,6 @@ services:
       - kafka2
       - schema-registry
 
-  # --- REACT FRONTEND ---
-  # cw_frontend:
-  #   container_name: frontend
-  #   build:
-  #     context: ./chatweb_fe
-  #     dockerfile: Dockerfile
-  #     args:
-  #       - VITE_API_URL=${VITE_API_URL}
-  #   ports:
-  #     - "5173:80"
-  #   networks:
-  #     - default
-  #   depends_on:
-  #     - cw_backend
-
 volumes:
   mongo_data:
   mongo_config_data:
