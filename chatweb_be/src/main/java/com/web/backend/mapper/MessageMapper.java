@@ -12,7 +12,7 @@ import org.mapstruct.Mapping;
 import org.mapstruct.Named;
 import org.mapstruct.ReportingPolicy;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Mapper(componentModel = "spring", unmappedTargetPolicy = ReportingPolicy.IGNORE)
 public interface MessageMapper {
@@ -30,22 +30,22 @@ public interface MessageMapper {
 
     MessageSystemResponse systemMessageToResponse(SystemMessage entity);
 
-    @Mapping(target = "timestamp", source = "timestamp", qualifiedByName = "localDateTimeToString")
+    @Mapping(target = "timestamp", source = "timestamp", qualifiedByName = "instantToString")
     ChatMessageAvro toAvro(ChatMessage entity);
 
-    @Mapping(target = "timestamp", source = "timestamp", qualifiedByName = "stringToLocalDateTime")
+    @Mapping(target = "timestamp", source = "timestamp", qualifiedByName = "stringToInstant")
     ChatMessage toEntity(ChatMessageAvro avro);
 
-    @Mapping(target = "timestamp", source = "timestamp", qualifiedByName = "stringToLocalDateTime")
+    @Mapping(target = "timestamp", source = "timestamp", qualifiedByName = "stringToInstant")
     ChatMessageResponse avroToResponse(ChatMessageAvro avro);
 
-    @Named("localDateTimeToString")
-    default String localDateTimeToString(LocalDateTime dateTime) {
-        return dateTime != null ? dateTime.toString() : null;
+    @Named("instantToString")
+    default String instantToString(Instant instant) {
+        return instant != null ? instant.toString() : null;
     }
 
-    @Named("stringToLocalDateTime")
-    default LocalDateTime stringToLocalDateTime(String dateTimeStr) {
-        return (dateTimeStr != null && !dateTimeStr.isEmpty()) ? LocalDateTime.parse(dateTimeStr) : null;
+    @Named("stringToInstant")
+    default Instant stringToInstant(String dateTimeStr) {
+        return (dateTimeStr != null && !dateTimeStr.isEmpty()) ? Instant.parse(dateTimeStr) : null;
     }
 }

@@ -46,7 +46,6 @@ import com.web.backend.repository.projection.UnreadCountProjection;
 import com.web.backend.service.impl.MessageServiceImpl;
 
 import java.time.Instant;
-import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -540,13 +539,13 @@ class MessageServiceTest {
         dbMsg.setId("msg1");
         dbMsg.setSender("user1");
         dbMsg.setRecipient("user2");
-        dbMsg.setTimestamp(LocalDateTime.now().minusDays(1));
+        dbMsg.setTimestamp(Instant.now().minusSeconds(86400));
 
         ChatMessage redisMsg = new ChatMessage();
         redisMsg.setId("msg2");
         redisMsg.setSender("user2");
         redisMsg.setRecipient("user1");
-        redisMsg.setTimestamp(LocalDateTime.now());
+        redisMsg.setTimestamp(Instant.now());
 
         when(messageRepository.findByConversationId(eq("user1_user2"), any(Pageable.class)))
                 .thenReturn(List.of(dbMsg));
@@ -578,20 +577,20 @@ class MessageServiceTest {
 
     @Test
     void testFindPrivateMessageWithCursor_CalculatesReadStatusFromWatermark() {
-        LocalDateTime now = LocalDateTime.now();
-        LocalDateTime user2ReadTime = now.minusMinutes(5);
+        Instant now = Instant.now();
+        Instant user2ReadTime = now.minusSeconds(300);
 
         ChatMessage oldMsg = new ChatMessage();
         oldMsg.setId("msg1");
         oldMsg.setSender("user1");
         oldMsg.setRecipient("user2");
-        oldMsg.setTimestamp(now.minusMinutes(10)); // Before user2 read time -> READ
+        oldMsg.setTimestamp(now.minusSeconds(600)); // Before user2 read time -> READ
 
         ChatMessage newMsg = new ChatMessage();
         newMsg.setId("msg2");
         newMsg.setSender("user1");
         newMsg.setRecipient("user2");
-        newMsg.setTimestamp(now.minusMinutes(1)); // After user2 read time -> SENT
+        newMsg.setTimestamp(now.minusSeconds(60)); // After user2 read time -> SENT
 
         when(messageRepository.findByConversationId(eq("user1_user2"), any(Pageable.class)))
                 .thenReturn(List.of(newMsg, oldMsg));
@@ -651,7 +650,7 @@ class MessageServiceTest {
         dbMsg.setId("msg1");
         dbMsg.setSender("user1");
         dbMsg.setRecipient("user2");
-        dbMsg.setTimestamp(LocalDateTime.now().minusDays(1));
+        dbMsg.setTimestamp(Instant.now().minusSeconds(86400));
 
         List<ChatMessage> mockResult = new java.util.ArrayList<>();
         for (int i = 0; i < 11; i++)
@@ -662,7 +661,7 @@ class MessageServiceTest {
         when(messageMapper.toResponse(any())).thenReturn(ChatMessageResponse.builder().build());
 
         CursorResponse<ChatMessageResponse> result = messageService.findPrivateMessageWithCursor("user2", "user1",
-                LocalDateTime.now().toString(), 10);
+                Instant.now().toString(), 10);
 
         assertTrue(result.isHasMore());
         assertEquals(10, result.getContent().size()); // should have removed the 11th

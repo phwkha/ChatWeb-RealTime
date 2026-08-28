@@ -18,7 +18,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.support.ResourceBundleMessageSource;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -133,7 +133,7 @@ class UpdateMessageConsumerTest {
                 .conversationId("sender1_recipient1")
                 .reader("recipient1")
                 .sender("sender1")
-                .readTimestamp(LocalDateTime.now())
+                .readTimestamp(Instant.now())
                 .build();
 
         UpdateMessagePayload payload = UpdateMessagePayload.builder()

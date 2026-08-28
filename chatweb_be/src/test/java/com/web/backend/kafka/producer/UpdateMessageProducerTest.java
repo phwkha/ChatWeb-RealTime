@@ -7,7 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.lang.reflect.Field;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.concurrent.CompletableFuture;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -53,7 +53,7 @@ class UpdateMessageProducerTest {
                 .conversationId("conv1")
                 .reader("reader1")
                 .sender("sender1")
-                .readTimestamp(LocalDateTime.now())
+                .readTimestamp(Instant.now())
                 .build();
 
         updateMessageProducer.handleReadReceiptEvent(data);

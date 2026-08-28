@@ -9,7 +9,7 @@ import org.springframework.data.mongodb.core.index.CompoundIndex;
 import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.Map;
 
 @Document("messages")
@@ -38,7 +38,7 @@ public class ChatMessage {
     private String fileName;
     private Long fileSize;
 
-    private LocalDateTime timestamp;
+    private Instant timestamp;
 
     private MessageStatus status;
 

@@ -12,7 +12,7 @@ import org.testcontainers.containers.MongoDBContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import com.web.backend.common.MessageType;
 import com.web.backend.model.mongodb.ChatMessage;
@@ -48,14 +48,14 @@ class MessageRepositoryTest {
         msg1.setConversationId("conv1");
         msg1.setMessageType(MessageType.CHAT);
         msg1.setContent("hello 1");
-        msg1.setTimestamp(LocalDateTime.now());
+        msg1.setTimestamp(Instant.now());
         mongoTemplate.save(msg1);
 
         ChatMessage msg2 = new ChatMessage();
         msg2.setConversationId("conv1");
         msg2.setMessageType(MessageType.CHAT);
         msg2.setContent("hello 2");
-        msg2.setTimestamp(LocalDateTime.now().minusMinutes(1));
+        msg2.setTimestamp(Instant.now().minusSeconds(60));
         mongoTemplate.save(msg2);
 
         List<ChatMessage> messages = messageRepository.findByConversationId("conv1", PageRequest.of(0, 10));
@@ -65,24 +65,24 @@ class MessageRepositoryTest {
 
     @Test
     void testFindByConversationIdAndTimestampBefore() {
-        LocalDateTime now = LocalDateTime.now();
+        Instant now = Instant.now();
 
         ChatMessage msg1 = new ChatMessage();
         msg1.setConversationId("conv2");
         msg1.setMessageType(MessageType.CHAT);
         msg1.setContent("hello 1");
-        msg1.setTimestamp(now.minusMinutes(10));
+        msg1.setTimestamp(now.minusSeconds(600));
         mongoTemplate.save(msg1);
 
         ChatMessage msg2 = new ChatMessage();
         msg2.setConversationId("conv2");
         msg2.setMessageType(MessageType.CHAT);
         msg2.setContent("hello 2");
-        msg2.setTimestamp(now.minusMinutes(5));
+        msg2.setTimestamp(now.minusSeconds(300));
         mongoTemplate.save(msg2);
 
         List<ChatMessage> messages = messageRepository.findByConversationIdAndTimestampBefore("conv2",
-                now.minusMinutes(2), PageRequest.of(0, 10));
+                now.minusSeconds(120), PageRequest.of(0, 10));
 
         assertThat(messages).hasSize(2);
     }

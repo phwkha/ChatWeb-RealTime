@@ -2,8 +2,6 @@ package com.web.backend.service.impl;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.Objects;
 import java.util.Set;
@@ -25,6 +23,7 @@ import com.web.backend.exception.custom.AccessForbiddenException;
 import com.web.backend.exception.custom.InvalidDataException;
 import com.web.backend.exception.custom.ResourceNotFoundException;
 import com.web.backend.exception.custom.SystemOverloadException;
+import com.web.backend.exception.custom.TooManyRequestsException;
 import com.web.backend.kafka.avro.ChatMessageAvro;
 import com.web.backend.kafka.producer.ChatProducer;
 import com.web.backend.mapper.MessageMapper;
@@ -34,6 +33,7 @@ import com.web.backend.repository.SystemMessageRepository;
 import com.web.backend.repository.UserRepository;
 import com.web.backend.service.ChatService;
 import com.web.backend.service.FriendService;
+import com.web.backend.service.RateLimitingService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -50,6 +50,7 @@ public class ChatServiceImpl implements ChatService {
     private final MessageMapper messageMapper;
     private final ChatProducer chatProducer;
     private final WebSocketErrorHandler webSocketErrorHandler;
+    private final RateLimitingService rateLimitingService;
 
     private static final String CHAT_RECENT_HASH_STRING = "chat:recent:hash:";
     private static final String CHAT_RECENT_ZSET_STRING = "chat:recent:zset:";
@@ -57,6 +58,15 @@ public class ChatServiceImpl implements ChatService {
 
     private static final String EMPTY_STRING = "";
     private static final String DELIMITER_UNDERSCORE_STRING = "_";
+    private static final String DELIMITER_COLON_STRING = ":";
+
+    private static final String RATE_LIMIT_WS_SEND_KEY_STRING = "ws_chat_send";
+    private static final int RATE_LIMIT_WS_SEND_LIMIT = 30;
+    private static final int RATE_LIMIT_WS_SEND_PERIOD_SECONDS = 60;
+    private static final String ERROR_RATE_LIMIT_STRING = "error.auth.too_many_attempts";
+
+    private static final Set<MessageType> ALLOWED_PRIVATE_MESSAGE_TYPES =
+            Set.of(MessageType.CHAT, MessageType.TYPING);
 
     private static final String ERROR_MSG_RECIPIENT_NOT_FOUND_STRING = "error.msg.recipient_not_found";
     private static final String ERROR_MSG_SEND_DELETED_STRING = "error.msg.send_deleted";
@@ -65,9 +75,11 @@ public class ChatServiceImpl implements ChatService {
     private static final String ERROR_MSG_SYSTEM_OVERLOAD_STRING = "error.msg.system_overload";
     private static final String ERROR_MSG_SELF_SEND_STRING = "error.msg.self_send";
     private static final String ERROR_MSG_EMPTY_CONTENT_STRING = "error.msg.empty_content";
+    private static final String ERROR_MSG_INVALID_TYPE_STRING = "error.msg.invalid_type";
 
     @Override
     public void sendPrivateMessage(String sender, ChatMessageRequest request) {
+        checkRateLimit(sender);
         validatePrivateMessageRequest(sender, request);
         String convId = generateConversationId(sender, request.getRecipient());
         ChatMessage chatMsg = buildChatMessage(sender, request, convId);
@@ -121,6 +133,10 @@ public class ChatServiceImpl implements ChatService {
             throw new InvalidDataException(Translator.tolocale(ERROR_MSG_SELF_SEND_STRING), request);
         }
 
+        if (request.getMessageType() == null
+                || !ALLOWED_PRIVATE_MESSAGE_TYPES.contains(request.getMessageType())) {
+            throw new InvalidDataException(Translator.tolocale(ERROR_MSG_INVALID_TYPE_STRING), request);
+        }
         boolean hasContent = request.getContent() != null && !request.getContent().trim().isEmpty();
         boolean hasFile = request.getFileUrl() != null && !request.getFileUrl().trim().isEmpty();
         if (!hasContent && !hasFile) {
@@ -155,7 +171,7 @@ public class ChatServiceImpl implements ChatService {
         chatMsg.setReacted(false);
         chatMsg.setReactions(null);
         if (chatMsg.getTimestamp() == null) {
-            chatMsg.setTimestamp(LocalDateTime.now(ZoneId.systemDefault()));
+            chatMsg.setTimestamp(Instant.now());
         }
         if (chatMsg.getContent() == null) {
             chatMsg.setContent(EMPTY_STRING);
@@ -200,7 +216,7 @@ public class ChatServiceImpl implements ChatService {
         try {
             String hashKey = CHAT_RECENT_HASH_STRING + convId;
             String zsetKey = CHAT_RECENT_ZSET_STRING + convId;
-            long score = chatMsg.getTimestamp().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+            long score = chatMsg.getTimestamp().toEpochMilli();
             Duration chatTtl = getRandomTtl(300, 30);
 
             redisTemplate.opsForHash().put(hashKey, chatMsg.getId(), chatMsg);
@@ -227,6 +243,15 @@ public class ChatServiceImpl implements ChatService {
     private Duration getRandomTtl(long baseSeconds, long jitterSeconds) {
         long jitter = ThreadLocalRandom.current().nextLong(-jitterSeconds, jitterSeconds + 1);
         return Duration.ofSeconds(Math.max(10, baseSeconds + jitter));
+    }
+
+    private void checkRateLimit(String sender) {
+        String targetKey = RATE_LIMIT_WS_SEND_KEY_STRING + DELIMITER_COLON_STRING + sender;
+        boolean allowed = rateLimitingService.isAllowed(
+                targetKey, RATE_LIMIT_WS_SEND_LIMIT, RATE_LIMIT_WS_SEND_PERIOD_SECONDS);
+        if (!allowed) {
+            throw new TooManyRequestsException(ERROR_RATE_LIMIT_STRING, RATE_LIMIT_WS_SEND_PERIOD_SECONDS);
+        }
     }
 
     private String generateConversationId(String user1, String user2) {

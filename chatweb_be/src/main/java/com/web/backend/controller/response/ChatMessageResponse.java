@@ -7,7 +7,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.Map;
 
 @Data
@@ -33,7 +33,7 @@ public class ChatMessageResponse {
     private String fileName;
     private Long fileSize;
 
-    private LocalDateTime timestamp;
+    private Instant timestamp;
 
     private MessageStatus status;
 

@@ -9,7 +9,7 @@ import org.springframework.data.mongodb.core.index.CompoundIndex;
 import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Document("read_receipts")
 @Data
@@ -28,7 +28,7 @@ public class ReadReceipt {
     @Indexed
     private String username;
 
-    private LocalDateTime lastReadTimestamp;
+    private Instant lastReadTimestamp;
 
     private String lastReadMessageId;
 }

@@ -2,8 +2,6 @@ package com.web.backend.service.impl;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -222,7 +220,7 @@ public class MessageServiceImpl implements MessageService {
             return;
         }
         String convId = generateConversationId(recipientUsername, senderUsername);
-        LocalDateTime now = LocalDateTime.now(ZoneId.systemDefault());
+        Instant now = Instant.now();
         String receiptId = convId + DELIMITER_COLON_STRING + recipientUsername;
 
         try {
@@ -447,7 +445,7 @@ public class MessageServiceImpl implements MessageService {
                 : user2 + DELIMITER_UNDERSCORE_STRING + user1;
     }
 
-    private LocalDateTime getLastReadTimestamp(String conversationId, String username) {
+    private Instant getLastReadTimestamp(String conversationId, String username) {
         if (conversationId == null || username == null) {
             return null;
         }
@@ -455,7 +453,7 @@ public class MessageServiceImpl implements MessageService {
         try {
             Object val = redisTemplate.opsForValue().get(key);
             if (val != null) {
-                return LocalDateTime.parse(val.toString());
+                return Instant.parse(val.toString());
             }
         } catch (Exception e) {
             log.warn("Failed to get read receipt from Redis for key '{}'", key, e);
@@ -465,7 +463,7 @@ public class MessageServiceImpl implements MessageService {
             Optional<ReadReceipt> receiptOpt = readReceiptRepository.findByConversationIdAndUsername(conversationId,
                     username);
             if (receiptOpt.isPresent() && receiptOpt.get().getLastReadTimestamp() != null) {
-                LocalDateTime ts = receiptOpt.get().getLastReadTimestamp();
+                Instant ts = receiptOpt.get().getLastReadTimestamp();
                 cacheReadTimestamp(key, ts);
                 return ts;
             }
@@ -476,7 +474,7 @@ public class MessageServiceImpl implements MessageService {
         return null;
     }
 
-    private void cacheReadTimestamp(String key, LocalDateTime timestamp) {
+    private void cacheReadTimestamp(String key, Instant timestamp) {
         try {
             redisTemplate.opsForValue().set(key, timestamp.toString(), Duration.ofDays(7));
         } catch (Exception e) {
@@ -506,7 +504,7 @@ public class MessageServiceImpl implements MessageService {
     private List<ChatMessage> fetchMessagesFromDatabaseAndMerge(String conversationId, String cursorStr, int size,
             Pageable pageable) {
         if (cursorStr != null && !cursorStr.isEmpty()) {
-            LocalDateTime cursorTime = LocalDateTime.parse(cursorStr);
+            Instant cursorTime = Instant.parse(cursorStr);
             return new ArrayList<>(
                     messageRepository.findByConversationIdAndTimestampBefore(conversationId, cursorTime, pageable));
         }
@@ -544,18 +542,18 @@ public class MessageServiceImpl implements MessageService {
 
         String nextCursor = null;
         if (!messages.isEmpty()) {
-            LocalDateTime lastMessageTime = messages.get(messages.size() - 1).getTimestamp();
+            Instant lastMessageTime = messages.get(messages.size() - 1).getTimestamp();
             nextCursor = lastMessageTime.toString();
         }
 
-        LocalDateTime user1LastRead = getLastReadTimestamp(conversationId, user1);
-        LocalDateTime user2LastRead = getLastReadTimestamp(conversationId, user2);
+        Instant user1LastRead = getLastReadTimestamp(conversationId, user1);
+        Instant user2LastRead = getLastReadTimestamp(conversationId, user2);
 
         List<ChatMessageResponse> responseList = messages.stream()
                 .map(msg -> {
                     ChatMessageResponse response = messageMapper.toResponse(msg);
                     String recipient = msg.getRecipient();
-                    LocalDateTime recipientReadTime = recipient != null && recipient.equals(user1) ? user1LastRead
+                    Instant recipientReadTime = recipient != null && recipient.equals(user1) ? user1LastRead
                             : user2LastRead;
                     if (recipientReadTime != null && msg.getTimestamp() != null
                             && !msg.getTimestamp().isAfter(recipientReadTime)) {

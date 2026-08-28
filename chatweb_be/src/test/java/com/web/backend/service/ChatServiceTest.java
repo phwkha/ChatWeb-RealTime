@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
@@ -31,6 +31,7 @@ import com.web.backend.exception.custom.AccessForbiddenException;
 import com.web.backend.exception.custom.InvalidDataException;
 import com.web.backend.exception.custom.ResourceNotFoundException;
 import com.web.backend.exception.custom.SystemOverloadException;
+import com.web.backend.exception.custom.TooManyRequestsException;
 import com.web.backend.kafka.avro.ChatMessageAvro;
 import com.web.backend.kafka.producer.ChatProducer;
 import com.web.backend.mapper.MessageMapper;
@@ -39,6 +40,7 @@ import com.web.backend.model.mongodb.SystemMessage;
 import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.repository.SystemMessageRepository;
 import com.web.backend.repository.UserRepository;
+import com.web.backend.service.RateLimitingService;
 import com.web.backend.service.impl.ChatServiceImpl;
 
 @ExtendWith(MockitoExtension.class)
@@ -59,6 +61,8 @@ class ChatServiceTest {
     private ChatProducer chatProducer;
     @Mock
     private WebSocketErrorHandler webSocketErrorHandler;
+    @Mock
+    private RateLimitingService rateLimitingService;
 
     @Mock
     private ListOperations<String, Object> listOperations;
@@ -99,6 +103,7 @@ class ChatServiceTest {
             }
             return payload;
         });
+        lenient().when(rateLimitingService.isAllowed(anyString(), anyInt(), anyLong())).thenReturn(true);
     }
 
     @Test
@@ -108,6 +113,7 @@ class ChatServiceTest {
         ChatMessageRequest request = new ChatMessageRequest();
         request.setRecipient("recipient");
         request.setContent("Hello!");
+        request.setMessageType(MessageType.CHAT);
 
         assertThrows(ResourceNotFoundException.class, () -> chatService.sendPrivateMessage("sender", request));
     }
@@ -127,6 +133,7 @@ class ChatServiceTest {
         request.setRecipient("recipient");
         request.setContent("   ");
         request.setFileUrl(null);
+        request.setMessageType(MessageType.CHAT);
 
         assertThrows(InvalidDataException.class, () -> chatService.sendPrivateMessage("sender", request));
     }
@@ -138,6 +145,7 @@ class ChatServiceTest {
         ChatMessageRequest request = new ChatMessageRequest();
         request.setRecipient("recipient");
         request.setContent("Hello!");
+        request.setMessageType(MessageType.CHAT);
 
         assertThrows(AccessForbiddenException.class, () -> chatService.sendPrivateMessage("sender", request));
     }
@@ -149,6 +157,7 @@ class ChatServiceTest {
         ChatMessageRequest request = new ChatMessageRequest();
         request.setRecipient("recipient");
         request.setContent("Hello!");
+        request.setMessageType(MessageType.CHAT);
 
         assertThrows(AccessForbiddenException.class, () -> chatService.sendPrivateMessage("sender", request));
     }
@@ -161,6 +170,7 @@ class ChatServiceTest {
         ChatMessageRequest request = new ChatMessageRequest();
         request.setRecipient("recipient");
         request.setContent("Hello!");
+        request.setMessageType(MessageType.CHAT);
 
         assertThrows(AccessForbiddenException.class, () -> chatService.sendPrivateMessage("sender", request));
     }
@@ -173,6 +183,7 @@ class ChatServiceTest {
         ChatMessageRequest request = new ChatMessageRequest();
         request.setRecipient("recipient");
         request.setContent("Hello!");
+        request.setMessageType(MessageType.CHAT);
 
         ChatMessage chatMessage = new ChatMessage();
         chatMessage.setMessageType(MessageType.CHAT);
@@ -217,11 +228,12 @@ class ChatServiceTest {
         ChatMessageRequest request = new ChatMessageRequest();
         request.setRecipient("recipient");
         request.setContent("Hello!");
+        request.setMessageType(MessageType.CHAT);
 
         ChatMessage chatMessage = new ChatMessage();
         chatMessage.setId("msg123");
         chatMessage.setMessageType(MessageType.CHAT);
-        chatMessage.setTimestamp(LocalDateTime.now());
+        chatMessage.setTimestamp(Instant.now());
         when(messageMapper.toEntity(request)).thenReturn(chatMessage);
 
         CompletableFuture<SendResult<String, ChatMessageAvro>> failedFuture = new CompletableFuture<>();
@@ -271,6 +283,7 @@ class ChatServiceTest {
         request.setRecipient("recipient");
         request.setContent("File Msg");
         request.setFileUrl("http://file.com");
+        request.setMessageType(MessageType.CHAT);
 
         ChatMessage chatMessage = new ChatMessage();
         chatMessage.setContent(null);
@@ -288,5 +301,27 @@ class ChatServiceTest {
         assertEquals("", chatMessage.getContent());
         assertEquals(com.web.backend.common.ContentType.TEXT, chatMessage.getContentType());
         assertNotNull(chatMessage.getTimestamp());
+    }
+
+    @Test
+    void testSendPrivateMessage_RateLimitExceeded_ThrowsTooManyRequestsException() {
+        when(rateLimitingService.isAllowed(anyString(), anyInt(), anyLong())).thenReturn(false);
+
+        ChatMessageRequest request = new ChatMessageRequest();
+        request.setRecipient("recipient");
+        request.setContent("Hello!");
+        request.setMessageType(MessageType.CHAT);
+
+        assertThrows(TooManyRequestsException.class, () -> chatService.sendPrivateMessage("sender", request));
+    }
+
+    @Test
+    void testSendPrivateMessage_InvalidMessageType_ThrowsInvalidDataException() {
+        ChatMessageRequest request = new ChatMessageRequest();
+        request.setRecipient("recipient");
+        request.setContent("Hello!");
+        request.setMessageType(null);
+
+        assertThrows(InvalidDataException.class, () -> chatService.sendPrivateMessage("sender", request));
     }
 }
