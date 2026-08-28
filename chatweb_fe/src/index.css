@@ -1,137 +1,66 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap');
-@import "tailwindcss";
-
-@theme {
-  /* Vibrant & Premium Colors */
-  --color-primary: #6366f1; /* Indigo 500 */
-  --color-primary-light: #818cf8; /* Indigo 400 */
-  --color-primary-dark: #4f46e5; /* Indigo 600 */
-  
-  --color-secondary: #ec4899; /* Pink 500 */
-  --color-secondary-light: #f472b6; /* Pink 400 */
-  --color-secondary-dark: #db2777; /* Pink 600 */
-
-  --color-accent: #14b8a6; /* Teal 500 */
-
-  /* Surface Colors for Light/Dark mode (Glassmorphism focus) */
-  --color-bg-light: #f8fafc;
-  --color-bg-dark: #09090b; /* Zinc 950 */
-  
-  --color-surface-light: rgba(255, 255, 255, 0.7);
-  --color-surface-dark: rgba(24, 24, 27, 0.6); /* Zinc 900 w/ opacity */
-  --color-surface-border-light: rgba(255, 255, 255, 0.5);
-  --color-surface-border-dark: rgba(255, 255, 255, 0.1);
-
-  /* Fonts */
-  --font-sans: 'Inter', sans-serif;
-  --font-display: 'Outfit', sans-serif;
-
-  /* Custom Animations */
-  --animate-fade-in: fade-in 0.3s ease-out forwards;
-  --animate-slide-up: slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  --animate-slide-in-right: slide-in-right 0.3s ease-out forwards;
-  --animate-scale-in: scale-in 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  --animate-pulse-glow: pulse-glow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-  
-  @keyframes fade-in {
-    from { opacity: 0; }
-    to { opacity: 1; }
-  }
-  @keyframes slide-up {
-    from { transform: translateY(20px); opacity: 0; }
-    to { transform: translateY(0); opacity: 1; }
-  }
-  @keyframes slide-in-right {
-    from { transform: translateX(20px); opacity: 0; }
-    to { transform: translateX(0); opacity: 1; }
-  }
-  @keyframes scale-in {
-    from { transform: scale(0.95); opacity: 0; }
-    to { transform: scale(1); opacity: 1; }
-  }
-  @keyframes pulse-glow {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4); }
-    50% { box-shadow: 0 0 15px 5px rgba(99, 102, 241, 0.1); }
-  }
+* {
+  box-sizing: border-box;
 }
 
-@utility glass {
-  background-color: var(--color-surface-light);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--color-surface-border-light);
+html {
+  scroll-behavior: smooth;
 }
 
-@utility glass-dark {
-  background-color: var(--color-surface-dark);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid var(--color-surface-border-dark);
-  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
-}
-
-@utility text-gradient {
-  background-image: linear-gradient(to right, var(--color-primary), var(--color-secondary));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-@utility custom-scrollbar {
-  &::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-  }
-  &::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  &::-webkit-scrollbar-thumb {
-    background: rgba(156, 163, 175, 0.3);
-    border-radius: 10px;
-  }
-  &::-webkit-scrollbar-thumb:hover {
-    background: rgba(156, 163, 175, 0.5);
-  }
-}
-
-/* Base resets & styles */
-:root {
-  color-scheme: light dark;
+html,
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100%;
 }
 
 body {
-  margin: 0;
-  padding: 0;
-  min-height: 100vh;
-  font-family: var(--font-sans);
-  background-color: var(--color-bg-dark); /* Defaulting to dark as modern chat apps usually look best dark */
-  color: #f8fafc;
-  background-image: 
-    radial-gradient(circle at 15% 50%, rgba(99, 102, 241, 0.08), transparent 25%),
-    radial-gradient(circle at 85% 30%, rgba(236, 72, 153, 0.08), transparent 25%);
-  background-attachment: fixed;
-  overflow-x: hidden;
+  font-family: Inter, Aptos, "Segoe UI", Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
-h1, h2, h3, h4, h5, h6 {
-  font-family: var(--font-display);
+button,
+input {
+  font: inherit;
 }
 
-/* Smooth transitions for interactive elements */
-a, button, input, textarea {
-  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform, filter, backdrop-filter;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  transition-duration: 150ms;
+a {
+  color: inherit;
 }
 
-@keyframes marquee {
-  0% { transform: translateX(100vw); }
-  100% { transform: translateX(-100%); }
+.app-loading {
+  display: grid;
+  min-height: 100vh;
+  place-content: center;
+  place-items: center;
+  gap: 16px;
+  background: #fbfaf5;
+  color: #59625a;
+  font-size: 13px;
 }
 
-.animate-marquee {
-  display: inline-block;
-  animation: marquee 15s linear forwards;
+.app-loading__mark {
+  position: relative;
+  width: 52px;
+  height: 46px;
+  border-radius: 17px 17px 17px 6px;
+  background: #7759f6;
+  box-shadow: 0 14px 32px rgba(119, 89, 246, 0.28);
+  animation: app-loading-float 1.8s ease-in-out infinite;
+}
+
+.app-loading__mark i {
+  position: absolute;
+  top: 19px;
+  width: 8px;
+  height: 8px;
+  border: 2px solid white;
+  border-radius: 50%;
+}
+
+.app-loading__mark i:first-child { left: 14px; }
+.app-loading__mark i:last-child { right: 14px; }
+
+@keyframes app-loading-float {
+  50% { transform: translateY(-7px); }
 }

@@ -1,9 +1,9 @@
 # ChatWeb - Nền Tảng Chat Trực Tuyến
 
-Dự án ChatWeb bao gồm Frontend (React + Vite) và Backend (Spring Boot), được cấu hình để triển khai toàn diện qua Docker và CI/CD với Jenkins.
+Dự án ChatWeb bao gồm Frontend (React + Vite) và Backend (Spring Boot).
 
 ## 📂 Cấu trúc dự án
-- `chatweb_fe/`: Mã nguồn Frontend (React, Vite, TailwindCSS, Redux, WebSocket).
+- `chatweb_fe/`: Frontend React tối giản được khởi tạo bằng Vite.
 - `chatweb_be/`: Mã nguồn Backend (Spring Boot, PostgreSQL, MongoDB, Redis, Kafka, JWT).
 - `docker-compose.yml`: Cấu hình Docker Compose để khởi chạy toàn bộ hệ thống (dịch vụ, DB, Message Broker, Logging).
 - `Jenkinsfile`: Định nghĩa Pipeline CI/CD cho Jenkins (kiểm thử, build Docker image, và deploy).
@@ -31,6 +31,6 @@ Dự án ChatWeb bao gồm Frontend (React + Vite) và Backend (Spring Boot), đ
 ## ⚙️ Hệ thống CI/CD (Jenkins)
 Dự án được tích hợp sẵn `Jenkinsfile` với các bước tự động hóa:
 - Kéo source code mới nhất.
-- Chạy unit tests cho backend và linter cho frontend.
-- Build và đóng gói ứng dụng (Frontend qua Vite, Backend qua Jib/Docker).
+- Chạy unit tests cho backend.
+- Build và đóng gói backend qua Jib/Docker.
 - Triển khai tự động (Auto Deployment) thông qua Docker.
