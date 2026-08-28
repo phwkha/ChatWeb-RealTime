@@ -14,6 +14,7 @@ import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.response.ChatMessageResponse;
 import com.web.backend.controller.response.NotificationResponse;
 import com.web.backend.controller.response.ReadReceiptResponse;
+import com.web.backend.exception.custom.MessageProcessingException;
 import com.web.backend.kafka.payload.UpdateMessagePayload;
 import com.web.backend.mapper.MessageMapper;
 import com.web.backend.model.mongodb.ChatMessage;
@@ -85,7 +86,7 @@ public class UpdateMessageConsumer {
             log.debug("Dispatched read receipt notification for reader '{}' and sender '{}'", reader, sender);
         } catch (Exception e) {
             log.error("Failed to route read receipt WebSocket notification for conv '{}'", convId, e);
-            throw new RuntimeException(e);
+            throw new MessageProcessingException("Failed to process message in UpdateMessageConsumer", e);
         }
     }
 
@@ -123,7 +124,7 @@ public class UpdateMessageConsumer {
                     updatedMsg.getSender(), updatedMsg.getRecipient(), updatedMsg.getId());
         } catch (Exception e) {
             log.error("Failed to route WebSocket update notification for message '{}'", updatedMsg.getId(), e);
-            throw new RuntimeException(e);
+            throw new MessageProcessingException("Failed to process message in UpdateMessageConsumer", e);
         }
     }
 

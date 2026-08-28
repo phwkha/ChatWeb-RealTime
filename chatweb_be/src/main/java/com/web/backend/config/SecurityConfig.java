@@ -63,13 +63,17 @@ public class SecurityConfig {
         @SuppressWarnings("java:S4502")
         public SecurityFilterChain configure(HttpSecurity http) throws Exception {
                 http.csrf(AbstractHttpConfigurer::disable)
-                                .headers(headers -> headers.frameOptions(FrameOptionsConfig::disable))
+                                .headers(headers -> headers.frameOptions(FrameOptionsConfig::sameOrigin))
                                 .cors(cors -> cors.configurationSource(addConfigurationSource()))
                                 .exceptionHandling(ex -> ex.authenticationEntryPoint(jwtAuthenticationEntryPoint)
                                                 .accessDeniedHandler(jwtAccessDeniedHandler))
                                 .authorizeHttpRequests(auth -> auth
-                                                .requestMatchers("/api/auth/logout", "/api/auth/logout-all-devices").authenticated()
-                                                .requestMatchers("/ws/**", "/oauth2/**", "/login/oauth2/**", "/api/auth/**").permitAll()
+                                                .requestMatchers("/api/auth/logout", "/api/auth/logout-all-devices")
+                                                .authenticated()
+                                                .requestMatchers("/ws/**", "/oauth2/**", "/login/oauth2/**",
+                                                                "/api/auth/**", "/actuator/health", "/actuator/prometheus")
+                                                .permitAll()
+                                                .requestMatchers("/actuator/**").hasAuthority("ADMIN_VIEW_USERS")
                                                 .anyRequest().authenticated())
                                 .sessionManagement(session -> session
                                                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -77,7 +81,7 @@ public class SecurityConfig {
                                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                                 .oauth2Login(oauth2 -> oauth2
                                                 .userInfoEndpoint(userInfo -> userInfo
-                                                                 .userService(customOAuth2UserService))
+                                                                .userService(customOAuth2UserService))
                                                 .successHandler(oAuth2AuthenticationSuccessHandler)
                                                 .failureHandler(oauth2AuthenticationFailureHandler));
 
@@ -102,7 +106,7 @@ public class SecurityConfig {
         public WebSecurityCustomizer ignoreResources() {
                 return webSecurity -> webSecurity
                                 .ignoring()
-                                .requestMatchers("/actuator/**", "/v3/**", "/webjars/**", "/swagger-ui/**",
+                                .requestMatchers("/v3/**", "/webjars/**", "/swagger-ui/**",
                                                 "/favicon.ico",
                                                 "/swagger-ui*/*swagger-initializer.js");
         }

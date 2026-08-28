@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 import com.web.backend.common.NotificationsType;
 import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.response.NotificationResponse;
+import com.web.backend.exception.custom.MessageProcessingException;
 import com.web.backend.kafka.payload.FriendPayload;
 import com.web.backend.service.WebSocketRoutingService;
 
@@ -71,7 +72,7 @@ public class FriendConsumer {
         } catch (Exception e) {
             log.error("Failed to route WebSocket friend notification: sender='{}', recipient='{}'", sender, recipient,
                     e);
-            throw new RuntimeException(e);
+            throw new MessageProcessingException("Failed to process message in FriendConsumer", e);
         }
     }
 

@@ -15,6 +15,11 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.support.ResourceBundleMessageSource;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.request.RoleRequest;
@@ -50,6 +55,15 @@ class RoleServiceTest {
         ResourceBundleMessageSource messageSource = mock(ResourceBundleMessageSource.class);
         lenient().when(messageSource.getMessage(anyString(), any(), any())).thenReturn("Mocked Error Message");
         Translator.setStaticMessageSource(messageSource);
+
+        Authentication authentication = mock(Authentication.class);
+        SecurityContext securityContext = mock(SecurityContext.class);
+        lenient().when(securityContext.getAuthentication()).thenReturn(authentication);
+        SecurityContextHolder.setContext(securityContext);
+
+        GrantedAuthority auth1 = new SimpleGrantedAuthority("P1");
+        GrantedAuthority auth2 = new SimpleGrantedAuthority("P2");
+        lenient().doReturn(List.of(auth1, auth2)).when(authentication).getAuthorities();
     }
 
     @Test
@@ -65,6 +79,7 @@ class RoleServiceTest {
     @Test
     void testGetAllPermissions() {
         PermissionEntity perm = new PermissionEntity();
+        perm.setName("P1");
         when(permissionRepository.findAll()).thenReturn(List.of(perm));
         when(userMapper.toPermissionResponse(perm)).thenReturn(org.mockito.Mockito.mock(PermissionResponse.class));
 
@@ -82,8 +97,10 @@ class RoleServiceTest {
         when(roleRepository.findByName("ADMIN")).thenReturn(Optional.empty());
         PermissionEntity p1 = new PermissionEntity();
         p1.setId(1L);
+        p1.setName("P1");
         PermissionEntity p2 = new PermissionEntity();
         p2.setId(2L);
+        p2.setName("P2");
         when(permissionRepository.findAllById(java.util.List.of(1L, 2L))).thenReturn(List.of(p1, p2));
 
         RoleEntity savedRole = new RoleEntity();
@@ -126,7 +143,9 @@ class RoleServiceTest {
 
         RoleEntity role = new RoleEntity();
         when(roleRepository.findById(1L)).thenReturn(Optional.of(role));
-        when(permissionRepository.findAllById(java.util.List.of(1L))).thenReturn(List.of(new PermissionEntity()));
+        PermissionEntity p1 = new PermissionEntity();
+        p1.setName("P1");
+        when(permissionRepository.findAllById(java.util.List.of(1L))).thenReturn(List.of(p1));
         when(roleRepository.save(role)).thenReturn(role);
         when(userMapper.toRoleResponse(role)).thenReturn(org.mockito.Mockito.mock(RoleResponse.class));
 

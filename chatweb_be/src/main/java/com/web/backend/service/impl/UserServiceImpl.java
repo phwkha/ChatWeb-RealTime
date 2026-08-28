@@ -229,8 +229,8 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    public UserDetailResponse addAddress(String username, AddressRequest request) {
-        UserEntity user = userRepository.findWithAuthoritiesByUsername(username)
+    public AddressResponse addAddress(String username, AddressRequest request) {
+        UserEntity user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         Translator.tolocale(ERROR_USER_NOT_FOUND_WITH_STRING, username)));
         AddressEntity newAddress = userMapper.toAddressEntity(request);
@@ -238,17 +238,13 @@ public class UserServiceImpl implements UserService {
         user.addAddress(newAddress);
         addressRepository.save(newAddress);
         log.info("User '{}' added new address", username);
-        return userMapper.toUserDetailResponse(user);
+        return userMapper.toAddressResponse(newAddress);
     }
 
     @Override
     @Transactional
     @CacheEvict(value = USER_DETAILS_STRING, key = USERNAME_STRING)
-    public UserDetailResponse updateAddress(String username, Long addressId, AddressRequest request) {
-        UserEntity user = userRepository.findWithAuthoritiesByUsername(username)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        Translator.tolocale(ERROR_USER_NOT_FOUND_WITH_STRING, username)));
-
+    public AddressResponse updateAddress(String username, Long addressId, AddressRequest request) {
         AddressEntity addressToUpdate = addressRepository.findByIdAndUser_Username(addressId, username)
                 .orElseThrow(
                         () -> new ResourceNotFoundException(Translator.tolocale(ERROR_USER_ADDRESS_NOT_OWNED_STRING)));
@@ -257,14 +253,14 @@ public class UserServiceImpl implements UserService {
 
         addressRepository.save(addressToUpdate);
         log.info("User '{}' updated address id={}", username, addressId);
-        return userMapper.toUserDetailResponse(user);
+        return userMapper.toAddressResponse(addressToUpdate);
     }
 
     @Override
     @Transactional
     @CacheEvict(value = USER_DETAILS_STRING, key = USERNAME_STRING)
-    public UserDetailResponse deleteAddress(String username, Long addressId) {
-        UserEntity user = userRepository.findWithAuthoritiesByUsername(username)
+    public void deleteAddress(String username, Long addressId) {
+        UserEntity user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         Translator.tolocale(ERROR_USER_NOT_FOUND_WITH_STRING, username)));
 
@@ -276,7 +272,6 @@ public class UserServiceImpl implements UserService {
         addressRepository.delete(addressToDelete);
 
         log.info("User '{}' deleted address id={}", username, addressId);
-        return userMapper.toUserDetailResponse(user);
     }
 
     @Override

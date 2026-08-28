@@ -179,7 +179,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                     new UsernamePasswordAuthenticationToken(
                             loginRequest.getUsername(),
                             loginRequest.getPassword()));
-            authorities.add(authentication.getAuthorities().toString());
+            authentication.getAuthorities().forEach(authority -> authorities.add(authority.getAuthority()));
             userPrincipal = (UserEntity) authentication.getPrincipal();
             tokenVersion = userPrincipal.getTokenVersion();
             SecurityContextHolder.getContext().setAuthentication(authentication);

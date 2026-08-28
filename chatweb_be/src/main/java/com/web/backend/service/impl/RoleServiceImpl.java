@@ -20,10 +20,16 @@ import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.web.backend.exception.custom.AccessForbiddenException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
+
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -44,6 +50,12 @@ public class RoleServiceImpl implements RoleService {
     private static final String ERROR_ROLE_NOT_FOUND_STRING = "error.role.not_found";
     private static final String ERROR_ROLE_IN_USE_STRING = "error.role.in_use";
 
+    private static final String ERROR_ROLE_ESCALATION_STRING = "error.role.escalation";
+    private static final String ERROR_ROLE_SYSTEM_MODIFICATION_STRING = "error.role.system_modification";
+
+    private static final String SYSTEM_ROLE_ADMIN_STRING = "ADMIN";
+    private static final String SYSTEM_ROLE_USER_STRING = "USER";
+
     @Override
     @Transactional(readOnly = true)
     public List<RoleResponse> getAllRoles() {
@@ -55,7 +67,14 @@ public class RoleServiceImpl implements RoleService {
     @Override
     @Transactional(readOnly = true)
     public List<PermissionResponse> getAllPermissions() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        Set<String> currentUserAuthorities = authentication == null ? Set.of() :
+                authentication.getAuthorities().stream()
+                        .map(GrantedAuthority::getAuthority)
+                        .collect(Collectors.toSet());
+
         return permissionRepository.findAll().stream()
+                .filter(p -> currentUserAuthorities.contains(p.getName()))
                 .map(userMapper::toPermissionResponse)
                 .toList();
     }
@@ -74,6 +93,7 @@ public class RoleServiceImpl implements RoleService {
         if (request.getPermissionIds() != null && !request.getPermissionIds().isEmpty()) {
             Set<PermissionEntity> permissions = new HashSet<>(
                     permissionRepository.findAllById(Objects.requireNonNull(request.getPermissionIds())));
+            checkPrivilegeEscalation(permissions);
             role.setPermissions(permissions);
         }
 
@@ -89,12 +109,17 @@ public class RoleServiceImpl implements RoleService {
         RoleEntity role = roleRepository.findById(roleId)
                 .orElseThrow(() -> new ResourceNotFoundException(Translator.tolocale(ERROR_ROLE_NOT_FOUND_STRING)));
 
+        if (SYSTEM_ROLE_ADMIN_STRING.equals(role.getName()) || SYSTEM_ROLE_USER_STRING.equals(role.getName())) {
+            throw new AccessForbiddenException(Translator.tolocale(ERROR_ROLE_SYSTEM_MODIFICATION_STRING));
+        }
+
         role.setName(request.getName());
         role.setDescription(request.getDescription());
 
         if (request.getPermissionIds() != null) {
             Set<PermissionEntity> permissions = new HashSet<>(
                     permissionRepository.findAllById(Objects.requireNonNull(request.getPermissionIds())));
+            checkPrivilegeEscalation(permissions);
             role.setPermissions(permissions);
         }
 
@@ -110,10 +135,30 @@ public class RoleServiceImpl implements RoleService {
         RoleEntity role = roleRepository.findById(roleId)
                 .orElseThrow(() -> new ResourceNotFoundException(Translator.tolocale(ERROR_ROLE_NOT_FOUND_STRING)));
 
+        if (SYSTEM_ROLE_ADMIN_STRING.equals(role.getName()) || SYSTEM_ROLE_USER_STRING.equals(role.getName())) {
+            throw new AccessForbiddenException(Translator.tolocale(ERROR_ROLE_SYSTEM_MODIFICATION_STRING));
+        }
+
         if (userRepository.existsByRole(role)) {
             throw new ResourceConflictException(Translator.tolocale(ERROR_ROLE_IN_USE_STRING));
         }
         roleRepository.delete(Objects.requireNonNull(role));
         log.info("Deleted role id={} and evicted user details cache", roleId);
+    }
+
+    private void checkPrivilegeEscalation(Set<PermissionEntity> requestedPermissions) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null) return;
+        
+        Set<String> currentUserAuthorities = authentication.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .collect(Collectors.toSet());
+
+        for (PermissionEntity p : requestedPermissions) {
+            if (!currentUserAuthorities.contains(p.getName())) {
+                throw new AccessForbiddenException(
+                        Translator.tolocale(ERROR_ROLE_ESCALATION_STRING, p.getName()));
+            }
+        }
     }
 }

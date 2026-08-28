@@ -53,13 +53,22 @@ public class DataSeeder implements CommandLineRunner {
     public void run(String... args) throws Exception {
         log.info("Database seeding started...");
         // Admin permissions to match AdminController
-        PermissionEntity pAdminView = createPermissionIfNotFound("ADMIN_VIEW", "Xem quyền quản trị");
-        PermissionEntity pAdminCreate = createPermissionIfNotFound("ADMIN_CREATE", "Tạo quyền quản trị");
-        PermissionEntity pAdminUpdate = createPermissionIfNotFound("ADMIN_UPDATE", "Sửa quyền quản trị");
-        PermissionEntity pAdminDelete = createPermissionIfNotFound("ADMIN_DELETE", "Xóa quyền quản trị");
+        PermissionEntity pAdminViewUsers = createPermissionIfNotFound("ADMIN_VIEW_USERS", "Xem danh sách User");
+        PermissionEntity pAdminViewOnlineUsers = createPermissionIfNotFound("ADMIN_VIEW_ONLINE_USERS", "Xem User đang online");
+        PermissionEntity pAdminViewUserDetail = createPermissionIfNotFound("ADMIN_VIEW_USER_DETAIL", "Xem chi tiết User");
+        PermissionEntity pAdminViewUserAddresses = createPermissionIfNotFound("ADMIN_VIEW_USER_ADDRESSES", "Xem địa chỉ User");
+
+        PermissionEntity pAdminCreate = createPermissionIfNotFound("ADMIN_CREATE", "Tạo tài khoản User");
+        
+        PermissionEntity pAdminUpdateUser = createPermissionIfNotFound("ADMIN_UPDATE_USER", "Cập nhật thông tin User");
+        PermissionEntity pAdminUpdateUserAddress = createPermissionIfNotFound("ADMIN_UPDATE_USER_ADDRESS", "Cập nhật địa chỉ User");
+        
+        PermissionEntity pAdminDeleteUser = createPermissionIfNotFound("ADMIN_DELETE_USER", "Xóa tài khoản User");
+        PermissionEntity pAdminDeleteUserAddress = createPermissionIfNotFound("ADMIN_DELETE_USER_ADDRESS", "Xóa địa chỉ User");
+        
         PermissionEntity pAdminLock = createPermissionIfNotFound("ADMIN_LOCK", "Khóa user");
         PermissionEntity pAdminUnlock = createPermissionIfNotFound("ADMIN_UNLOCK", "Mở khóa user");
-        PermissionEntity pAdminDeleteAvatar = createPermissionIfNotFound("ADMIN_DELETE_AVATAR", "Xóa avatar");
+        PermissionEntity pAdminDeleteAvatar = createPermissionIfNotFound("ADMIN_DELETE_AVATAR", "Xóa avatar user");
 
         // Role permissions
         PermissionEntity pRoleViewAll = createPermissionIfNotFound("ROLE_VIEW_ALL", "Xem danh sách role");
@@ -79,7 +88,10 @@ public class DataSeeder implements CommandLineRunner {
         createRoleIfNotFound("USER", "Người dùng cơ bản");
 
         assignPermissionToRole(roleAdmin,
-                pAdminView, pAdminCreate, pAdminUpdate, pAdminDelete, pAdminLock, pAdminUnlock, pAdminDeleteAvatar,
+                pAdminViewUsers, pAdminViewOnlineUsers, pAdminViewUserDetail, pAdminViewUserAddresses,
+                pAdminCreate, pAdminUpdateUser, pAdminUpdateUserAddress,
+                pAdminDeleteUser, pAdminDeleteUserAddress,
+                pAdminLock, pAdminUnlock, pAdminDeleteAvatar,
                 pRoleViewAll, pRoleViewAllPermission, pRoleAdd, pRoleUpdate, pRoleDelete,
                 pSendEmail, pAdminSendMessage);
 

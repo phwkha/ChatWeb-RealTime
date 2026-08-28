@@ -2,6 +2,7 @@ package com.web.backend.service;
 
 import com.web.backend.controller.request.AddressRequest;
 import com.web.backend.controller.request.AdminCreateUserRequest;
+import com.web.backend.controller.request.AdminSearchUserRequest;
 import com.web.backend.controller.request.AdminUpdateUserRequest;
 import com.web.backend.controller.response.*;
 
@@ -11,7 +12,8 @@ public interface AdminService {
 
     PageResponse<UserSummaryResponse> getOnlineUsers(int pageNo, int pageSize);
 
-    PageResponse<UserSummaryResponse> getAllUsers(int pageNo, int pageSize, String... sorts);
+    PageResponse<UserResponse> searchUsersForAdmin(AdminSearchUserRequest request, int pageNo, int pageSize,
+            String... sorts);
 
     UserDetailResponse getUserByUsername(String username);
 
@@ -31,7 +33,7 @@ public interface AdminService {
 
     AddressResponse adminGetAddressById(String targetUsername, Long addressId);
 
-    UserDetailResponse adminUpdateAddress(String targetUsername, Long addressId, AddressRequest request);
+    AddressResponse adminUpdateAddress(String targetUsername, Long addressId, AddressRequest request);
 
     void adminDeleteAddress(String targetUsername, Long addressId);
 }

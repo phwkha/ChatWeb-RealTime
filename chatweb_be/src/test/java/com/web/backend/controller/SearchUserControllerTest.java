@@ -2,7 +2,6 @@ package com.web.backend.controller;
 
 import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.response.PageResponse;
-import com.web.backend.controller.response.UserDetailResponse;
 import com.web.backend.controller.response.UserSummaryResponse;
 import com.web.backend.jwt.JwtAuthenticationFilter;
 import com.web.backend.service.JwtService;
@@ -128,9 +127,9 @@ class SearchUserControllerTest {
 
         @Test
         void testAdvanceSearch_Success() throws Exception {
-                UserDetailResponse detail = new UserDetailResponse();
+                UserSummaryResponse detail = new UserSummaryResponse();
                 detail.setUsername("foundUser");
-                PageResponse<UserDetailResponse> pageResponse = PageResponse.<UserDetailResponse>builder()
+                PageResponse<UserSummaryResponse> pageResponse = PageResponse.<UserSummaryResponse>builder()
                                 .content(List.of(detail))
                                 .build();
 

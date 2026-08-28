@@ -25,11 +25,11 @@ public interface UserService {
 
     void initiatePhoneChange(String username, String newPhone, String currentPassword);
 
-    UserDetailResponse addAddress(String username, AddressRequest request);
+    AddressResponse addAddress(String username, AddressRequest request);
 
-    UserDetailResponse updateAddress(String username, Long addressId, AddressRequest request);
+    AddressResponse updateAddress(String username, Long addressId, AddressRequest request);
 
-    UserDetailResponse deleteAddress(String username, Long addressId);
+    void deleteAddress(String username, Long addressId);
 
     List<AddressResponse> getAllAddresses(String username);
 

@@ -20,7 +20,6 @@ import org.springframework.data.jpa.domain.Specification;
 
 import com.web.backend.common.UserStatus;
 import com.web.backend.controller.response.PageResponse;
-import com.web.backend.controller.response.UserDetailResponse;
 import com.web.backend.controller.response.UserSummaryResponse;
 import com.web.backend.mapper.UserMapper;
 import com.web.backend.model.postgres.UserEntity;
@@ -71,9 +70,9 @@ class SearchUserServiceTest {
     void testAdvanceSearchWithSpecifications_NoFilters() {
         Page<UserEntity> page = new PageImpl<>(List.of(activeUser));
         when(userRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(page);
-        when(userMapper.toUserDetailResponse(activeUser)).thenReturn(mock(UserDetailResponse.class));
+        when(userMapper.toUserSummaryResponse(activeUser)).thenReturn(mock(UserSummaryResponse.class));
 
-        PageResponse<UserDetailResponse> res = searchUserService.advanceSearchWithSpecifications(PageRequest.of(0, 10),
+        PageResponse<UserSummaryResponse> res = searchUserService.advanceSearchWithSpecifications(PageRequest.of(0, 10),
                 null, null);
         assertEquals(1, res.getTotalElements());
     }
@@ -82,9 +81,9 @@ class SearchUserServiceTest {
     void testAdvanceSearchWithSpecifications_EmptyArrays() {
         Page<UserEntity> page = new PageImpl<>(List.of(activeUser));
         when(userRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(page);
-        when(userMapper.toUserDetailResponse(activeUser)).thenReturn(mock(UserDetailResponse.class));
+        when(userMapper.toUserSummaryResponse(activeUser)).thenReturn(mock(UserSummaryResponse.class));
 
-        PageResponse<UserDetailResponse> res = searchUserService.advanceSearchWithSpecifications(PageRequest.of(0, 10),
+        PageResponse<UserSummaryResponse> res = searchUserService.advanceSearchWithSpecifications(PageRequest.of(0, 10),
                 new String[] {}, new String[] {});
         assertEquals(1, res.getTotalElements());
     }
@@ -93,12 +92,12 @@ class SearchUserServiceTest {
     void testAdvanceSearchWithSpecifications_WithFilters() {
         Page<UserEntity> page = new PageImpl<>(List.of(activeUser));
         when(userRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(page);
-        when(userMapper.toUserDetailResponse(activeUser)).thenReturn(mock(UserDetailResponse.class));
+        when(userMapper.toUserSummaryResponse(activeUser)).thenReturn(mock(UserSummaryResponse.class));
 
         String[] userFilters = { "username:test", "age>18" };
         String[] addressFilters = { "city:hanoi" };
 
-        PageResponse<UserDetailResponse> res = searchUserService.advanceSearchWithSpecifications(PageRequest.of(0, 10),
+        PageResponse<UserSummaryResponse> res = searchUserService.advanceSearchWithSpecifications(PageRequest.of(0, 10),
                 userFilters, addressFilters);
         assertEquals(1, res.getTotalElements());
     }

@@ -3,6 +3,7 @@ package com.web.backend.controller;
 import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.request.AddressRequest;
 import com.web.backend.controller.request.AdminCreateUserRequest;
+import com.web.backend.controller.request.AdminSearchUserRequest;
 import com.web.backend.controller.request.AdminUpdateUserRequest;
 import com.web.backend.controller.response.*;
 import com.web.backend.model.postgres.UserEntity;
@@ -22,7 +23,7 @@ import java.util.List;
 
 @Tag(name = "Admin Controller")
 @RestController
-@RequestMapping("/api/admin")
+@RequestMapping("/api/admin/users")
 @RequiredArgsConstructor
 @Slf4j(topic = "ADMIN-CONTROLLER")
 public class AdminController {
@@ -46,22 +47,25 @@ public class AdminController {
 
         private static final String SUCCESS_USER_GET_ADDRESS_STRING = "success.user.get_address";
 
-        @Operation(summary = "Get all users", description = "API endpoint for get all users")
-        @GetMapping("/users")
-        @PreAuthorize("hasAuthority('ADMIN_VIEW')")
-        public ResponseEntity<ApiResponse<PageResponse<UserSummaryResponse>>> getAllUsers(
+        @Operation(summary = "Get, search and filter users", description = "API endpoint for getting all users, searching and filtering by keyword, role, status, gender, authProvider")
+        @GetMapping
+        @PreAuthorize("hasAuthority('ADMIN_VIEW_USERS')")
+        public ResponseEntity<ApiResponse<PageResponse<UserResponse>>> getUsers(
+                        @ModelAttribute AdminSearchUserRequest request,
                         @RequestParam(defaultValue = "0") int page,
                         @RequestParam(defaultValue = STR_10_STRING) int size,
                         @RequestParam(required = false) String... sorts) {
-                PageResponse<UserSummaryResponse> users = adminService.getAllUsers(page, size, sorts);
-                return ResponseEntity
-                                .ok(ApiResponse.success(HttpStatus.OK.value(),
-                                                Translator.tolocale(SUCCESS_ADMIN_GET_USERS_STRING), users));
+                PageResponse<UserResponse> users = adminService.searchUsersForAdmin(
+                                request, page, size, sorts);
+                return ResponseEntity.ok(ApiResponse.success(
+                                HttpStatus.OK.value(),
+                                Translator.tolocale(SUCCESS_ADMIN_GET_USERS_STRING),
+                                users));
         }
 
         @Operation(summary = "Get online users", description = "API endpoint for get online users")
         @GetMapping("/online")
-        @PreAuthorize("hasAuthority('ADMIN_VIEW')")
+        @PreAuthorize("hasAuthority('ADMIN_VIEW_ONLINE_USERS')")
         public ResponseEntity<ApiResponse<PageResponse<UserSummaryResponse>>> getOnlineUsers(
                         @RequestParam(defaultValue = "0") int page,
                         @RequestParam(defaultValue = STR_10_STRING) int size) {
@@ -72,8 +76,8 @@ public class AdminController {
         }
 
         @Operation(summary = "Get user by username", description = "API endpoint for get user by username")
-        @GetMapping("/user/{username}")
-        @PreAuthorize("hasAuthority('ADMIN_VIEW')")
+        @GetMapping("/{username}")
+        @PreAuthorize("hasAuthority('ADMIN_VIEW_USER_DETAIL')")
         public ResponseEntity<ApiResponse<UserDetailResponse>> getUserByUsername(@PathVariable String username) {
                 UserDetailResponse user = adminService.getUserByUsername(username);
                 return ResponseEntity
@@ -82,7 +86,7 @@ public class AdminController {
         }
 
         @Operation(summary = "Add user", description = "API endpoint for add user")
-        @PostMapping("/add")
+        @PostMapping
         @PreAuthorize("hasAuthority('ADMIN_CREATE')")
         public ResponseEntity<ApiResponse<UserResponse>> addUser(Authentication authentication,
                         @RequestBody @Valid AdminCreateUserRequest request) {
@@ -122,7 +126,7 @@ public class AdminController {
         }
 
         @Operation(summary = "Delete avatar", description = "API endpoint for delete avatar")
-        @PostMapping("/{username}/delete-avatar")
+        @DeleteMapping("/{username}/avatar")
         @PreAuthorize("hasAuthority('ADMIN_DELETE_AVATAR')")
         public ResponseEntity<ApiResponse<Void>> deleteAvatar(Authentication authentication,
                         @PathVariable String username) {
@@ -136,7 +140,7 @@ public class AdminController {
 
         @Operation(summary = "Update user", description = "API endpoint for update user")
         @PutMapping("/{username}")
-        @PreAuthorize("hasAuthority('ADMIN_UPDATE')")
+        @PreAuthorize("hasAuthority('ADMIN_UPDATE_USER')")
         public ResponseEntity<ApiResponse<UserResponse>> updateUser(
                         Authentication authentication,
                         @PathVariable String username,
@@ -150,7 +154,7 @@ public class AdminController {
 
         @Operation(summary = "Delete user", description = "API endpoint for delete user")
         @DeleteMapping("/{username}")
-        @PreAuthorize("hasAuthority('ADMIN_DELETE')")
+        @PreAuthorize("hasAuthority('ADMIN_DELETE_USER')")
         public ResponseEntity<ApiResponse<Void>> deleteUser(@PathVariable String username,
                         Authentication authentication) {
                 UserEntity adminPrincipal = (UserEntity) authentication.getPrincipal();
@@ -158,15 +162,15 @@ public class AdminController {
 
                 adminService.adminDeleteUser(username, adminPrincipal.getUsername());
 
-                return ResponseEntity.status(HttpStatus.NO_CONTENT)
-                                .body(ApiResponse.success(HttpStatus.NO_CONTENT.value(),
+                return ResponseEntity.status(HttpStatus.OK)
+                                .body(ApiResponse.success(HttpStatus.OK.value(),
                                                 Translator.tolocale(SUCCESS_ADMIN_DEL_USER_STRING),
                                                 null));
         }
 
         @Operation(summary = "Get all addresses for user", description = "API endpoint for get all addresses for user")
-        @GetMapping("/user/{username}/addresses")
-        @PreAuthorize("hasAuthority('ADMIN_VIEW')")
+        @GetMapping("/{username}/addresses")
+        @PreAuthorize("hasAuthority('ADMIN_VIEW_USER_ADDRESSES')")
         public ResponseEntity<ApiResponse<List<AddressResponse>>> getAllAddressesForUser(
                         @PathVariable String username) {
                 List<AddressResponse> addresses = adminService.adminGetAllAddresses(username);
@@ -177,8 +181,8 @@ public class AdminController {
         }
 
         @Operation(summary = "Get address by id for user", description = "API endpoint for get address by id for user")
-        @GetMapping("/user/{username}/address/{addressId}")
-        @PreAuthorize("hasAuthority('ADMIN_VIEW')")
+        @GetMapping("/{username}/addresses/{addressId}")
+        @PreAuthorize("hasAuthority('ADMIN_VIEW_USER_ADDRESSES')")
         public ResponseEntity<ApiResponse<AddressResponse>> getAddressByIdForUser(
                         @PathVariable String username,
                         @PathVariable Long addressId) {
@@ -190,9 +194,9 @@ public class AdminController {
         }
 
         @Operation(summary = "Update address for user", description = "API endpoint for update address for user")
-        @PutMapping("/user/{username}/address/{addressId}")
-        @PreAuthorize("hasAuthority('ADMIN_UPDATE')")
-        public ResponseEntity<ApiResponse<UserDetailResponse>> updateAddressForUser(
+        @PutMapping("/{username}/addresses/{addressId}")
+        @PreAuthorize("hasAuthority('ADMIN_UPDATE_USER_ADDRESS')")
+        public ResponseEntity<ApiResponse<AddressResponse>> updateAddressForUser(
                         Authentication authentication,
                         @PathVariable String username,
                         @PathVariable Long addressId,
@@ -201,7 +205,7 @@ public class AdminController {
                 log.debug("Admin '{}' updating address id={} for user '{}'", userEntityPrincipal.getUsername(),
                                 addressId, username);
 
-                UserDetailResponse result = adminService.adminUpdateAddress(username, addressId, addressRequest);
+                AddressResponse result = adminService.adminUpdateAddress(username, addressId, addressRequest);
 
                 return ResponseEntity.ok(ApiResponse.success(
                                 HttpStatus.OK.value(),
@@ -210,8 +214,8 @@ public class AdminController {
         }
 
         @Operation(summary = "Delete address for user", description = "API endpoint for delete address for user")
-        @DeleteMapping("/user/{username}/address/{addressId}")
-        @PreAuthorize("hasAuthority('ADMIN_DELETE')")
+        @DeleteMapping("/{username}/addresses/{addressId}")
+        @PreAuthorize("hasAuthority('ADMIN_DELETE_USER_ADDRESS')")
         public ResponseEntity<ApiResponse<Void>> deleteAddressForUser(
                         Authentication authentication,
                         @PathVariable String username,
@@ -222,9 +226,9 @@ public class AdminController {
 
                 adminService.adminDeleteAddress(username, addressId);
 
-                return ResponseEntity.status(HttpStatus.NO_CONTENT)
+                return ResponseEntity.status(HttpStatus.OK)
                                 .body(ApiResponse.success(
-                                                HttpStatus.NO_CONTENT.value(),
+                                                HttpStatus.OK.value(),
                                                 Translator.tolocale(SUCCESS_ADMIN_DELETED_ADDRESS_WITH_STRING,
                                                                 username),
                                                 null));

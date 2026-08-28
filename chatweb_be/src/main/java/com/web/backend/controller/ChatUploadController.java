@@ -16,6 +16,9 @@ import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.web.backend.ratelimit.RateLimit;
+import com.web.backend.ratelimit.LimitType;
+
 @Tag(name = "Chat Upload Controller")
 @RestController
 @RequestMapping("/api/chat/")
@@ -31,6 +34,7 @@ public class ChatUploadController {
 
     private static final String SUCCESS_CHAT_UPLOAD_STRING = "success.chat.upload";
 
+    @RateLimit(key = "chat_upload_image", limit = 10, period = 60, type = LimitType.USER)
     @Operation(summary = "Upload chat image", description = "API endpoint for upload chat image")
     @PostMapping(value = "/image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<String>> uploadChatImage(@RequestParam(IMAGE_STRING) MultipartFile file) {
@@ -40,6 +44,7 @@ public class ChatUploadController {
                 .ok(ApiResponse.success(HttpStatus.OK.value(), Translator.tolocale(SUCCESS_CHAT_UPLOAD_STRING), url));
     }
 
+    @RateLimit(key = "chat_upload_video", limit = 10, period = 60, type = LimitType.USER)
     @Operation(summary = "Upload chat video", description = "API endpoint for upload chat video")
     @PostMapping(value = "/video", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<String>> uploadChatVideo(@RequestParam(VIDEO_STRING) MultipartFile file) {

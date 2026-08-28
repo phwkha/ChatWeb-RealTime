@@ -125,6 +125,7 @@ public class AuthController {
         }
 
         @Operation(summary = "Refresh token", description = "API endpoint for refresh token")
+        @RateLimit(key = "refresh_token", limit = 10, period = 60, type = LimitType.IP)
         @PostMapping("/refresh-token")
         public ResponseEntity<ApiResponse<String>> refreshToken(
                         @CookieValue(name = REFRESHTOKEN, required = false) String refreshToken) {

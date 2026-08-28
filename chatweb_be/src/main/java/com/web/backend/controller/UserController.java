@@ -127,13 +127,13 @@ public class UserController {
 
         @Operation(summary = "Add address", description = "API endpoint for add address")
         @PostMapping("/address")
-        public ResponseEntity<ApiResponse<UserDetailResponse>> addAddress(
+        public ResponseEntity<ApiResponse<AddressResponse>> addAddress(
                         Authentication authentication,
                         @RequestBody @Valid AddressRequest addressRequest) {
 
                 UserEntity currentUser = (UserEntity) authentication.getPrincipal();
                 log.debug("User '{}' adding new address", currentUser.getUsername());
-                UserDetailResponse result = userService.addAddress(currentUser.getUsername(), addressRequest);
+                AddressResponse result = userService.addAddress(currentUser.getUsername(), addressRequest);
 
                 return ResponseEntity.status(HttpStatus.CREATED)
                                 .body(ApiResponse.success(HttpStatus.CREATED.value(),
@@ -143,14 +143,14 @@ public class UserController {
 
         @Operation(summary = "Update address", description = "API endpoint for update address")
         @PutMapping("/address/{addressId}")
-        public ResponseEntity<ApiResponse<UserDetailResponse>> updateAddress(
+        public ResponseEntity<ApiResponse<AddressResponse>> updateAddress(
                         Authentication authentication,
                         @PathVariable Long addressId,
                         @RequestBody @Valid AddressRequest addressRequest) {
 
                 UserEntity currentUser = (UserEntity) authentication.getPrincipal();
                 log.debug("User '{}' updating address id={}", currentUser.getUsername(), addressId);
-                UserDetailResponse result = userService.updateAddress(currentUser.getUsername(), addressId,
+                AddressResponse result = userService.updateAddress(currentUser.getUsername(), addressId,
                                 addressRequest);
 
                 return ResponseEntity.ok(
@@ -160,17 +160,17 @@ public class UserController {
 
         @Operation(summary = "Delete address", description = "API endpoint for delete address")
         @DeleteMapping("/address/{addressId}")
-        public ResponseEntity<ApiResponse<UserDetailResponse>> deleteAddress(
+        public ResponseEntity<ApiResponse<Void>> deleteAddress(
                         Authentication authentication,
                         @PathVariable Long addressId) {
 
                 UserEntity currentUser = (UserEntity) authentication.getPrincipal();
                 log.debug("User '{}' deleting address id={}", currentUser.getUsername(), addressId);
-                UserDetailResponse result = userService.deleteAddress(currentUser.getUsername(), addressId);
+                userService.deleteAddress(currentUser.getUsername(), addressId);
 
                 return ResponseEntity.ok(
                                 ApiResponse.success(HttpStatus.OK.value(),
-                                                Translator.tolocale(SUCCESS_USER_DEL_ADDRESS_STRING), result));
+                                                Translator.tolocale(SUCCESS_USER_DEL_ADDRESS_STRING), null));
         }
 
         @Operation(summary = "Get all addresses", description = "API endpoint for get all addresses")

@@ -18,14 +18,18 @@ import org.springframework.context.support.ResourceBundleMessageSource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import com.web.backend.common.AuthProvider;
+import com.web.backend.common.GenderType;
 import com.web.backend.common.UserStatus;
 import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.request.AddressRequest;
 import com.web.backend.controller.request.AdminCreateUserRequest;
+import com.web.backend.controller.request.AdminSearchUserRequest;
 import com.web.backend.controller.request.AdminUpdateUserRequest;
 import com.web.backend.controller.response.AddressResponse;
 import com.web.backend.controller.response.PageResponse;
@@ -108,13 +112,40 @@ class AdminServiceTest {
         assertTrue(summary.isOnline());
     }
 
-    @Test
-    void testGetAllUsers_Success() {
-        UserSummaryResponse summary = UserSummaryResponse.builder().username("testuser").build();
-        Page<UserSummaryResponse> page = new PageImpl<>(List.of(summary));
-        when(userRepository.findSummaryByUserStatusNot(eq(UserStatus.INACTIVE), any(Pageable.class))).thenReturn(page);
 
-        PageResponse<UserSummaryResponse> res = adminService.getAllUsers(0, 10, "id:asc");
+    @Test
+    void testSearchUsersForAdmin_WithAllFilters_Success() {
+        AdminSearchUserRequest request = AdminSearchUserRequest.builder()
+                .keyword("keyword")
+                .role("USER")
+                .status(UserStatus.ACTIVE)
+                .gender(GenderType.MAN)
+                .authProvider(AuthProvider.LOCAL)
+                .build();
+        UserResponse response = UserResponse.builder().username("testuser").build();
+        Page<UserEntity> page = new PageImpl<>(List.of(activeUser));
+        when(userRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(page);
+        when(userMapper.toUserResponse(activeUser)).thenReturn(response);
+
+        PageResponse<UserResponse> res = adminService.searchUsersForAdmin(
+                request, 0, 10, "username:asc");
+
+        assertNotNull(res);
+        assertEquals(1, res.getTotalElements());
+        assertEquals("testuser", res.getContent().get(0).getUsername());
+    }
+
+    @Test
+    void testSearchUsersForAdmin_WithoutFilters_Success() {
+        UserResponse response = UserResponse.builder().username("testuser").build();
+        Page<UserEntity> page = new PageImpl<>(List.of(activeUser));
+        when(userRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(page);
+        when(userMapper.toUserResponse(activeUser)).thenReturn(response);
+
+        PageResponse<UserResponse> res = adminService.searchUsersForAdmin(
+                null, 0, 10);
+
+        assertNotNull(res);
         assertEquals(1, res.getTotalElements());
     }
 

@@ -35,6 +35,7 @@ import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -196,8 +197,8 @@ class UserControllerTest {
         request.setCity("Hanoi");
         request.setCountry("Vietnam");
 
-        UserDetailResponse response = new UserDetailResponse();
-        response.setUsername("testuser");
+        AddressResponse response = new AddressResponse();
+        response.setCity("Hanoi");
 
         when(userService.addAddress(eq("testuser"), any(AddressRequest.class))).thenReturn(response);
 
@@ -218,7 +219,7 @@ class UserControllerTest {
         request.setCity("Hanoi");
         request.setCountry("Vietnam");
 
-        UserDetailResponse response = new UserDetailResponse();
+        AddressResponse response = new AddressResponse();
 
         when(userService.updateAddress(eq("testuser"), eq(1L), any(AddressRequest.class))).thenReturn(response);
 
@@ -231,9 +232,7 @@ class UserControllerTest {
 
     @Test
     void testDeleteAddress_Success() throws Exception {
-        UserDetailResponse response = new UserDetailResponse();
-
-        when(userService.deleteAddress("testuser", 1L)).thenReturn(response);
+        doNothing().when(userService).deleteAddress("testuser", 1L);
 
         mockMvc.perform(delete("/api/users/address/1")
                 .principal(mockAuth))

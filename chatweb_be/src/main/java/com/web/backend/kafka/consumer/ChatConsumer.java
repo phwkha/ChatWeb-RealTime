@@ -12,6 +12,7 @@ import org.springframework.retry.annotation.Backoff;
 import org.springframework.stereotype.Component;
 import com.web.backend.controller.response.ChatMessageResponse;
 import com.web.backend.controller.response.MessageSystemResponse;
+import com.web.backend.exception.custom.MessageProcessingException;
 import com.web.backend.kafka.avro.ChatMessageAvro;
 import com.web.backend.mapper.MessageMapper;
 import com.web.backend.model.mongodb.SystemMessage;
@@ -55,7 +56,7 @@ public class ChatConsumer {
         } catch (Exception e) {
             log.error("Failed to route WebSocket chat message for sender '{}' and recipient '{}'", sender, recipient,
                     e);
-            throw new RuntimeException(e);
+            throw new MessageProcessingException("Failed to process message in ChatConsumer", e);
         }
     }
 
@@ -74,7 +75,7 @@ public class ChatConsumer {
             log.debug("Broadcasted system message to topic '{}'", TOPIC_PUBLIC_STRING);
         } catch (Exception e) {
             log.error("Failed to broadcast system message to '{}'", TOPIC_PUBLIC_STRING, e);
-            throw new RuntimeException(e);
+            throw new MessageProcessingException("Failed to process message in ChatConsumer", e);
         }
     }
 }

@@ -5,7 +5,6 @@ import org.springframework.stereotype.Service;
 
 import com.web.backend.common.UserStatus;
 import com.web.backend.controller.response.PageResponse;
-import com.web.backend.controller.response.UserDetailResponse;
 import com.web.backend.controller.response.UserSummaryResponse;
 import com.web.backend.mapper.UserMapper;
 import com.web.backend.model.postgres.UserEntity;
@@ -72,7 +71,7 @@ public class SearchUserServiceImpl implements SearchUserService {
 
     @Override
     @Transactional(readOnly = true)
-    public PageResponse<UserDetailResponse> advanceSearchWithSpecifications(Pageable pageable, String[] user,
+    public PageResponse<UserSummaryResponse> advanceSearchWithSpecifications(Pageable pageable, String[] user,
             String[] address) {
 
         Specification<UserEntity> finalSpec = UserSearchSpecifications.isRole(ROLE_USER_STRING)
@@ -88,8 +87,17 @@ public class SearchUserServiceImpl implements SearchUserService {
             finalSpec = finalSpec.and(new AddressSpecification(addressBuilder.params));
         }
 
-        Page<UserEntity> users = userRepository.findAll(finalSpec, Objects.requireNonNull(pageable));
-        return convertToPageResponse(users);
+        Page<UserEntity> pageResult = userRepository.findAll(finalSpec, Objects.requireNonNull(pageable));
+        Page<UserSummaryResponse> responsePage = pageResult.map(userMapper::toUserSummaryResponse);
+
+        return PageResponse.<UserSummaryResponse>builder()
+                .content(responsePage.getContent())
+                .pageNo(responsePage.getNumber())
+                .pageSize(responsePage.getSize())
+                .totalElements(responsePage.getTotalElements())
+                .totalPages(responsePage.getTotalPages())
+                .last(responsePage.isLast())
+                .build();
     }
 
     private SearchSpecificationsBuilder buildSpecifications(String[] criteria) {
@@ -119,19 +127,5 @@ public class SearchUserServiceImpl implements SearchUserService {
             }
         }
         return builder;
-    }
-
-    private PageResponse<UserDetailResponse> convertToPageResponse(Page<UserEntity> pageResult) {
-        List<UserDetailResponse> content = pageResult.getContent().stream()
-                .map(userMapper::toUserDetailResponse)
-                .toList();
-        return PageResponse.<UserDetailResponse>builder()
-                .content(content)
-                .pageNo(pageResult.getNumber())
-                .pageSize(pageResult.getSize())
-                .totalElements(pageResult.getTotalElements())
-                .totalPages(pageResult.getTotalPages())
-                .last(pageResult.isLast())
-                .build();
     }
 }

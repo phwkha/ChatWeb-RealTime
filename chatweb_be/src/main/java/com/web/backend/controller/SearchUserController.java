@@ -4,7 +4,6 @@ import com.web.backend.controller.response.UserSummaryResponse;
 import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.response.ApiResponse;
 import com.web.backend.controller.response.PageResponse;
-import com.web.backend.controller.response.UserDetailResponse;
 import com.web.backend.service.SearchUserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -53,7 +52,7 @@ public class SearchUserController {
 
     @Operation(summary = "Advance search query by specifications", description = "Return list of users")
     @GetMapping(path = "/users/filter")
-    public ResponseEntity<ApiResponse<PageResponse<UserDetailResponse>>> advanceSearchWithSpecifications(
+    public ResponseEntity<ApiResponse<PageResponse<UserSummaryResponse>>> advanceSearchWithSpecifications(
             Pageable pageable,
             @RequestParam(required = false) String[] user,
             @RequestParam(required = false) String[] address) {

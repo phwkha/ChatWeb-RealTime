@@ -94,16 +94,37 @@ class AdminControllerTest {
         }
 
         @Test
-        void testGetAllUsers_Success() throws Exception {
-                UserSummaryResponse summary = UserSummaryResponse.builder().username("user1").build();
-                PageResponse<UserSummaryResponse> pageResponse = PageResponse.<UserSummaryResponse>builder()
-                                .content(List.of(summary))
+        void testGetUsers_Success() throws Exception {
+                UserResponse user = UserResponse.builder().username("user1").build();
+                PageResponse<UserResponse> pageResponse = PageResponse.<UserResponse>builder()
+                                .content(List.of(user))
                                 .build();
 
-                when(adminService.getAllUsers(eq(0), eq(10), any())).thenReturn(pageResponse);
+                when(adminService.searchUsersForAdmin(any(), eq(0), eq(10), any())).thenReturn(pageResponse);
 
                 mockMvc.perform(get("/api/admin/users")
                                 .principal(mockAuth)
+                                .param("page", "0")
+                                .param("size", "10"))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.code").value(200))
+                                .andExpect(jsonPath("$.data.content[0].username").value("user1"));
+        }
+
+        @Test
+        void testGetUsers_WithFilters_Success() throws Exception {
+                UserResponse user = UserResponse.builder().username("user1").build();
+                PageResponse<UserResponse> pageResponse = PageResponse.<UserResponse>builder()
+                                .content(List.of(user))
+                                .build();
+
+                when(adminService.searchUsersForAdmin(any(), eq(0), eq(10), any()))
+                                .thenReturn(pageResponse);
+
+                mockMvc.perform(get("/api/admin/users")
+                                .principal(mockAuth)
+                                .param("keyword", "user")
+                                .param("role", "USER")
                                 .param("page", "0")
                                 .param("size", "10"))
                                 .andExpect(status().isOk())
@@ -120,7 +141,7 @@ class AdminControllerTest {
 
                 when(adminService.getOnlineUsers(eq(0), eq(10))).thenReturn(pageResponse);
 
-                mockMvc.perform(get("/api/admin/online")
+                mockMvc.perform(get("/api/admin/users/online")
                                 .principal(mockAuth)
                                 .param("page", "0")
                                 .param("size", "10"))
@@ -135,7 +156,7 @@ class AdminControllerTest {
 
                 when(adminService.getUserByUsername("user1")).thenReturn(detail);
 
-                mockMvc.perform(get("/api/admin/user/user1")
+                mockMvc.perform(get("/api/admin/users/user1")
                                 .principal(mockAuth))
                                 .andExpect(status().isOk())
                                 .andExpect(jsonPath("$.code").value(200))
@@ -155,7 +176,7 @@ class AdminControllerTest {
 
                 when(adminService.adminCreateUser(any(AdminCreateUserRequest.class))).thenReturn(response);
 
-                mockMvc.perform(post("/api/admin/add")
+                mockMvc.perform(post("/api/admin/users")
                                 .principal(mockAuth)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(objectMapper.writeValueAsString(request)))
@@ -171,7 +192,7 @@ class AdminControllerTest {
 
                 when(adminService.unlockUser("user1")).thenReturn(response);
 
-                mockMvc.perform(post("/api/admin/user1/unlock")
+                mockMvc.perform(post("/api/admin/users/user1/unlock")
                                 .principal(mockAuth))
                                 .andExpect(status().isOk())
                                 .andExpect(jsonPath("$.code").value(200));
@@ -184,7 +205,7 @@ class AdminControllerTest {
 
                 when(adminService.lockUser("user1")).thenReturn(response);
 
-                mockMvc.perform(post("/api/admin/user1/lock")
+                mockMvc.perform(post("/api/admin/users/user1/lock")
                                 .principal(mockAuth))
                                 .andExpect(status().isOk())
                                 .andExpect(jsonPath("$.code").value(200));
@@ -192,7 +213,7 @@ class AdminControllerTest {
 
         @Test
         void testDeleteAvatar_Success() throws Exception {
-                mockMvc.perform(post("/api/admin/user1/delete-avatar")
+                mockMvc.perform(delete("/api/admin/users/user1/avatar")
                                 .principal(mockAuth))
                                 .andExpect(status().isOk())
                                 .andExpect(jsonPath("$.code").value(200));
@@ -210,7 +231,7 @@ class AdminControllerTest {
 
                 when(adminService.adminUpdateUser(eq("user1"), any(AdminUpdateUserRequest.class))).thenReturn(response);
 
-                mockMvc.perform(put("/api/admin/user1")
+                mockMvc.perform(put("/api/admin/users/user1")
                                 .principal(mockAuth)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(objectMapper.writeValueAsString(request)))
@@ -220,9 +241,9 @@ class AdminControllerTest {
 
         @Test
         void testDeleteUser_Success() throws Exception {
-                mockMvc.perform(delete("/api/admin/user1")
+                mockMvc.perform(delete("/api/admin/users/user1")
                                 .principal(mockAuth))
-                                .andExpect(status().isNoContent());
+                                .andExpect(status().isOk());
 
                 verify(adminService).adminDeleteUser("user1", "admin");
         }
@@ -234,7 +255,7 @@ class AdminControllerTest {
 
                 when(adminService.adminGetAllAddresses("user1")).thenReturn(List.of(address));
 
-                mockMvc.perform(get("/api/admin/user/user1/addresses")
+                mockMvc.perform(get("/api/admin/users/user1/addresses")
                                 .principal(mockAuth))
                                 .andExpect(status().isOk())
                                 .andExpect(jsonPath("$.code").value(200));
@@ -247,7 +268,7 @@ class AdminControllerTest {
 
                 when(adminService.adminGetAddressById("user1", 1L)).thenReturn(address);
 
-                mockMvc.perform(get("/api/admin/user/user1/address/1")
+                mockMvc.perform(get("/api/admin/users/user1/addresses/1")
                                 .principal(mockAuth))
                                 .andExpect(status().isOk())
                                 .andExpect(jsonPath("$.code").value(200));
@@ -262,13 +283,13 @@ class AdminControllerTest {
                 request.setDistrict("Hoan Kiem District");
                 request.setWard("Hang Trong");
 
-                UserDetailResponse response = new UserDetailResponse();
-                response.setUsername("user1");
+                AddressResponse response = new AddressResponse();
+                response.setCity("Hanoi");
 
                 when(adminService.adminUpdateAddress(eq("user1"), eq(1L), any(AddressRequest.class)))
                                 .thenReturn(response);
 
-                mockMvc.perform(put("/api/admin/user/user1/address/1")
+                mockMvc.perform(put("/api/admin/users/user1/addresses/1")
                                 .principal(mockAuth)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(objectMapper.writeValueAsString(request)))
@@ -278,9 +299,9 @@ class AdminControllerTest {
 
         @Test
         void testDeleteAddressForUser_Success() throws Exception {
-                mockMvc.perform(delete("/api/admin/user/user1/address/1")
+                mockMvc.perform(delete("/api/admin/users/user1/addresses/1")
                                 .principal(mockAuth))
-                                .andExpect(status().isNoContent());
+                                .andExpect(status().isOk());
 
                 verify(adminService).adminDeleteAddress("user1", 1L);
         }

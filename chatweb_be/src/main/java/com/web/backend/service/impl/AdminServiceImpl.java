@@ -1,11 +1,18 @@
 package com.web.backend.service.impl;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
+
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.data.domain.Page;
@@ -21,6 +28,7 @@ import com.web.backend.common.UserStatus;
 import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.request.AddressRequest;
 import com.web.backend.controller.request.AdminCreateUserRequest;
+import com.web.backend.controller.request.AdminSearchUserRequest;
 import com.web.backend.controller.request.AdminUpdateUserRequest;
 import com.web.backend.controller.response.AddressResponse;
 import com.web.backend.controller.response.PageResponse;
@@ -32,14 +40,17 @@ import com.web.backend.exception.custom.ResourceConflictException;
 import com.web.backend.exception.custom.ResourceNotFoundException;
 import com.web.backend.mapper.UserMapper;
 import com.web.backend.model.postgres.AddressEntity;
+import com.web.backend.model.postgres.PermissionEntity;
 import com.web.backend.model.postgres.RoleEntity;
 import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.repository.AddressRepository;
 import com.web.backend.repository.MessageRepository;
 import com.web.backend.repository.RoleRepository;
 import com.web.backend.repository.UserRepository;
+import com.web.backend.repository.specification.UserSearchSpecifications;
 import com.web.backend.service.AdminService;
 import com.web.backend.service.StorageService;
+import org.springframework.data.jpa.domain.Specification;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -87,13 +98,15 @@ public class AdminServiceImpl implements AdminService {
 
     private static final String SYS_ACCOUNT_STRING = "sys.account";
     private static final String SYS_DELETED_STRING = "sys.deleted";
+    private static final String ERROR_ROLE_ESCALATION_STRING = "error.role.escalation";
+
+    private static final String ERROR_ROLE_SELF_MODIFICATION_STRING = "error.role.self_modification";
 
     private static final String ONLINE_USERS_KEY = "online_users";
 
     private static final Set<String> ALLOWED_SORT_FIELDS = Set.of(
             "id", "username", "email", "phone", "firstName", "lastName",
-            "gender", "userStatus", "authProvider", "birthday", "createAt", "updateAt"
-    );
+            "gender", "userStatus", "authProvider", "birthday", "createAt", "updateAt");
 
     @Override
     @Transactional(readOnly = true)
@@ -143,38 +156,56 @@ public class AdminServiceImpl implements AdminService {
 
     @Override
     @Transactional(readOnly = true)
-    public PageResponse<UserSummaryResponse> getAllUsers(int pageNo, int pageSize, String... sorts) {
+    public PageResponse<UserResponse> searchUsersForAdmin(AdminSearchUserRequest request, int pageNo, int pageSize,
+            String... sorts) {
 
+        Pageable pageable = buildPageable(pageNo, pageSize, sorts);
+
+        Specification<UserEntity> spec = Specification.<UserEntity>unrestricted()
+                .and(UserSearchSpecifications.containsAdminKeyword(request != null ? request.getKeyword() : null))
+                .and(UserSearchSpecifications.isRole(request != null ? request.getRole() : null))
+                .and(UserSearchSpecifications.hasStatus(request != null ? request.getStatus() : null))
+                .and(UserSearchSpecifications.hasGender(request != null ? request.getGender() : null))
+                .and(UserSearchSpecifications.hasAuthProvider(request != null ? request.getAuthProvider() : null));
+
+        Page<UserEntity> pageResult = userRepository.findAll(spec, pageable);
+        Page<UserResponse> responsePage = pageResult.map(userMapper::toUserResponse);
+
+        return PageResponse.<UserResponse>builder()
+                .content(responsePage.getContent())
+                .pageNo(responsePage.getNumber())
+                .pageSize(responsePage.getSize())
+                .totalElements(responsePage.getTotalElements())
+                .totalPages(responsePage.getTotalPages())
+                .last(responsePage.isLast())
+                .build();
+    }
+
+    private Pageable buildPageable(int pageNo, int pageSize, String... sorts) {
         List<Sort.Order> orders = new ArrayList<>();
         if (sorts != null) {
-            for (String sortBy : sorts) {
-                String[] parts = sortBy.split(DELIMITE_STRING, 2);
-                if (parts.length == 2 && !parts[0].isEmpty() && ALLOWED_SORT_FIELDS.contains(parts[0])) {
-                    if (parts[1].equalsIgnoreCase(ASC_STRING)) {
-                        orders.add(new Sort.Order(Sort.Direction.ASC, parts[0]));
-                    } else {
-                        orders.add(new Sort.Order(Sort.Direction.DESC, parts[0]));
-                    }
-                }
-            }
+            Arrays.stream(sorts)
+                    .map(this::parseSortOrder)
+                    .flatMap(Optional::stream)
+                    .forEach(orders::add);
         }
 
         if (orders.isEmpty()) {
             orders.add(new Sort.Order(Sort.Direction.DESC, ID_STRING));
         }
-        Pageable pageable = PageRequest.of(pageNo, pageSize,
-                Sort.by(orders));
+        return PageRequest.of(pageNo, pageSize, Sort.by(orders));
+    }
 
-        Page<UserSummaryResponse> pageResult = userRepository.findSummaryByUserStatusNot(UserStatus.INACTIVE, pageable);
-
-        return PageResponse.<UserSummaryResponse>builder()
-                .content(pageResult.getContent())
-                .pageNo(pageResult.getNumber())
-                .pageSize(pageResult.getSize())
-                .totalElements(pageResult.getTotalElements())
-                .totalPages(pageResult.getTotalPages())
-                .last(pageResult.isLast())
-                .build();
+    private Optional<Sort.Order> parseSortOrder(String sortBy) {
+        if (sortBy == null) {
+            return Optional.empty();
+        }
+        String[] parts = sortBy.split(DELIMITE_STRING, 2);
+        if (parts.length == 2 && !parts[0].isEmpty() && ALLOWED_SORT_FIELDS.contains(parts[0])) {
+            Sort.Direction direction = parts[1].equalsIgnoreCase(ASC_STRING) ? Sort.Direction.ASC : Sort.Direction.DESC;
+            return Optional.of(new Sort.Order(direction, parts[0]));
+        }
+        return Optional.empty();
     }
 
     @Override
@@ -217,6 +248,7 @@ public class AdminServiceImpl implements AdminService {
                         () -> new ResourceNotFoundException(
                                 Translator.tolocale(ERROR_ROLE_NOT_FOUND_WITH_STRING, roleId)));
 
+        checkRoleAssignmentPrivilege(role);
         user.setRole(role);
         UserEntity savedUser = userRepository.save(user);
         log.info("Admin created new user '{}'", savedUser.getUsername());
@@ -295,9 +327,15 @@ public class AdminServiceImpl implements AdminService {
 
         userMapper.updateAdminUserFromRequest(request, userEntity);
         if (request.getRoleId() != null) {
+            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+            if (authentication != null && authentication.getName().equals(username)
+                    && !request.getRoleId().equals(userEntity.getRole().getId())) {
+                throw new AccessForbiddenException(Translator.tolocale(ERROR_ROLE_SELF_MODIFICATION_STRING));
+            }
             Long roleId = Objects.requireNonNull(request.getRoleId());
             RoleEntity newRole = roleRepository.findById(roleId)
                     .orElseThrow(() -> new ResourceNotFoundException(Translator.tolocale(ERROR_ROLE_NOT_FOUND_STRING)));
+            checkRoleAssignmentPrivilege(newRole);
             userEntity.setRole(newRole);
         }
 
@@ -357,13 +395,8 @@ public class AdminServiceImpl implements AdminService {
 
     @Override
     @Transactional
-    @CacheEvict(value = USER_DETAILS_STRING, key = USERNAME_STRING)
-    public UserDetailResponse adminUpdateAddress(String targetUsername, Long addressId, AddressRequest request) {
-        UserEntity user = userRepository.findWithAuthoritiesByUsername(targetUsername)
-                .orElseThrow(
-                        () -> new ResourceNotFoundException(
-                                Translator.tolocale(ERROR_USER_TARGET_NOT_FOUND_WITH_STRING, targetUsername)));
-
+    @CacheEvict(value = USER_DETAILS_STRING, key = "#targetUsername")
+    public AddressResponse adminUpdateAddress(String targetUsername, Long addressId, AddressRequest request) {
         AddressEntity addressToUpdate = addressRepository.findByIdAndUser_Username(addressId, targetUsername)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         Translator.tolocale(ERROR_ADMIN_ADDRESS_NOT_OWNED_STRING)));
@@ -372,12 +405,12 @@ public class AdminServiceImpl implements AdminService {
 
         addressRepository.save(addressToUpdate);
         log.info("Admin updated address id={} for user '{}'", addressId, targetUsername);
-        return userMapper.toUserDetailResponse(user);
+        return userMapper.toAddressResponse(addressToUpdate);
     }
 
     @Override
     @Transactional
-    @CacheEvict(value = USER_DETAILS_STRING, key = USERNAME_STRING)
+    @CacheEvict(value = USER_DETAILS_STRING, key = "#targetUsername")
     public void adminDeleteAddress(String targetUsername, Long addressId) {
         UserEntity user = userRepository.findByUsername(targetUsername)
                 .orElseThrow(
@@ -394,4 +427,20 @@ public class AdminServiceImpl implements AdminService {
         log.info("Admin deleted address id={} for user '{}'", addressId, targetUsername);
     }
 
+    private void checkRoleAssignmentPrivilege(RoleEntity roleToAssign) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null)
+            return;
+
+        Set<String> currentUserAuthorities = authentication.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .collect(Collectors.toSet());
+
+        for (PermissionEntity p : roleToAssign.getPermissions()) {
+            if (!currentUserAuthorities.contains(p.getName())) {
+                throw new AccessForbiddenException(
+                        Translator.tolocale(ERROR_ROLE_ESCALATION_STRING, p.getName()));
+            }
+        }
+    }
 }

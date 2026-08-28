@@ -1,6 +1,8 @@
 package com.web.backend.repository.specification;
 
+import com.web.backend.common.AuthProvider;
 import com.web.backend.common.FriendshipStatus;
+import com.web.backend.common.GenderType;
 import com.web.backend.common.UserStatus;
 import com.web.backend.model.postgres.FriendshipEntity;
 import com.web.backend.model.postgres.RoleEntity;
@@ -22,11 +24,41 @@ public class UserSearchSpecifications {
     private static final String ADDRESSEE_STRING = "addressee";
     private static final String STATUS_STRING = "status";
     private static final String EMAIL_STRING = "email";
+    private static final String PHONE_STRING = "phone";
     private static final String FIRST_NAME_STRING = "firstName";
     private static final String LAST_NAME_STRING = "lastName";
+    private static final String GENDER_STRING = "gender";
+    private static final String AUTH_PROVIDER_STRING = "authProvider";
     private static final String PERCENT_STRING = "%";
 
     private UserSearchSpecifications() {
+    }
+
+    public static Specification<UserEntity> hasStatus(UserStatus status) {
+        return (root, query, cb) -> status == null ? null : cb.equal(root.get(USER_STATUS_STRING), status);
+    }
+
+    public static Specification<UserEntity> hasGender(GenderType gender) {
+        return (root, query, cb) -> gender == null ? null : cb.equal(root.get(GENDER_STRING), gender);
+    }
+
+    public static Specification<UserEntity> hasAuthProvider(AuthProvider authProvider) {
+        return (root, query, cb) -> authProvider == null ? null : cb.equal(root.get(AUTH_PROVIDER_STRING), authProvider);
+    }
+
+    public static Specification<UserEntity> containsAdminKeyword(String keyword) {
+        return (root, query, cb) -> {
+            if (keyword == null || keyword.isBlank()) {
+                return null;
+            }
+            String pattern = PERCENT_STRING + keyword.toLowerCase().trim() + PERCENT_STRING;
+            return cb.or(
+                    cb.like(cb.lower(root.get(USERNAME_STRING)), pattern),
+                    cb.like(cb.lower(root.get(EMAIL_STRING)), pattern),
+                    cb.like(cb.lower(root.get(PHONE_STRING)), pattern),
+                    cb.like(cb.lower(root.get(FIRST_NAME_STRING)), pattern),
+                    cb.like(cb.lower(root.get(LAST_NAME_STRING)), pattern));
+        };
     }
 
     public static Specification<UserEntity> isRole(String roleName) {

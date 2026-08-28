@@ -44,11 +44,13 @@ public class MessageController {
         @RateLimit(key = "msg_private", limit = 45, period = 60, type = LimitType.USER)
         @GetMapping("/private")
         public ResponseEntity<ApiResponse<CursorResponse<ChatMessageResponse>>> getPrivateMessage(
-                        @RequestParam String user1,
+                        Authentication auth,
                         @RequestParam String user2,
                         @RequestParam(required = false) String cursor,
                         @RequestParam(defaultValue = "20") int size) {
-                CursorResponse<ChatMessageResponse> response = messageService.findPrivateMessageWithCursor(user1, user2,
+                UserEntity user1 = (UserEntity) auth.getPrincipal();
+                CursorResponse<ChatMessageResponse> response = messageService.findPrivateMessageWithCursor(
+                                user1.getUsername(), user2,
                                 cursor,
                                 size);
                 return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(),
