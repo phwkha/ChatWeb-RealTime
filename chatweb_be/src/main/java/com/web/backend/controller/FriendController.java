@@ -134,6 +134,12 @@ public class FriendController {
         }
 
         @Operation(summary = "Send friend request", description = "API endpoint to send a friend request")
+        @io.swagger.v3.oas.annotations.Parameter(
+            name = "X-Idempotency-Key",
+            in = io.swagger.v3.oas.annotations.enums.ParameterIn.HEADER,
+            required = true,
+            description = "UUID idempotency key to prevent duplicate requests")
+        @com.web.backend.idempotent.Idempotent(key = "friend_request", ttl = 300)
         @PostMapping("/request")
         public ResponseEntity<ApiResponse<Void>> sendFriendRequest(
                         Authentication auth,
@@ -151,6 +157,12 @@ public class FriendController {
         }
 
         @Operation(summary = "Accept friend request", description = "API endpoint to accept a friend request")
+        @io.swagger.v3.oas.annotations.Parameter(
+            name = "X-Idempotency-Key",
+            in = io.swagger.v3.oas.annotations.enums.ParameterIn.HEADER,
+            required = true,
+            description = "UUID idempotency key to prevent duplicate requests")
+        @com.web.backend.idempotent.Idempotent(key = "friend_accept", ttl = 300)
         @PostMapping("/accept")
         public ResponseEntity<ApiResponse<Void>> acceptFriendRequest(
                         Authentication auth,

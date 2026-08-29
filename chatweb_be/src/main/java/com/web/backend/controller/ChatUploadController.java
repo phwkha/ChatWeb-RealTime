@@ -36,6 +36,12 @@ public class ChatUploadController {
 
     @RateLimit(key = "chat_upload_image", limit = 10, period = 60, type = LimitType.USER)
     @Operation(summary = "Upload chat image", description = "API endpoint for upload chat image")
+    @io.swagger.v3.oas.annotations.Parameter(
+        name = "X-Idempotency-Key",
+        in = io.swagger.v3.oas.annotations.enums.ParameterIn.HEADER,
+        required = true,
+        description = "UUID idempotency key to prevent duplicate requests")
+    @com.web.backend.idempotent.Idempotent(key = "chat_upload_image", ttl = 600)
     @PostMapping(value = "/image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<String>> uploadChatImage(@RequestParam(IMAGE_STRING) MultipartFile file) {
         log.debug("Uploading chat image: name='{}', size={} bytes", file.getOriginalFilename(), file.getSize());
@@ -46,6 +52,12 @@ public class ChatUploadController {
 
     @RateLimit(key = "chat_upload_video", limit = 10, period = 60, type = LimitType.USER)
     @Operation(summary = "Upload chat video", description = "API endpoint for upload chat video")
+    @io.swagger.v3.oas.annotations.Parameter(
+        name = "X-Idempotency-Key",
+        in = io.swagger.v3.oas.annotations.enums.ParameterIn.HEADER,
+        required = true,
+        description = "UUID idempotency key to prevent duplicate requests")
+    @com.web.backend.idempotent.Idempotent(key = "chat_upload_video", ttl = 600)
     @PostMapping(value = "/video", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<String>> uploadChatVideo(@RequestParam(VIDEO_STRING) MultipartFile file) {
         log.debug("Uploading chat video: name='{}', size={} bytes", file.getOriginalFilename(), file.getSize());

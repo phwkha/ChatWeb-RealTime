@@ -34,6 +34,7 @@ import com.web.backend.exception.custom.ResourceConflictException;
 import com.web.backend.exception.custom.ResourceNotFoundException;
 import com.web.backend.exception.custom.SystemOverloadException;
 import com.web.backend.exception.custom.TooManyRequestsException;
+import com.web.backend.exception.custom.DuplicateRequestException;
 import org.springframework.http.HttpHeaders;
 
 import jakarta.persistence.OptimisticLockException;
@@ -253,6 +254,13 @@ public class GlobalExceptionHandler {
                 .header(HttpHeaders.RETRY_AFTER, String.valueOf(ex.getRetryAfterSeconds()))
                 .body(ApiResponse.error(HttpStatus.TOO_MANY_REQUESTS.value(),
                         Translator.tolocale(ex.getMessageKey())));
+    }
+
+    @ExceptionHandler(DuplicateRequestException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ApiResponse<Void> handleDuplicateRequestException(DuplicateRequestException ex) {
+        log.warn("Duplicate request rejected: {}", ex.getMessage());
+        return ApiResponse.error(HttpStatus.CONFLICT.value(), Translator.tolocale(ex.getMessageKey()));
     }
 
     @ExceptionHandler(Exception.class)

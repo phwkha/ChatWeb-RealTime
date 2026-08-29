@@ -47,6 +47,7 @@ public class ChatServiceImpl implements ChatService {
     private final SystemMessageRepository systemMessageRepository;
     private final FriendService friendService;
     private final RedisTemplate<String, Object> redisTemplate;
+    private final org.springframework.data.redis.core.StringRedisTemplate stringRedisTemplate;
     private final MessageMapper messageMapper;
     private final ChatProducer chatProducer;
     private final WebSocketErrorHandler webSocketErrorHandler;
@@ -59,6 +60,9 @@ public class ChatServiceImpl implements ChatService {
     private static final String EMPTY_STRING = "";
     private static final String DELIMITER_UNDERSCORE_STRING = "_";
     private static final String DELIMITER_COLON_STRING = ":";
+
+    private static final String WS_DEDUP_PREFIX_STRING = "ws:dedup:";
+    private static final int WS_DEDUP_TTL_SECONDS = 300;
 
     private static final String RATE_LIMIT_WS_SEND_KEY_STRING = "ws_chat_send";
     private static final int RATE_LIMIT_WS_SEND_LIMIT = 30;
@@ -80,6 +84,16 @@ public class ChatServiceImpl implements ChatService {
     @Override
     public void sendPrivateMessage(String sender, ChatMessageRequest request) {
         checkRateLimit(sender);
+
+        if (request.getLocalId() != null && !request.getLocalId().trim().isEmpty()) {
+            String dedupKey = WS_DEDUP_PREFIX_STRING + sender + DELIMITER_COLON_STRING + request.getLocalId();
+            Boolean isNew = stringRedisTemplate.opsForValue()
+                    .setIfAbsent(dedupKey, "1", java.time.Duration.ofSeconds(WS_DEDUP_TTL_SECONDS));
+            if (Boolean.FALSE.equals(isNew)) {
+                log.warn("Duplicate WebSocket message detected: sender='{}', localId='{}'", sender, request.getLocalId());
+                return;
+            }
+        }
         validatePrivateMessageRequest(sender, request);
         String convId = generateConversationId(sender, request.getRecipient());
         ChatMessage chatMsg = buildChatMessage(sender, request, convId);
