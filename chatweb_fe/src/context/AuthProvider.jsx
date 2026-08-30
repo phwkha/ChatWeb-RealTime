@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { apiRequest } from '../services/apiClient.js'
+import { clearAccessToken } from '../services/tokenStore.js'
 import { AuthContext } from './auth-context.js'
 
 function AuthProvider({ children }) {
@@ -54,6 +55,7 @@ function AuthProvider({ children }) {
     try {
       await apiRequest('/api/auth/logout', { method: 'POST', skipRefresh: true })
     } finally {
+      clearAccessToken()
       setUser(null)
     }
   }, [])

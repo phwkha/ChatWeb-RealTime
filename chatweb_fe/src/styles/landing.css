@@ -48,31 +48,14 @@ body.menu-open {
   text-decoration: none;
 }
 
-.brand__mark {
-  position: relative;
-  display: inline-flex;
-  width: 35px;
-  height: 31px;
-  align-items: center;
-  justify-content: center;
-}
-
-.brand__mark span:first-child {
-  position: absolute;
-  inset: 1px 3px 5px 1px;
-  border-radius: 11px 11px 11px 4px;
-  background: var(--violet);
-  transform: rotate(-5deg);
-}
-
-.brand__mark span:last-child {
-  position: absolute;
-  width: 11px;
-  height: 9px;
-  border: 2px solid white;
-  border-radius: 50%;
-  box-shadow: 7px 0 0 -2px var(--violet), 7px 0 0 0 white;
-  transform: translateX(-4px);
+.brand__image {
+  display: block;
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  flex: 0 0 auto;
+  object-fit: cover;
+  object-position: center;
 }
 
 .site-header {
