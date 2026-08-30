@@ -1,4 +1,21 @@
+import { clearAccessToken, getAccessToken, setAccessToken } from './tokenStore.js'
+
 export const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:8080').replace(/\/$/, '')
+
+const IDEMPOTENCY_HEADER = 'X-Idempotency-Key'
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
+
+export function getApiLanguage() {
+  return localStorage.getItem('chatweb-language') || 'vi'
+}
+
+function fallbackMessage(key) {
+  const messages = {
+    vi: { expired: 'Phiên đăng nhập đã hết hạn.', network: 'Không thể kết nối đến máy chủ.' },
+    en: { expired: 'Your session has expired.', network: 'Unable to connect to the server.' },
+  }
+  return (messages[getApiLanguage()] || messages.vi)[key]
+}
 
 export class ApiError extends Error {
   constructor(message, { status = 0, code = 0, data = null } = {}) {
@@ -11,6 +28,18 @@ export class ApiError extends Error {
 }
 
 let refreshPromise = null
+
+function withIdempotencyKey(options = {}) {
+  const method = (options.method || 'GET').toUpperCase()
+  if (SAFE_METHODS.has(method)) return options
+
+  const headers = new Headers(options.headers || {})
+  if (!headers.has(IDEMPOTENCY_HEADER)) {
+    headers.set(IDEMPOTENCY_HEADER, crypto.randomUUID())
+  }
+
+  return { ...options, headers }
+}
 
 async function parseResponse(response) {
   const contentType = response.headers.get('content-type') || ''
@@ -25,20 +54,25 @@ async function parseResponse(response) {
 
 async function refreshAccessToken() {
   if (!refreshPromise) {
-    refreshPromise = fetch(`${API_BASE_URL}/api/auth/refresh-token`, {
+    const refreshOptions = withIdempotencyKey({
       method: 'POST',
       credentials: 'include',
-      headers: { 'Accept-Language': 'vi' },
+      headers: { 'Accept-Language': getApiLanguage() },
+    })
+    refreshPromise = fetch(`${API_BASE_URL}/api/auth/refresh-token`, {
+      ...refreshOptions,
     }).then(async (response) => {
+      const payload = await parseResponse(response)
       if (!response.ok) {
-        const payload = await parseResponse(response)
-        throw new ApiError(payload?.message || 'Phiên đăng nhập đã hết hạn.', {
+        clearAccessToken()
+        throw new ApiError(payload?.message || fallbackMessage('expired'), {
           status: response.status,
           code: payload?.code,
           data: payload?.data,
         })
       }
-      return response
+      setAccessToken(typeof payload?.data === 'string' ? payload.data : payload?.data?.accessToken)
+      return payload
     }).finally(() => {
       refreshPromise = null
     })
@@ -49,7 +83,10 @@ async function refreshAccessToken() {
 
 async function sendRequest(path, options) {
   const headers = new Headers(options.headers || {})
-  headers.set('Accept-Language', 'vi')
+  headers.set('Accept-Language', getApiLanguage())
+
+  const token = getAccessToken()
+  if (token && !headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`)
 
   let body = options.body
   if (body && !(body instanceof FormData) && typeof body !== 'string') {
@@ -67,12 +104,13 @@ async function sendRequest(path, options) {
 
 export async function apiRequest(path, options = {}) {
   const { skipRefresh = false, ...requestOptions } = options
-  let response = await sendRequest(path, requestOptions)
+  const preparedRequestOptions = withIdempotencyKey(requestOptions)
+  let response = await sendRequest(path, preparedRequestOptions)
 
   if (response.status === 401 && !skipRefresh && path !== '/api/auth/refresh-token') {
     try {
       await refreshAccessToken()
-      response = await sendRequest(path, requestOptions)
+      response = await sendRequest(path, preparedRequestOptions)
     } catch {
       // The original response below provides the most relevant request context.
     }
@@ -80,7 +118,7 @@ export async function apiRequest(path, options = {}) {
 
   const payload = await parseResponse(response)
   if (!response.ok) {
-    throw new ApiError(payload?.message || 'Không thể kết nối đến máy chủ.', {
+    throw new ApiError(payload?.message || fallbackMessage('network'), {
       status: response.status,
       code: payload?.code,
       data: payload?.data,

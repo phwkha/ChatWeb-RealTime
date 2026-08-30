@@ -125,7 +125,7 @@ function Header() {
                     <span className="header-user__avatar"><UserAvatar key={user.avatar || 'menu-avatar-fallback'} user={user} /></span>
                     <div><strong>{[user.firstName, user.lastName].filter(Boolean).join(' ') || user.username}</strong><small>{user.email}</small></div>
                   </div>
-                  <a href="#experience" onClick={closeMenu}><span>◌</span> Mở trò chuyện</a>
+                  <Link to="/chat" onClick={closeMenu}><span>◌</span> Mở trò chuyện</Link>
                   <button type="button" onClick={handleLogout}><span>↪</span> Đăng xuất</button>
                 </div>
               </div>

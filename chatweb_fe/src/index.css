@@ -39,27 +39,16 @@ a {
   font-size: 13px;
 }
 
-.app-loading__mark {
-  position: relative;
-  width: 52px;
-  height: 46px;
-  border-radius: 17px 17px 17px 6px;
-  background: #7759f6;
+.app-loading__logo {
+  display: block;
+  width: 58px;
+  height: 58px;
+  border-radius: 18px;
   box-shadow: 0 14px 32px rgba(119, 89, 246, 0.28);
+  object-fit: cover;
+  object-position: center;
   animation: app-loading-float 1.8s ease-in-out infinite;
 }
-
-.app-loading__mark i {
-  position: absolute;
-  top: 19px;
-  width: 8px;
-  height: 8px;
-  border: 2px solid white;
-  border-radius: 50%;
-}
-
-.app-loading__mark i:first-child { left: 14px; }
-.app-loading__mark i:last-child { right: 14px; }
 
 @keyframes app-loading-float {
   50% { transform: translateY(-7px); }

@@ -25,7 +25,7 @@ function LoginPage() {
 
     try {
       await login({ username: form.username.trim(), password: form.password })
-      navigate('/', { replace: true })
+      navigate('/chat', { replace: true })
     } catch (requestError) {
       setError(requestError.message || 'Đăng nhập không thành công. Vui lòng thử lại.')
     } finally {

@@ -22,7 +22,7 @@ function OAuthCallbackPage() {
     }
 
     refreshUser().then((currentUser) => {
-      if (currentUser) navigate('/', { replace: true })
+      if (currentUser) navigate('/chat', { replace: true })
       else {
         const message = 'Google đã xác thực nhưng ChatWeb chưa nhận được phiên đăng nhập.'
         setError(message)
