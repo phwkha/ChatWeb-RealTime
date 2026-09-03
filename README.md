@@ -3,6 +3,7 @@
 Dự án ChatWeb bao gồm Frontend (React + Vite) và Backend (Spring Boot).
 
 ## 📂 Cấu trúc dự án
+- `docs/`: Toàn bộ bộ tài liệu kỹ thuật cốt lõi (Kiến trúc HLD, ADRs, Sequence Diagrams, Thiết kế DB, Đặc tả WebSocket, Kafka Avro và REST API). 👉 **[Xem mục lục tài liệu kỹ thuật](docs/README.md)**
 - `chatweb_fe/`: Frontend React tối giản được khởi tạo bằng Vite.
 - `chatweb_be/`: Mã nguồn Backend (Spring Boot, PostgreSQL, MongoDB, Redis, Kafka, JWT).
 - `docker-compose.yml`: Cấu hình Docker Compose để khởi chạy toàn bộ hệ thống (dịch vụ, DB, Message Broker, Logging).
