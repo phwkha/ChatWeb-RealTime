@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import ChatIcon from '../components/chat/ChatIcon.jsx'
-import Brand from '../components/Brand.jsx'
+import AppRail from '../components/chat/AppRail.jsx'
 import { useAuth } from '../context/auth-context.js'
 import { useLanguage } from '../context/language-context.js'
 import { useChatSocket } from '../hooks/useChatSocket.js'
 import { apiRequest } from '../services/apiClient.js'
+import { decryptMessage, decryptMessages, encryptMessageContent } from '../services/cryptoService.js'
 import '../styles/chat.css'
 
 const FRIEND_EVENT_TYPES = new Set([
@@ -36,6 +36,8 @@ const MUTE_OPTIONS = [
 const MUTED_STORAGE_KEY = 'chatweb-muted-conversations'
 const BLOCKED_MESSAGES_STORAGE_KEY = 'chatweb-blocked-message-intervals'
 const MAX_MEDIA_SIZE_BYTES = 20 * 1024 * 1024
+const MESSAGE_SEARCH_PAGE_SIZE = 100
+const MAX_MESSAGE_SEARCH_PAGES = 10
 
 function getMediaContentType(file) {
   if (file?.type?.startsWith('image/')) return 'IMAGE'
@@ -50,6 +52,14 @@ function initials(person) {
 
 function displayName(person) {
   return [person?.firstName, person?.lastName].filter(Boolean).join(' ').trim() || person?.username || ''
+}
+
+function normalizeSearchValue(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('vi-VN')
+    .trim()
 }
 
 function isPersonOnline(person) {
@@ -82,9 +92,13 @@ function normalizeMessages(items) {
     .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
 }
 
+function isMessageDeleted(message) {
+  return Boolean(message?.deleted || message?.isDeleted)
+}
+
 function isDisplayableChatMessage(message) {
   if (!message || (message.messageType && message.messageType !== 'CHAT')) return false
-  return Boolean(String(message.content || '').trim() || message.fileUrl)
+  return Boolean(isMessageDeleted(message) || String(message.content || '').trim() || message.fileUrl)
 }
 
 function upsertMessage(list, incoming) {
@@ -163,11 +177,6 @@ function conversationPreferenceKey(username, peerUsername) {
   return `${String(username || '').toLocaleLowerCase('en-US')}:${String(peerUsername || '').toLocaleLowerCase('en-US')}`
 }
 
-function isConversationMuteActive(preferences, username, peerUsername) {
-  const mutedUntil = preferences[conversationPreferenceKey(username, peerUsername)]
-  return mutedUntil === -1 || Number(mutedUntil) > Date.now()
-}
-
 function isIncomingMessageBlocked(preferences, username, peerUsername) {
   const intervals = preferences[conversationPreferenceKey(username, peerUsername)] || []
   return intervals.some((interval) => interval.to == null)
@@ -197,10 +206,23 @@ function formatTime(timestamp, language) {
   }).format(date)
 }
 
+function formatDateTime(timestamp, language) {
+  if (!timestamp) return ''
+  const date = new Date(timestamp)
+  if (Number.isNaN(date.getTime())) return ''
+  return new Intl.DateTimeFormat(language === 'vi' ? 'vi-VN' : 'en-US', {
+    dateStyle: 'medium', timeStyle: 'short',
+  }).format(date)
+}
+
+function initialChatSection() {
+  const section = new URLSearchParams(window.location.search).get('section')
+  return ['chat', 'friends', 'notifications'].includes(section) ? section : 'chat'
+}
+
 function ChatPage() {
-  const { user, logout } = useAuth()
-  const { language, setLanguage, t } = useLanguage()
-  const navigate = useNavigate()
+  const { user } = useAuth()
+  const { language, t } = useLanguage()
   const [friends, setFriends] = useState([])
   const [friendRequests, setFriendRequests] = useState([])
   const [sentRequests, setSentRequests] = useState([])
@@ -211,10 +233,10 @@ function ChatPage() {
   const [worldMessages, setWorldMessages] = useState([])
   const [worldCursor, setWorldCursor] = useState(null)
   const [worldHasMore, setWorldHasMore] = useState(false)
-  const [notifications, setNotifications] = useState([])
-  const [searchOpen, setSearchOpen] = useState(false)
-  const [notificationOpen, setNotificationOpen] = useState(false)
-  const [worldOpen, setWorldOpen] = useState(false)
+  const [worldNotifications, setWorldNotifications] = useState([])
+  const [activeSection, setActiveSection] = useState(initialChatSection)
+  const [conversationQuery, setConversationQuery] = useState('')
+  const [worldOpen, setWorldOpen] = useState(() => new URLSearchParams(window.location.search).get('world') === '1')
   const [searchQuery, setSearchQuery] = useState('')
   const [searchType, setSearchType] = useState('username')
   const [searchResults, setSearchResults] = useState([])
@@ -232,20 +254,30 @@ function ChatPage() {
   const [detailMessageId, setDetailMessageId] = useState(null)
   const [conversationMenuOpen, setConversationMenuOpen] = useState(false)
   const [muteMenuOpen, setMuteMenuOpen] = useState(false)
+  const [messageSearchOpen, setMessageSearchOpen] = useState(false)
+  const [messageSearchQuery, setMessageSearchQuery] = useState('')
+  const [messageSearchResults, setMessageSearchResults] = useState([])
+  const [messageSearchHasMore, setMessageSearchHasMore] = useState(false)
+  const [messageSearchLoading, setMessageSearchLoading] = useState(false)
+  const [searchTargetMessageId, setSearchTargetMessageId] = useState(null)
   const [confirmConversationAction, setConfirmConversationAction] = useState(null)
   const [reportDialogOpen, setReportDialogOpen] = useState(false)
   const [reportReason, setReportReason] = useState('SPAM')
   const [reportDetails, setReportDetails] = useState('')
   const [conversationActionPending, setConversationActionPending] = useState(false)
+  const [editingMessageId, setEditingMessageId] = useState(null)
+  const [editingMessageContent, setEditingMessageContent] = useState('')
+  const [messageActionPending, setMessageActionPending] = useState(false)
+  const [revokeTargetMessage, setRevokeTargetMessage] = useState(null)
   const [mutedConversations, setMutedConversations] = useState(readMutedConversations)
   const [blockedMessageIntervals, setBlockedMessageIntervals] = useState(readBlockedMessageIntervals)
   const selectedRef = useRef(null)
+  const messagesByUserRef = useRef({})
+  const messageSearchHistoryRef = useRef(new Map())
   const messagesEndRef = useRef(null)
   const mediaInputRef = useRef(null)
   const typingTimeoutsRef = useRef(new Map())
   const readAckTimersRef = useRef(new Map())
-  const deliveryAckTimersRef = useRef(new Map())
-  const deliveryEndpointSupportedRef = useRef(true)
   const socketSenderRef = useRef(null)
   const presenceSyncTimerRef = useRef(null)
   const friendsRef = useRef([])
@@ -253,6 +285,7 @@ function ChatPage() {
   const friendSyncTimersRef = useRef([])
   const conversationMenuRef = useRef(null)
   const muteExpiryTimerRef = useRef(null)
+  const searchHighlightTimerRef = useRef(null)
 
   const permissions = useMemo(() => new Set(user?.permissions || []), [user?.permissions])
   const isAdmin = String(user?.role || '').toUpperCase().includes('ADMIN') || permissions.has('ADMIN_SEND-MESSAGE')
@@ -262,6 +295,17 @@ function ChatPage() {
   const sentNames = useMemo(() => new Set(sentRequests.map((person) => person.username)), [sentRequests])
   const blockedNames = useMemo(() => new Set(blockedUsers.map((person) => person.username)), [blockedUsers])
   const incomingRequestNames = useMemo(() => new Set(friendRequests.map((person) => person.username)), [friendRequests])
+  const totalUnreadMessages = useMemo(() => friends.reduce((total, friend) => {
+    const unreadCount = Number(unreadCounts[friend.username])
+    return total + (Number.isFinite(unreadCount) && unreadCount > 0 ? unreadCount : 0)
+  }, 0), [friends, unreadCounts])
+  const filteredFriends = useMemo(() => {
+    const query = normalizeSearchValue(conversationQuery)
+    if (!query) return friends
+    return friends.filter((friend) => normalizeSearchValue(
+      `${displayName(friend)} ${friend.username || ''}`,
+    ).includes(query))
+  }, [conversationQuery, friends])
   const visibleSuggestions = useMemo(() => suggestions
     .filter((person) => String(person.username || '').trim().toLocaleLowerCase('en-US') !== currentUsernameKey
       && !isAdminAccount(person)
@@ -272,6 +316,7 @@ function ChatPage() {
     .sort((left, right) => Number(isPersonOnline(right)) - Number(isPersonOnline(left)))
     .slice(0, 8), [blockedNames, currentUsernameKey, friendNames, incomingRequestNames, sentNames, suggestions])
   const activeMessages = selectedUser ? (messagesByUser[selectedUser.username] || []) : []
+  const selectedUsername = selectedUser?.username || ''
   const latestWorldMessage = worldMessages.length ? worldMessages[worldMessages.length - 1] : null
   const selectedConversationKey = conversationPreferenceKey(user?.username, selectedUser?.username)
   const selectedMuteUntil = mutedConversations[selectedConversationKey]
@@ -282,6 +327,10 @@ function ChatPage() {
   useEffect(() => {
     selectedRef.current = selectedUser
   }, [selectedUser])
+
+  useEffect(() => {
+    messagesByUserRef.current = messagesByUser
+  }, [messagesByUser])
 
   useEffect(() => {
     friendsRef.current = friends
@@ -407,7 +456,8 @@ function ChatPage() {
     try {
       const query = new URLSearchParams({ user1: user.username, user2: person.username, size: '50' })
       const response = await apiRequest(`/api/messages/private?${query}`)
-      const visibleHistory = (response?.data?.content || []).filter((message) => (
+      const decryptedHistory = await decryptMessages(response?.data?.content || [], user.username)
+      const visibleHistory = decryptedHistory.filter((message) => (
         !wasMessageSentWhileBlocked(message, blockedMessageIntervals, user.username, person.username)
       ))
       setMessagesByUser((current) => ({
@@ -418,6 +468,66 @@ function ChatPage() {
       if (!silent) showToast(error.message || t('errorGeneric'), 'error')
     } finally {
       if (!silent) setLoadingConversation(false)
+    }
+  }, [blockedMessageIntervals, showToast, t, user])
+
+  const searchConversationMessages = useCallback(async (keyword, signal = undefined) => {
+    const person = selectedRef.current
+    const normalizedKeyword = keyword.trim()
+    if (!person || !user || !normalizedKeyword) return
+
+    setMessageSearchLoading(true)
+    try {
+      const cached = messageSearchHistoryRef.current.get(person.username) || {
+        messages: [], nextCursor: null, complete: false,
+      }
+      let history = cached.messages
+      let nextCursor = cached.nextCursor
+      let hasMoreHistory = !cached.complete
+      let loadedPages = 0
+
+      while (hasMoreHistory && loadedPages < MAX_MESSAGE_SEARCH_PAGES) {
+        const query = new URLSearchParams({
+          user2: person.username,
+          size: String(MESSAGE_SEARCH_PAGE_SIZE),
+        })
+        if (nextCursor) query.set('cursor', nextCursor)
+        const response = await apiRequest(`/api/messages/private?${query}`, signal ? { signal } : {})
+        if (signal?.aborted || selectedRef.current?.username !== person.username) return
+        const decryptedPage = await decryptMessages(response?.data?.content || [], user.username)
+        const pageMessages = decryptedPage.filter((message) => (
+          isDisplayableChatMessage(message)
+          && !wasMessageSentWhileBlocked(message, blockedMessageIntervals, user.username, person.username)
+        ))
+        history = mergeMessageLists(history, pageMessages)
+        nextCursor = response?.data?.nextCursor || null
+        hasMoreHistory = Boolean(response?.data?.hasMore && nextCursor)
+        loadedPages += 1
+        messageSearchHistoryRef.current.set(person.username, {
+          messages: history,
+          nextCursor,
+          complete: !hasMoreHistory,
+        })
+      }
+
+      if (selectedRef.current?.username !== person.username) return
+      const searchValue = normalizeSearchValue(normalizedKeyword)
+      const allMessages = mergeMessageLists(
+        history,
+        messagesByUserRef.current[person.username] || [],
+      )
+      const results = allMessages.filter((message) => (
+        isDisplayableChatMessage(message)
+        && !isMessageDeleted(message)
+        && !wasMessageSentWhileBlocked(message, blockedMessageIntervals, user.username, person.username)
+        && normalizeSearchValue(message.content).includes(searchValue)
+      )).sort((left, right) => new Date(right.timestamp) - new Date(left.timestamp))
+      setMessageSearchResults(results)
+      setMessageSearchHasMore(hasMoreHistory)
+    } catch (error) {
+      if (error.name !== 'AbortError') showToast(error.message || t('messageSearchFailed'), 'error')
+    } finally {
+      if (!signal?.aborted) setMessageSearchLoading(false)
     }
   }, [blockedMessageIntervals, showToast, t, user])
 
@@ -435,20 +545,6 @@ function ChatPage() {
     }, 220)
     readAckTimersRef.current.set(sender, timer)
   }, [loadUnreadCounts])
-
-  const markAsDelivered = useCallback((sender) => {
-    if (!sender || !deliveryEndpointSupportedRef.current) return
-    window.clearTimeout(deliveryAckTimersRef.current.get(sender))
-    const timer = window.setTimeout(async () => {
-      deliveryAckTimersRef.current.delete(sender)
-      try {
-        await apiRequest('/api/messages/mark-as-delivered', { method: 'POST', body: { sender } })
-      } catch (error) {
-        if ([404, 405].includes(error.status)) deliveryEndpointSupportedRef.current = false
-      }
-    }, 160)
-    deliveryAckTimersRef.current.set(sender, timer)
-  }, [])
 
   const sendRealtimeReceipt = useCallback((recipient, status, sourceMessage = null) => {
     if (!recipient || !socketSenderRef.current) return false
@@ -500,7 +596,7 @@ function ChatPage() {
     })
   }, [])
 
-  const handleIncomingMessage = useCallback((message) => {
+  const handleIncomingMessage = useCallback(async (message) => {
     if (!message?.sender || !message?.recipient || !user) return
     const peer = message.sender === user.username ? message.recipient : message.sender
 
@@ -547,26 +643,26 @@ function ChatPage() {
       return
     }
 
-    if (!isDisplayableChatMessage(message)) return
-    if (message.sender !== user.username) updatePeerPresence(message.sender, true)
-    if (message.sender !== user.username
+    const displayMessage = await decryptMessage(message, user.username)
+    if (!isDisplayableChatMessage(displayMessage)) return
+    if (displayMessage.sender !== user.username) updatePeerPresence(displayMessage.sender, true)
+    if (displayMessage.sender !== user.username
       && isIncomingMessageBlocked(blockedMessageIntervals, user.username, peer)) return
 
     setMessagesByUser((current) => ({
       ...current,
-      [peer]: upsertMessage(current[peer] || [], message),
+      [peer]: upsertMessage(current[peer] || [], displayMessage),
     }))
 
-    if (message.sender !== user.username) {
+    if (displayMessage.sender !== user.username) {
       const isActivelyReading = selectedRef.current?.username === peer && document.visibilityState === 'visible'
-      markAsDelivered(peer)
-      sendRealtimeReceipt(peer, isActivelyReading ? 'READ' : 'DELIVERED', message)
+      sendRealtimeReceipt(peer, isActivelyReading ? 'READ' : 'DELIVERED', displayMessage)
       if (isActivelyReading) markAsRead(peer)
       else setUnreadCounts((current) => ({ ...current, [peer]: (current[peer] || 0) + 1 }))
     }
-  }, [blockedMessageIntervals, markAsDelivered, markAsRead, sendPresenceControl, sendRealtimeReceipt, updatePeerPresence, user])
+  }, [blockedMessageIntervals, markAsRead, sendPresenceControl, sendRealtimeReceipt, updatePeerPresence, user])
 
-  const handleNotification = useCallback((notification) => {
+  const handleNotification = useCallback(async (notification) => {
     if (!notification?.type) return
     const isMessageUpdate = ['EDIT_MESSAGE', 'REVOKE_MESSAGE', 'REACT_MESSAGE', 'STATUS_MESSAGE']
       .includes(notification.type)
@@ -576,10 +672,7 @@ function ChatPage() {
     const isBlockedMessageUpdate = isMessageUpdate
       && isIncomingMessageBlocked(blockedMessageIntervals, user?.username, notificationPeer)
     if (isBlockedMessageUpdate) return
-    setNotifications((current) => [{ ...notification, receivedAt: new Date().toISOString() }, ...current].slice(0, 50))
-    const isMutedMessageUpdate = isMessageUpdate
-      && isConversationMuteActive(mutedConversations, user?.username, notification.relatedUsername)
-    if (notification.message && !isMutedMessageUpdate) showToast(notification.message)
+    if (notification.type === 'FRIEND_REQUEST' && notification.message) showToast(notification.message)
     if (FRIEND_EVENT_TYPES.has(notification.type)
       && !['USER_ONLINE', 'USER_OFFLINE'].includes(notification.type)) scheduleConnectionSync()
 
@@ -599,15 +692,21 @@ function ChatPage() {
     }
 
     if (['EDIT_MESSAGE', 'REVOKE_MESSAGE', 'REACT_MESSAGE'].includes(notification.type) && notification.data && user) {
-      const data = notification.data
+      const data = await decryptMessage(notification.data, user.username)
       const peer = data.sender === user.username ? data.recipient : data.sender
       setMessagesByUser((current) => ({ ...current, [peer]: upsertMessage(current[peer] || [], data) }))
     }
-  }, [blockedMessageIntervals, mutedConversations, scheduleConnectionSync, showToast, updatePeerPresence, user])
+  }, [blockedMessageIntervals, scheduleConnectionSync, showToast, updatePeerPresence, user])
 
   const handleWorldMessage = useCallback((message) => {
+    if (!String(message?.content || '').trim()) return
+    setWorldNotifications((current) => [
+      { ...message, receivedAt: message.timestamp || new Date().toISOString() },
+      ...current,
+    ].slice(0, 50))
+    showToast(message.content)
     if (isAdmin) setWorldMessages((current) => normalizeMessages([...current, message]))
-  }, [isAdmin])
+  }, [isAdmin, showToast])
 
   const handleSocketError = useCallback((error) => {
     showToast(error?.message || t('socketError'), 'error')
@@ -631,7 +730,7 @@ function ChatPage() {
   }, [blockedMessageIntervals, loadConversation, loadUnreadCounts, markAsRead, sendPresenceControl, sendRealtimeReceipt, syncFriendPresence, user?.username])
 
   const { connectionState, sendPrivateMessage, sendWorldMessage } = useChatSocket({
-    enabled: Boolean(user), language, subscribeToWorld: isAdmin,
+    enabled: Boolean(user), language, subscribeToWorld: true,
     onMessage: handleIncomingMessage, onNotification: handleNotification,
     onWorldMessage: handleWorldMessage, onError: handleSocketError, onConnected: handleSocketConnected,
   })
@@ -698,27 +797,28 @@ function ChatPage() {
   }, [loadConnections, syncFriendPresence])
 
   useEffect(() => {
-    if (!searchOpen || searchQuery.trim() || suggestions.length) return
+    if (activeSection !== 'friends' || searchQuery.trim() || suggestions.length) return
     // oxlint-disable-next-line react/set-state-in-effect -- opening the discovery panel hydrates remote suggestions.
     void loadSuggestions()
-  }, [loadSuggestions, searchOpen, searchQuery, suggestions.length])
+  }, [activeSection, loadSuggestions, searchQuery, suggestions.length])
 
   useEffect(() => {
-    if (!selectedUser) return
+    const currentSelection = selectedRef.current
+    if (!currentSelection || currentSelection.username !== selectedUsername) return
     // oxlint-disable-next-line react/set-state-in-effect -- switching conversations synchronizes external history.
-    void loadConversation(selectedUser)
+    void loadConversation(currentSelection)
     if (!selectedConversationBlocked) {
-      markAsRead(selectedUser.username)
-      sendRealtimeReceipt(selectedUser.username, 'READ')
+      markAsRead(selectedUsername)
+      sendRealtimeReceipt(selectedUsername, 'READ')
     }
-  }, [loadConversation, markAsRead, selectedConversationBlocked, selectedUser, sendRealtimeReceipt])
+  }, [loadConversation, markAsRead, selectedConversationBlocked, selectedUsername, sendRealtimeReceipt])
 
   useEffect(() => () => {
     window.clearTimeout(presenceSyncTimerRef.current)
     window.clearTimeout(muteExpiryTimerRef.current)
+    window.clearTimeout(searchHighlightTimerRef.current)
     friendSyncTimersRef.current.forEach((timer) => window.clearTimeout(timer))
     readAckTimersRef.current.forEach((timer) => window.clearTimeout(timer))
-    deliveryAckTimersRef.current.forEach((timer) => window.clearTimeout(timer))
     typingTimeoutsRef.current.forEach((timer) => window.clearTimeout(timer))
   }, [])
 
@@ -728,7 +828,7 @@ function ChatPage() {
 
   useEffect(() => {
     const query = searchQuery.trim()
-    if (!searchOpen || !query) {
+    if (activeSection !== 'friends' || !query) {
       // oxlint-disable-next-line react/set-state-in-effect -- reset remote search state when its input closes.
       setSearchResults([])
       setSearching(false)
@@ -739,8 +839,7 @@ function ChatPage() {
     const timeout = window.setTimeout(async () => {
       setSearching(true)
       try {
-        const filter = searchType === 'displayName' ? 'name' : 'username'
-        const response = await apiRequest(`/api/search/users?keyword=${encodeURIComponent(query)}&filter=${filter}&size=30`, { signal: controller.signal })
+        const response = await apiRequest(`/api/search/users?keyword=${encodeURIComponent(query)}&size=30`, { signal: controller.signal })
         const normalizedQuery = query.toLocaleLowerCase(language)
         const filtered = (response?.data?.content || []).filter((person) => {
           if (String(person.username || '').trim().toLocaleLowerCase('en-US') === currentUsernameKey) return false
@@ -760,7 +859,31 @@ function ChatPage() {
       window.clearTimeout(timeout)
       controller.abort()
     }
-  }, [currentUsernameKey, language, searchOpen, searchQuery, searchType, showToast, t])
+  }, [activeSection, currentUsernameKey, language, searchQuery, searchType, showToast, t])
+
+  useEffect(() => {
+    const keyword = messageSearchQuery.trim()
+    if (!messageSearchOpen || !keyword || !selectedUser?.username) {
+      // oxlint-disable-next-line react/set-state-in-effect -- reset search results when the drawer closes or query clears.
+      setMessageSearchResults([])
+      setMessageSearchHasMore(false)
+      setMessageSearchLoading(false)
+      return undefined
+    }
+
+    const controller = new AbortController()
+    // oxlint-disable-next-line react/set-state-in-effect -- clear stale results before the debounced request starts.
+    setMessageSearchResults([])
+    setMessageSearchHasMore(false)
+    setMessageSearchLoading(true)
+    const timeout = window.setTimeout(() => {
+      void searchConversationMessages(keyword, controller.signal)
+    }, 300)
+    return () => {
+      window.clearTimeout(timeout)
+      controller.abort()
+    }
+  }, [messageSearchOpen, messageSearchQuery, searchConversationMessages, selectedUser?.username])
 
   useEffect(() => {
     if (!reactionPickerMessageId && !detailMessageId) return undefined
@@ -788,7 +911,7 @@ function ChatPage() {
     setReactionPickerMessageId(null)
     setDetailMessageId(null)
     setSelectedUser(friend)
-    setSearchOpen(false)
+    setActiveSection('chat')
     setWorldOpen(false)
   }
 
@@ -811,6 +934,12 @@ function ChatPage() {
     try {
       const response = await apiRequest(`/api/friends/unblock/${encodeURIComponent(person.username)}`, { method: 'POST' })
       setBlockedUsers((current) => current.filter((blockedUser) => blockedUser.username !== person.username))
+      const preferenceKey = conversationPreferenceKey(user?.username, person.username)
+      const intervals = [...(blockedMessageIntervals[preferenceKey] || [])]
+      const lastInterval = intervals[intervals.length - 1]
+      // oxlint-disable-next-line react/purity -- timestamp is captured only from an explicit user action.
+      if (lastInterval?.to == null) lastInterval.to = Date.now()
+      saveBlockedMessageIntervals({ ...blockedMessageIntervals, [preferenceKey]: intervals })
       scheduleConnectionSync()
       showToast(response?.message || t('unblockedUserSuccess'))
     } catch (error) {
@@ -829,7 +958,17 @@ function ChatPage() {
     }
   }
 
-  const submitMessage = (event) => {
+  const removeFriendRelation = async (person, successKey) => {
+    try {
+      const response = await apiRequest(`/api/friends/${encodeURIComponent(person.username)}`, { method: 'DELETE' })
+      await loadConnections()
+      showToast(response?.message || t(successKey))
+    } catch (error) {
+      showToast(error.message || t('actionFailed'), 'error')
+    }
+  }
+
+  const submitMessage = async (event) => {
     event.preventDefault()
     const content = messageDraft.trim()
     if (!content || !selectedUser || !user) return
@@ -843,8 +982,9 @@ function ChatPage() {
       [selectedUser.username]: upsertMessage(current[selectedUser.username] || [], optimisticMessage),
     }))
     setMessageDraft('')
+    const encryptedPayload = await encryptMessageContent(content, user.username, selectedUser.username).catch(() => null)
     const sent = sendPrivateMessage({
-      recipient: selectedUser.username, content, contentType: 'TEXT', messageType: 'CHAT', localId,
+      recipient: selectedUser.username, ...(encryptedPayload || { content }), contentType: 'TEXT', messageType: 'CHAT', localId,
     })
     if (!sent) {
       setMessagesByUser((current) => ({
@@ -967,7 +1107,7 @@ function ChatPage() {
         method: 'POST',
         body: { messageId: message.id, recipient: selectedUser.username, reactionType: nextReaction },
       })
-      const updatedMessage = response?.data || optimisticMessage
+      const updatedMessage = response?.data ? await decryptMessage(response.data, user.username) : optimisticMessage
       setMessagesByUser((current) => ({
         ...current,
         [selectedUser.username]: upsertMessage(current[selectedUser.username] || [], updatedMessage),
@@ -981,6 +1121,71 @@ function ChatPage() {
       showToast(error.message || t('reactionFailed'), 'error')
     } finally {
       setReactionSubmittingId(null)
+    }
+  }
+
+  const beginMessageEdit = (message) => {
+    setEditingMessageId(message.id)
+    setEditingMessageContent(message.content || '')
+    setReactionPickerMessageId(null)
+  }
+
+  const saveMessageEdit = async (event, message) => {
+    event.preventDefault()
+    const newContent = editingMessageContent.trim()
+    if (!newContent || !selectedUser || messageActionPending) return
+    setMessageActionPending(true)
+    try {
+      const encryptedPayload = await encryptMessageContent(newContent, user.username, selectedUser.username).catch(() => null)
+      if (message.iv && !encryptedPayload) {
+        showToast(t('encryptedEditUnavailable'), 'error')
+        return
+      }
+      const response = await apiRequest('/api/messages/edit', {
+        method: 'PUT',
+        body: {
+          messageId: message.id,
+          recipient: selectedUser.username,
+          newContent: encryptedPayload?.content || newContent,
+          iv: encryptedPayload?.iv || null,
+          wrappedKeyRecipient: encryptedPayload?.wrappedKeyRecipient || null,
+          wrappedKeySender: encryptedPayload?.wrappedKeySender || null,
+        },
+      })
+      const updated = await decryptMessage(response?.data, user.username)
+      setMessagesByUser((current) => ({
+        ...current,
+        [selectedUser.username]: upsertMessage(current[selectedUser.username] || [], updated),
+      }))
+      setEditingMessageId(null)
+      setEditingMessageContent('')
+      showToast(response?.message || t('messageEdited'))
+    } catch (error) {
+      showToast(error.message || t('actionFailed'), 'error')
+    } finally {
+      setMessageActionPending(false)
+    }
+  }
+
+  const revokeChatMessage = async () => {
+    const message = revokeTargetMessage
+    if (!message?.id || !selectedUser) return
+    setMessageActionPending(true)
+    try {
+      const response = await apiRequest('/api/messages/revoke', {
+        method: 'DELETE', body: { messageId: message.id, recipient: selectedUser.username },
+      })
+      const revoked = { ...message, content: '', fileUrl: null, fileName: null, deleted: true, isDeleted: true, reactions: null }
+      setMessagesByUser((current) => ({
+        ...current,
+        [selectedUser.username]: upsertMessage(current[selectedUser.username] || [], revoked),
+      }))
+      setRevokeTargetMessage(null)
+      showToast(response?.message || t('messageRevoked'))
+    } catch (error) {
+      showToast(error.message || t('actionFailed'), 'error')
+    } finally {
+      setMessageActionPending(false)
     }
   }
 
@@ -1037,9 +1242,18 @@ function ChatPage() {
     localStorage.setItem(BLOCKED_MESSAGES_STORAGE_KEY, JSON.stringify(nextPreferences))
   }
 
-  const unblockSelectedConversation = () => {
+  const unblockSelectedConversation = async () => {
+    if (!selectedUser) return
+    try {
+      await apiRequest(`/api/friends/unblock/${encodeURIComponent(selectedUser.username)}`, { method: 'POST' })
+      setBlockedUsers((current) => current.filter((person) => person.username !== selectedUser.username))
+    } catch (error) {
+      showToast(error.message || t('actionFailed'), 'error')
+      return
+    }
     const intervals = [...(blockedMessageIntervals[selectedConversationKey] || [])]
     const lastInterval = intervals[intervals.length - 1]
+    // oxlint-disable-next-line react/purity -- timestamp is captured only from an explicit user action.
     if (lastInterval?.to == null) lastInterval.to = Date.now()
     saveBlockedMessageIntervals({ ...blockedMessageIntervals, [selectedConversationKey]: intervals })
     setConversationMenuOpen(false)
@@ -1050,15 +1264,21 @@ function ChatPage() {
     if (!selectedUser || !confirmConversationAction || conversationActionPending) return
     const targetUsername = selectedUser.username
     if (confirmConversationAction === 'block') {
-      window.clearTimeout(readAckTimersRef.current.get(targetUsername))
-      readAckTimersRef.current.delete(targetUsername)
-      window.clearTimeout(deliveryAckTimersRef.current.get(targetUsername))
-      deliveryAckTimersRef.current.delete(targetUsername)
-      const intervals = [...(blockedMessageIntervals[selectedConversationKey] || []), { from: Date.now(), to: null }]
-      saveBlockedMessageIntervals({ ...blockedMessageIntervals, [selectedConversationKey]: intervals })
-      setConfirmConversationAction(null)
-      setConversationMenuOpen(false)
-      showToast(t('blockedSuccess'))
+      setConversationActionPending(true)
+      try {
+        const response = await apiRequest(`/api/friends/block/${encodeURIComponent(targetUsername)}`, { method: 'POST' })
+        // oxlint-disable-next-line react/purity -- timestamp is captured only from an explicit user action.
+        const intervals = [...(blockedMessageIntervals[selectedConversationKey] || []), { from: Date.now(), to: null }]
+        saveBlockedMessageIntervals({ ...blockedMessageIntervals, [selectedConversationKey]: intervals })
+        setBlockedUsers((current) => current.some((person) => person.username === targetUsername) ? current : [...current, selectedUser])
+        removeConversationLocally(targetUsername)
+        scheduleConnectionSync()
+        showToast(response?.message || t('blockedSuccess'))
+      } catch (error) {
+        showToast(error.message || t('actionFailed'), 'error')
+      } finally {
+        setConversationActionPending(false)
+      }
       return
     }
     setConversationActionPending(true)
@@ -1085,45 +1305,66 @@ function ChatPage() {
     else showToast(t('socketError'), 'error')
   }
 
-  const handleLogout = async () => {
-    await logout().catch(() => {})
-    navigate('/login', { replace: true })
+  const openMessageSearch = () => {
+    setConversationMenuOpen(false)
+    setMuteMenuOpen(false)
+    setMessageSearchQuery('')
+    setMessageSearchResults([])
+    setMessageSearchHasMore(false)
+    setMessageSearchOpen(true)
+  }
+
+  const focusSearchResult = (message) => {
+    const person = selectedRef.current
+    if (!person || !message?.id) return
+    setMessagesByUser((current) => ({
+      ...current,
+      [person.username]: upsertMessage(current[person.username] || [], message),
+    }))
+    setMessageSearchOpen(false)
+    setDetailMessageId(message.id)
+    setSearchTargetMessageId(message.id)
+    window.clearTimeout(searchHighlightTimerRef.current)
+    window.setTimeout(() => {
+      document.getElementById(`chat-message-${message.id}`)?.scrollIntoView({
+        behavior: 'smooth', block: 'center',
+      })
+    }, 80)
+    searchHighlightTimerRef.current = window.setTimeout(() => setSearchTargetMessageId(null), 2200)
   }
 
   return (
     <main className="chat-app">
-      <aside className="chat-rail">
-        <Brand className="chat-brand" />
-        <nav aria-label="Chat navigation">
-          <button className="is-active" type="button" title={t('conversations')}><ChatIcon name="chat" /></button>
-          <button type="button" title={t('friends')} onClick={() => setSearchOpen(true)}><ChatIcon name="users" /></button>
-          <button className="rail-notification" type="button" title={t('notifications')} onClick={() => setNotificationOpen(true)}>
-            <ChatIcon name="bell" />
-            {friendRequests.length > 0 && <span>{friendRequests.length}</span>}
-          </button>
-          {isAdmin && <button type="button" title={t('worldShort')} onClick={() => setWorldOpen(true)}><ChatIcon name="globe" /></button>}
-        </nav>
-        <div className="chat-rail__bottom">
-          <button className="language-button" type="button" onClick={() => setLanguage(language === 'vi' ? 'en' : 'vi')} title={t('language')}>
-            {language.toUpperCase()}
-          </button>
-          <button type="button" title={t('logout')} onClick={handleLogout}><ChatIcon name="logout" /></button>
-            <Avatar person={currentUserWithPresence} size="small" showStatus />
-        </div>
-      </aside>
+      <AppRail
+        activeSection={activeSection}
+        online={connectionState === 'connected'}
+        totalUnreadMessages={totalUnreadMessages}
+        friendRequestCount={friendRequests.length}
+        worldNotificationCount={worldNotifications.length}
+        onSelectSection={setActiveSection}
+        onOpenWorld={() => setWorldOpen(true)}
+      />
 
-      <aside className="conversation-sidebar">
+      <aside className={`conversation-sidebar${activeSection !== 'chat' ? ' is-section-hidden' : ''}`}>
         <div className="conversation-sidebar__heading">
           <div><span>{t('appName')}</span><h1>{t('conversations')}</h1></div>
-          <button type="button" aria-label={t('searchPeople')} onClick={() => setSearchOpen(true)}><ChatIcon name="plus" /></button>
         </div>
-        <button className="conversation-search" type="button" onClick={() => setSearchOpen(true)}>
-          <ChatIcon name="search" size={18} /><span>{t('searchPeople')}</span><kbd>⌘ K</kbd>
-        </button>
-        <div className="conversation-filter"><button className="is-active" type="button">{t('all')}</button><span>{friends.length}</span></div>
+        <div className="conversation-search">
+          <ChatIcon name="search" size={18} />
+          <input
+            type="search"
+            value={conversationQuery}
+            onChange={(event) => setConversationQuery(event.target.value)}
+            placeholder={t('searchConversations')}
+            aria-label={t('searchConversations')}
+            autoComplete="off"
+          />
+        </div>
+        <div className="conversation-filter"><button className="is-active" type="button">{t('all')}</button><span>{filteredFriends.length}</span></div>
         <div className="friend-list">
-          {friends.length === 0 && <div className="empty-friends"><ChatIcon name="users" size={26} /><p>{t('noFriends')}</p><button type="button" onClick={() => setSearchOpen(true)}>{t('search')}</button></div>}
-          {friends.map((friend) => (
+          {friends.length === 0 && <div className="empty-friends"><ChatIcon name="users" size={26} /><p>{t('noFriends')}</p><button type="button" onClick={() => setActiveSection('friends')}>{t('search')}</button></div>}
+          {friends.length > 0 && filteredFriends.length === 0 && <div className="empty-friends"><ChatIcon name="search" size={26} /><p>{t('noConversationResults')}</p></div>}
+          {filteredFriends.map((friend) => (
             <button key={friend.username} className={`friend-row${selectedUser?.username === friend.username ? ' is-active' : ''}`} type="button" onClick={() => selectFriend(friend)}>
               <Avatar person={friend} showStatus />
               <span className="friend-row__body">
@@ -1137,11 +1378,10 @@ function ChatPage() {
         <div className="sidebar-profile">
           <Avatar person={currentUserWithPresence} size="small" showStatus />
           <span><strong>{displayName(user)}</strong><small>{isAdmin ? t('admin') : t('member')}</small></span>
-          <button type="button" aria-label="Menu"><ChatIcon name="more" /></button>
         </div>
       </aside>
 
-      <section className="chat-main">
+      <section className={`chat-main${activeSection !== 'chat' ? ' is-section-hidden' : ''}`}>
         <button className="world-ticker" type="button" onClick={() => setWorldOpen(true)}>
           <span className="world-ticker__icon"><ChatIcon name="globe" size={17} /></span>
           <strong>{t('worldShort')}</strong>
@@ -1169,6 +1409,8 @@ function ChatPage() {
                 }}><ChatIcon name="more" /></button>
                 {conversationMenuOpen && (
                   <div className="conversation-menu">
+                    <button type="button" onClick={openMessageSearch}><ChatIcon name="search" size={17} /><span>{t('searchMessages')}</span></button>
+                    <span className="conversation-menu__divider" />
                     {selectedConversationMuted ? (
                       <button type="button" onClick={unmuteSelectedConversation}><ChatIcon name="bell" size={17} /><span>{t('unmuteNotifications')}</span></button>
                     ) : (
@@ -1218,26 +1460,30 @@ function ChatPage() {
                   ? detailMessageId === messageKey
                   : index === activeMessages.length - 1
                 return (
-                  <div key={messageKey} className={`message-row${mine ? ' is-mine' : ''}${grouped ? ' is-grouped' : ''}`}>
+                  <div
+                    id={message.id ? `chat-message-${message.id}` : undefined}
+                    key={messageKey}
+                    className={`message-row${mine ? ' is-mine' : ''}${grouped ? ' is-grouped' : ''}${searchTargetMessageId === message.id ? ' is-search-target' : ''}`}
+                  >
                     {!mine && !grouped && <Avatar person={selectedUser} size="tiny" />}
                     <div className="message-content message-reaction-anchor">
                       <div
-                        className={`message-bubble${message.clientFailed ? ' is-failed' : ''}${!message.id || message.deleted ? ' is-static' : ''}`}
-                        role={message.id && !message.deleted ? 'button' : undefined}
-                        tabIndex={message.id && !message.deleted ? 0 : undefined}
-                        aria-label={message.id && !message.deleted ? t('reactToMessage') : undefined}
-                        onClick={message.id && !message.deleted ? () => {
+                        className={`message-bubble${message.clientFailed ? ' is-failed' : ''}${isMessageDeleted(message) ? ' is-deleted' : ''}${!message.id || isMessageDeleted(message) ? ' is-static' : ''}`}
+                        role={message.id && !isMessageDeleted(message) ? 'button' : undefined}
+                        tabIndex={message.id && !isMessageDeleted(message) ? 0 : undefined}
+                        aria-label={message.id && !isMessageDeleted(message) ? t('reactToMessage') : undefined}
+                        onClick={message.id && !isMessageDeleted(message) ? () => {
                           setReactionPickerMessageId((current) => current === messageKey ? null : messageKey)
                           setDetailMessageId((current) => current === messageKey ? null : messageKey)
                         } : undefined}
-                        onKeyDown={message.id && !message.deleted ? (event) => {
+                        onKeyDown={message.id && !isMessageDeleted(message) ? (event) => {
                           if (!['Enter', ' '].includes(event.key)) return
                           event.preventDefault()
                           setReactionPickerMessageId((current) => current === messageKey ? null : messageKey)
                           setDetailMessageId((current) => current === messageKey ? null : messageKey)
                         } : undefined}
                       >
-                        {message.deleted ? t('deletedMessage') : (
+                        {isMessageDeleted(message) ? t('deletedMessage') : (
                           <>
                             {String(message.contentType || '').toUpperCase() === 'IMAGE' && message.fileUrl && (
                               <img className="message-media message-media--image" src={message.fileUrl} alt={message.fileName || t('sharedImage')} loading="lazy" />
@@ -1275,6 +1521,20 @@ function ChatPage() {
                           {reactionSummary.map((reaction) => <span key={reaction.type}>{reaction.emoji}{reaction.count > 1 && <b>{reaction.count}</b>}</span>)}
                         </button>
                       )}
+                      {showDetails && !isMessageDeleted(message) && (
+                        editingMessageId === message.id ? (
+                          <form className="message-edit-form" onSubmit={(event) => saveMessageEdit(event, message)}>
+                            <input autoFocus maxLength="10000" value={editingMessageContent} onChange={(event) => setEditingMessageContent(event.target.value)} />
+                            <button type="submit" disabled={messageActionPending || !editingMessageContent.trim()}>{t('save')}</button>
+                            <button type="button" onClick={() => setEditingMessageId(null)}>{t('cancel')}</button>
+                          </form>
+                        ) : (
+                          <div className="message-actions">
+                            {mine && String(message.contentType || 'TEXT').toUpperCase() === 'TEXT' && <button type="button" disabled={messageActionPending} onClick={() => beginMessageEdit(message)}>{t('editMessage')}</button>}
+                            {mine && <button className="is-danger" type="button" disabled={messageActionPending} onClick={() => setRevokeTargetMessage(message)}>{t('revokeMessage')}</button>}
+                          </div>
+                        )
+                      )}
                       {showDetails && <small className="message-details">{formatTime(message.timestamp, language)}{mine && <> · {message.clientFailed ? t('messageFailed') : t(message.status === 'READ' ? 'read' : message.status === 'DELIVERED' ? 'delivered' : message.status === 'SENDING' ? 'sending' : 'sent')}</>}</small>}
                     </div>
                   </div>
@@ -1303,21 +1563,22 @@ function ChatPage() {
             <span className="chat-welcome__eyebrow">CHATWEB · REALTIME</span>
             <h2>{t('welcomeTitle')}, {user?.firstName || user?.username}!</h2>
             <p>{t('welcomeBody')}</p>
-            <button type="button" onClick={() => setSearchOpen(true)}><ChatIcon name="search" size={18} />{t('searchPeople')}</button>
+            <button type="button" onClick={() => setActiveSection('friends')}><ChatIcon name="search" size={18} />{t('searchPeople')}</button>
           </div>
         )}
       </section>
 
-      {searchOpen && (
-        <div className="panel-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setSearchOpen(false)}>
-          <section className="side-panel search-panel" role="dialog" aria-modal="true" aria-label={t('searchPeople')}>
-            <header><div><span>CHATWEB</span><h2>{t('searchPeople')}</h2></div><button type="button" onClick={() => setSearchOpen(false)}><ChatIcon name="close" /></button></header>
+      {activeSection === 'friends' && (
+        <section className="app-section-page friends-section-page" aria-label={t('friends')}>
+          <header className="app-section-page__header"><span><ChatIcon name="users" size={22} /></span><div><small>CHATWEB</small><h1>{t('friends')}</h1><p>{t('friendsPageBody')}</p></div></header>
+          <div className="app-section-page__content">
             <div className="search-input"><ChatIcon name="search" /><input autoFocus value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder={t('searchHint')} /></div>
             <div className="search-types">
               <button className={searchType === 'username' ? 'is-active' : ''} type="button" onClick={() => setSearchType('username')}>@ {t('username')}</button>
               <button className={searchType === 'displayName' ? 'is-active' : ''} type="button" onClick={() => setSearchType('displayName')}>{t('displayName')}</button>
             </div>
-            {friendRequests.length > 0 && !searchQuery && <div className="panel-section"><h3>{t('pendingRequests')} <span>{friendRequests.length}</span></h3>{friendRequests.map((person) => <PersonResult key={person.username} person={person} actionLabel={t('accept')} onAction={() => acceptFriend(person)} />)}</div>}
+            {friendRequests.length > 0 && !searchQuery && <div className="panel-section"><h3>{t('pendingRequests')} <span>{friendRequests.length}</span></h3>{friendRequests.map((person) => <PersonResult key={person.username} person={person} actionLabel={t('accept')} onAction={() => acceptFriend(person)} secondaryActionLabel={t('rejectRequest')} onSecondaryAction={() => removeFriendRelation(person, 'requestRejected')} />)}</div>}
+            {sentRequests.length > 0 && !searchQuery && <div className="panel-section"><h3>{t('sentRequests')} <span>{sentRequests.length}</span></h3>{sentRequests.map((person) => <PersonResult key={person.username} person={person} actionLabel={t('requested')} disabled secondaryActionLabel={t('cancelRequest')} onSecondaryAction={() => removeFriendRelation(person, 'requestCancelled')} />)}</div>}
             {blockedUsers.length > 0 && !searchQuery && <div className="panel-section blocked-users-section"><h3>{t('blockedUsers')} <span>{blockedUsers.length}</span></h3>{blockedUsers.map((person) => <PersonResult key={person.username} person={person} actionLabel={t('unblockUser')} onAction={() => unblockServerUser(person)} />)}</div>}
             {!searchQuery && (
               <div className="panel-section suggestion-section">
@@ -1342,21 +1603,42 @@ function ChatPage() {
                   onAction={() => blockedNames.has(person.username) ? unblockServerUser(person) : addFriend(person)} onSelect={friendNames.has(person.username) ? () => selectFriend(person) : undefined} />
               ))}
             </div>
+          </div>
+        </section>
+      )}
+
+      {messageSearchOpen && selectedUser && (
+        <div className="panel-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setMessageSearchOpen(false)}>
+          <section className="side-panel message-search-panel" role="dialog" aria-modal="true" aria-label={t('searchMessages')}>
+            <header><div><span>@{selectedUser.username}</span><h2>{t('searchMessages')}</h2></div><button type="button" onClick={() => setMessageSearchOpen(false)}><ChatIcon name="close" /></button></header>
+            <div className="search-input"><ChatIcon name="search" /><input autoFocus type="search" value={messageSearchQuery} onChange={(event) => setMessageSearchQuery(event.target.value)} placeholder={t('searchMessagesHint')} /></div>
+            <div className="message-search-results">
+              {!messageSearchQuery.trim() && <div className="panel-empty"><ChatIcon name="search" size={30} /><p>{t('typeToSearchMessages')}</p></div>}
+              {messageSearchLoading && messageSearchResults.length === 0 && <div className="panel-loading"><i /><i /><i /></div>}
+              {!messageSearchLoading && messageSearchQuery.trim() && messageSearchResults.length === 0 && <div className="panel-empty"><ChatIcon name="search" size={30} /><p>{t('noMessageResults')}</p></div>}
+              {messageSearchResults.map((message) => (
+                <button className="message-search-result" type="button" key={message.id} onClick={() => focusSearchResult(message)}>
+                  <span><strong>{message.sender === user?.username ? t('you') : displayName(selectedUser)}</strong><time>{formatDateTime(message.timestamp, language)}</time></span>
+                  <p>{message.content}</p>
+                </button>
+              ))}
+              {messageSearchHasMore && <button className="load-older" type="button" disabled={messageSearchLoading} onClick={() => searchConversationMessages(messageSearchQuery)}><ChatIcon name="history" size={16} />{t('loadMoreResults')}</button>}
+            </div>
           </section>
         </div>
       )}
 
-      {notificationOpen && (
-        <div className="panel-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setNotificationOpen(false)}>
-          <section className="side-panel" role="dialog" aria-modal="true" aria-label={t('notifications')}>
-            <header><div><span>CHATWEB</span><h2>{t('notifications')}</h2></div><button type="button" onClick={() => setNotificationOpen(false)}><ChatIcon name="close" /></button></header>
-            <div className="panel-section">
+      {activeSection === 'notifications' && (
+        <section className="app-section-page notifications-section-page" aria-label={t('notifications')}>
+          <header className="app-section-page__header"><span><ChatIcon name="bell" size={22} /></span><div><small>CHATWEB</small><h1>{t('notifications')}</h1><p>{t('notificationsPageBody')}</p></div></header>
+          <div className="app-section-page__content notifications-page__content">
+            <div className="panel-section notifications-page__list">
               {friendRequests.map((person) => <PersonResult key={person.username} person={person} actionLabel={t('accept')} onAction={() => acceptFriend(person)} />)}
-              {notifications.map((notification, index) => <article className="notification-card" key={`${notification.receivedAt}-${index}`}><span><ChatIcon name="bell" size={17} /></span><div><strong>{notification.relatedUsername || t('notifications')}</strong><p>{notification.message}</p><time>{formatTime(notification.receivedAt, language)}</time></div></article>)}
-              {!friendRequests.length && !notifications.length && <div className="panel-empty"><ChatIcon name="bell" size={30} /><p>{t('noNotifications')}</p></div>}
+              {worldNotifications.map((message, index) => <article className="notification-card" key={`${message.receivedAt}-${index}`}><span><ChatIcon name="globe" size={17} /></span><div><strong>{message.sender || t('admin')}</strong><p>{message.content}</p><time>{formatTime(message.receivedAt, language)}</time></div></article>)}
+              {!friendRequests.length && !worldNotifications.length && <div className="panel-empty"><ChatIcon name="bell" size={30} /><p>{t('noNotifications')}</p></div>}
             </div>
-          </section>
-        </div>
+          </div>
+        </section>
       )}
 
       {isAdmin && worldOpen && (
@@ -1393,6 +1675,21 @@ function ChatPage() {
         </div>
       )}
 
+      {revokeTargetMessage && selectedUser && (
+        <div className="dialog-backdrop" onMouseDown={(event) => event.target === event.currentTarget && !messageActionPending && setRevokeTargetMessage(null)}>
+          <section className="conversation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="revoke-message-title">
+            <span className="conversation-dialog__icon is-danger"><ChatIcon name="trash" size={22} /></span>
+            <h2 id="revoke-message-title">{t('revokeMessageTitle')}</h2>
+            <p>{t('revokeMessageBody')}</p>
+            <div className="revoke-message-preview">{revokeTargetMessage.content || revokeTargetMessage.fileName || t('sharedImage')}</div>
+            <div className="conversation-dialog__actions">
+              <button type="button" disabled={messageActionPending} onClick={() => setRevokeTargetMessage(null)}>{t('cancel')}</button>
+              <button className="is-danger" type="button" disabled={messageActionPending} onClick={revokeChatMessage}>{messageActionPending ? t('revokingMessage') : t('revokeMessage')}</button>
+            </div>
+          </section>
+        </div>
+      )}
+
       {reportDialogOpen && selectedUser && (
         <div className="dialog-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setReportDialogOpen(false)}>
           <section className="conversation-dialog report-dialog" role="dialog" aria-modal="true" aria-labelledby="report-dialog-title">
@@ -1419,13 +1716,16 @@ function ChatPage() {
   )
 }
 
-function PersonResult({ person, actionLabel, onAction, onSelect, disabled = false }) {
+function PersonResult({ person, actionLabel, onAction, onSelect, disabled = false, secondaryActionLabel = '', onSecondaryAction }) {
   return (
     <article className="person-result">
       <button className="person-result__identity" type="button" onClick={onSelect} disabled={!onSelect}>
         <Avatar person={person} showStatus /><span><strong>{displayName(person)}</strong><small>@{person.username}</small></span>
       </button>
-      <button className="person-result__action" type="button" disabled={disabled} onClick={onAction}>{disabled && <ChatIcon name="check" size={15} />}{actionLabel}</button>
+      <span className="person-result__actions">
+        {secondaryActionLabel && <button className="person-result__secondary" type="button" onClick={onSecondaryAction}>{secondaryActionLabel}</button>}
+        <button className="person-result__action" type="button" disabled={disabled} onClick={onAction}>{disabled && <ChatIcon name="check" size={15} />}{actionLabel}</button>
+      </span>
     </article>
   )
 }

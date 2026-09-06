@@ -66,7 +66,7 @@ function LoginPage() {
         </label>
 
         <label className="field-group">
-          <span className="field-label-row"><span>Mật khẩu</span><span className="auth-muted-action">Quên mật khẩu?</span></span>
+          <span className="field-label-row"><span>Mật khẩu</span><Link className="auth-muted-action" to="/forgot-password">Quên mật khẩu?</Link></span>
           <span className="field-control">
             <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="3" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
             <input

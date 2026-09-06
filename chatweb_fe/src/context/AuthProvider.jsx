@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { apiRequest } from '../services/apiClient.js'
 import { clearAccessToken } from '../services/tokenStore.js'
+import { initializeEncryption } from '../services/cryptoService.js'
 import { AuthContext } from './auth-context.js'
 
 function AuthProvider({ children }) {
@@ -12,6 +13,7 @@ function AuthProvider({ children }) {
       const response = await apiRequest('/api/users/me')
       const currentUser = response?.data || null
       setUser(currentUser)
+      if (currentUser?.username) void initializeEncryption(currentUser.username).catch(() => {})
       return currentUser
     } catch {
       setUser(null)
@@ -31,6 +33,7 @@ function AuthProvider({ children }) {
       skipRefresh: true,
     })
     setUser(response?.data || null)
+    if (response?.data?.username) void initializeEncryption(response.data.username).catch(() => {})
     return response
   }, [])
 
@@ -60,17 +63,35 @@ function AuthProvider({ children }) {
     }
   }, [])
 
+  const logoutEverywhere = useCallback(async () => {
+    try {
+      return await apiRequest('/api/auth/logout-all-devices', { method: 'POST', skipRefresh: true })
+    } finally {
+      clearAccessToken()
+      setUser(null)
+    }
+  }, [])
+
+  const deleteAccount = useCallback(async () => {
+    const response = await apiRequest('/api/users/me', { method: 'DELETE' })
+    clearAccessToken()
+    setUser(null)
+    return response
+  }, [])
+
   const value = useMemo(() => ({
     user,
     isAuthenticated: Boolean(user),
     isInitializing,
     login,
     logout,
+    logoutEverywhere,
+    deleteAccount,
     refreshUser,
     register,
     resendOtp,
     verifyAccount,
-  }), [isInitializing, login, logout, refreshUser, register, resendOtp, user, verifyAccount])
+  }), [deleteAccount, isInitializing, login, logout, logoutEverywhere, refreshUser, register, resendOtp, user, verifyAccount])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

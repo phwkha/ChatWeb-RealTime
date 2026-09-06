@@ -382,6 +382,19 @@
 .auth-muted-action {
   color: #969b96;
   font-size: 9px;
+  text-decoration: none;
+}
+
+.auth-muted-action:hover { color: var(--auth-violet-dark); }
+
+.auth-text-button {
+  padding: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--auth-violet-dark);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 800;
 }
 
 .field-control {
