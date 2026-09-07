@@ -32,6 +32,7 @@ import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.repository.AddressRepository;
 import com.web.backend.repository.MessageRepository;
 import com.web.backend.repository.UserRepository;
+import com.web.backend.repository.projection.UserAvatarProjection;
 import com.web.backend.repository.FriendshipRepository;
 import org.springframework.context.ApplicationEventPublisher;
 import com.web.backend.service.impl.UserServiceImpl;
@@ -103,13 +104,15 @@ class UserServiceTest {
     }
 
     @Test
-    void testUpdateAvatar_Success() {
-        when(userRepository.findAvatarByUsername("testuser")).thenReturn(Optional.of("old-avatar.jpg"));
+    void testUpdateAvatar_Success_WithoutOldAvatar() {
+        when(userRepository.findAvatarProjectionByUsername("testuser"))
+                .thenReturn(Optional.of(new UserAvatarProjection(null)));
         MultipartFile file = mock(MultipartFile.class);
         when(storageService.uploadAvatar(file)).thenReturn("http://new-avatar.jpg");
 
         String url = userService.updateAvatar("testuser", file);
         assertEquals("http://new-avatar.jpg", url);
+        verify(storageService, never()).delete(anyString(), anyString());
         verify(userRepository).updateAvatar("testuser", "http://new-avatar.jpg");
     }
 
@@ -464,7 +467,8 @@ class UserServiceTest {
 
     @Test
     void testUpdateAvatar_WithOldAvatar_Success() {
-        when(userRepository.findAvatarByUsername("testuser")).thenReturn(Optional.of("old-avatar.jpg"));
+        when(userRepository.findAvatarProjectionByUsername("testuser"))
+                .thenReturn(Optional.of(new UserAvatarProjection("old-avatar.jpg")));
         MultipartFile file = mock(MultipartFile.class);
         when(storageService.uploadAvatar(file)).thenReturn("http://new-avatar.jpg");
 
@@ -476,7 +480,8 @@ class UserServiceTest {
 
     @Test
     void testUpdateAvatar_WithOldAvatar_DeleteFails() {
-        when(userRepository.findAvatarByUsername("testuser")).thenReturn(Optional.of("old-avatar.jpg"));
+        when(userRepository.findAvatarProjectionByUsername("testuser"))
+                .thenReturn(Optional.of(new UserAvatarProjection("old-avatar.jpg")));
         MultipartFile file = mock(MultipartFile.class);
         when(storageService.uploadAvatar(file)).thenReturn("http://new-avatar.jpg");
         doThrow(new RuntimeException("delete failed")).when(storageService).delete(anyString(), anyString());
@@ -509,7 +514,7 @@ class UserServiceTest {
 
     @Test
     void testUpdateAvatar_UserNotFound() {
-        when(userRepository.findAvatarByUsername("testuser")).thenReturn(Optional.empty());
+        when(userRepository.findAvatarProjectionByUsername("testuser")).thenReturn(Optional.empty());
         assertThrows(ResourceNotFoundException.class,
                 () -> userService.updateAvatar("testuser", mock(MultipartFile.class)));
     }

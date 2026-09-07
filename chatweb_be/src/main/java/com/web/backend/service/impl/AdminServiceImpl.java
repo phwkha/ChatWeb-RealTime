@@ -47,6 +47,7 @@ import com.web.backend.repository.AddressRepository;
 import com.web.backend.repository.MessageRepository;
 import com.web.backend.repository.RoleRepository;
 import com.web.backend.repository.UserRepository;
+import com.web.backend.repository.projection.UserAvatarProjection;
 import com.web.backend.repository.specification.UserSearchSpecifications;
 import com.web.backend.service.AdminService;
 import com.web.backend.service.StorageService;
@@ -299,14 +300,14 @@ public class AdminServiceImpl implements AdminService {
     @Transactional
     @CacheEvict(value = USER_DETAILS_STRING, key = USERNAME_STRING)
     public void deleteAvatar(String username) {
-        String urlAvatar = userRepository.findAvatarByUsername(username)
+        UserAvatarProjection userAvatar = userRepository.findAvatarProjectionByUsername(username)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         Translator.tolocale(ERROR_USER_NOT_FOUND_WITH_STRING, username)));
 
         userRepository.updateAvatar(username, null);
 
-        if (urlAvatar != null) {
-            storageService.delete(urlAvatar, AVATARS_STRING);
+        if (userAvatar.avatar() != null) {
+            storageService.delete(userAvatar.avatar(), AVATARS_STRING);
         }
 
         log.info("Admin deleted avatar for user '{}'", username);

@@ -160,9 +160,26 @@ class UserRepositoryTest {
         assertThat(rsaProj.get().encryptedRsaPrivateKey()).isEqualTo("initial_rsa");
         assertThat(rsaProj.get().userStatus()).isEqualTo(com.web.backend.common.UserStatus.ACTIVE);
 
-        // 3. findAvatarByUsername
+        // 3. findAvatarByUsername & findAvatarProjectionByUsername
         Optional<String> avatar = userRepository.findAvatarByUsername("field_user");
         assertThat(avatar).contains("initial_avatar.jpg");
+        var avatarProj = userRepository.findAvatarProjectionByUsername("field_user");
+        assertThat(avatarProj).isPresent();
+        assertThat(avatarProj.get().avatar()).isEqualTo("initial_avatar.jpg");
+
+        // When avatar is null: user still exists, projection is present with null avatar
+        userRepository.updateAvatar("field_user", null);
+        entityManager.clear();
+        var nullAvatarProj = userRepository.findAvatarProjectionByUsername("field_user");
+        assertThat(nullAvatarProj).isPresent();
+        assertThat(nullAvatarProj.get().avatar()).isNull();
+
+        // When user does not exist: projection is empty
+        assertThat(userRepository.findAvatarProjectionByUsername("non_existent")).isEmpty();
+
+        // Restore avatar for subsequent tests
+        userRepository.updateAvatar("field_user", "initial_avatar.jpg");
+        entityManager.clear();
 
         // 4. updatePublicKey
         userRepository.updatePublicKey("field_user", "updated_pub");

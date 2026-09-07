@@ -47,6 +47,7 @@ import com.web.backend.repository.AddressRepository;
 import com.web.backend.repository.MessageRepository;
 import com.web.backend.repository.RoleRepository;
 import com.web.backend.repository.UserRepository;
+import com.web.backend.repository.projection.UserAvatarProjection;
 import com.web.backend.service.impl.AdminServiceImpl;
 
 @ExtendWith(MockitoExtension.class)
@@ -231,10 +232,20 @@ class AdminServiceTest {
 
     @Test
     void testDeleteAvatar() {
-        when(userRepository.findAvatarByUsername("testuser")).thenReturn(Optional.of("avatar.jpg"));
+        when(userRepository.findAvatarProjectionByUsername("testuser"))
+                .thenReturn(Optional.of(new UserAvatarProjection("avatar.jpg")));
         adminService.deleteAvatar("testuser");
         verify(userRepository).updateAvatar("testuser", null);
         verify(storageService).delete("avatar.jpg", "avatars");
+    }
+
+    @Test
+    void testDeleteAvatar_WhenAvatarAlreadyNull() {
+        when(userRepository.findAvatarProjectionByUsername("testuser"))
+                .thenReturn(Optional.of(new UserAvatarProjection(null)));
+        adminService.deleteAvatar("testuser");
+        verify(userRepository).updateAvatar("testuser", null);
+        verify(storageService, never()).delete(anyString(), anyString());
     }
 
     @Test
@@ -362,7 +373,7 @@ class AdminServiceTest {
 
     @Test
     void testDeleteAvatar_NotFound() {
-        when(userRepository.findAvatarByUsername("testuser")).thenReturn(Optional.empty());
+        when(userRepository.findAvatarProjectionByUsername("testuser")).thenReturn(Optional.empty());
         assertThrows(ResourceNotFoundException.class, () -> adminService.deleteAvatar("testuser"));
     }
 

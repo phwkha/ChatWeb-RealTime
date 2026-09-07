@@ -21,6 +21,7 @@ import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.repository.AddressRepository;
 import com.web.backend.repository.MessageRepository;
 import com.web.backend.repository.UserRepository;
+import com.web.backend.repository.projection.UserAvatarProjection;
 import com.web.backend.repository.FriendshipRepository;
 import com.web.backend.service.CuckooFilterService;
 import com.web.backend.service.EmailService;
@@ -156,15 +157,15 @@ public class UserServiceImpl implements UserService {
     @CacheEvict(value = USER_DETAILS_STRING, key = USERNAME_STRING)
     @Transactional
     public String updateAvatar(String username, MultipartFile avatarFile) {
-        String oldAvatar = userRepository.findAvatarByUsername(username)
+        UserAvatarProjection userAvatar = userRepository.findAvatarProjectionByUsername(username)
                 .orElseThrow(() -> new ResourceNotFoundException(Translator.tolocale(ERROR_USER_NOT_FOUND_STRING)));
         String newUrl = storageService.uploadAvatar(avatarFile);
 
-        if (oldAvatar != null) {
+        if (userAvatar.avatar() != null) {
             try {
-                storageService.delete(oldAvatar, AVATARS_STRING);
+                storageService.delete(userAvatar.avatar(), AVATARS_STRING);
             } catch (Exception e) {
-                log.warn("Failed to delete old avatar image from storage: '{}'", oldAvatar, e);
+                log.warn("Failed to delete old avatar image from storage: '{}'", userAvatar.avatar(), e);
             }
         }
         userRepository.updateAvatar(username, newUrl);

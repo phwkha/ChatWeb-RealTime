@@ -4,6 +4,7 @@ import com.web.backend.common.UserStatus;
 import com.web.backend.controller.response.UserSummaryResponse;
 import com.web.backend.model.postgres.RoleEntity;
 import com.web.backend.model.postgres.UserEntity;
+import com.web.backend.repository.projection.UserAvatarProjection;
 import com.web.backend.repository.projection.UserRsaKeyProjection;
 
 import org.springframework.data.domain.Page;
@@ -59,6 +60,13 @@ public interface UserRepository extends JpaRepository<UserEntity, Long>, JpaSpec
 
     @Query("SELECT u.avatar FROM UserEntity u WHERE u.username = :username")
     Optional<String> findAvatarByUsername(@Param("username") String username);
+
+    @Query("""
+            SELECT new com.web.backend.repository.projection.UserAvatarProjection(u.avatar)
+            FROM UserEntity u
+            WHERE u.username = :username
+            """)
+    Optional<UserAvatarProjection> findAvatarProjectionByUsername(@Param("username") String username);
 
     @Query(value = """
             SELECT new com.web.backend.controller.response.UserSummaryResponse(
