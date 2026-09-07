@@ -15,6 +15,8 @@ import org.springframework.security.core.Authentication;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import io.swagger.v3.oas.annotations.Operation;
+import com.web.backend.ratelimit.LimitType;
+import com.web.backend.ratelimit.RateLimit;
 import org.springframework.web.bind.annotation.*;
 
 @Tag(name = "Friend Controller")
@@ -36,6 +38,7 @@ public class FriendController {
         private static final String SUCCESS_SYS_OPERATION_STRING = "success.sys.operation";
 
         @Operation(summary = "Get friend requests", description = "API endpoint for get friend requests")
+        @RateLimit(key = "friend_get_requests", limit = 30, period = 60, type = LimitType.USER)
         @GetMapping("/requests")
         public ResponseEntity<ApiResponse<PageResponse<UserSummaryResponse>>> getFriendRequests(
                         Authentication auth,
@@ -51,6 +54,7 @@ public class FriendController {
         }
 
         @Operation(summary = "Get sent requests", description = "API endpoint for get sent requests")
+        @RateLimit(key = "friend_get_sent", limit = 30, period = 60, type = LimitType.USER)
         @GetMapping("/sent")
         public ResponseEntity<ApiResponse<PageResponse<UserSummaryResponse>>> getSentRequests(
                         Authentication auth,
@@ -65,6 +69,7 @@ public class FriendController {
         }
 
         @Operation(summary = "Get friends list", description = "API endpoint for get friends list")
+        @RateLimit(key = "friend_get_list", limit = 45, period = 60, type = LimitType.USER)
         @GetMapping
         public ResponseEntity<ApiResponse<PageResponse<UserSummaryResponse>>> getFriendsList(
                         Authentication auth,
@@ -80,6 +85,7 @@ public class FriendController {
         }
 
         @Operation(summary = "Delete friendship", description = "API endpoint for delete friendship")
+        @RateLimit(key = "friend_delete", limit = 20, period = 60, type = LimitType.USER)
         @DeleteMapping("/{username}")
         public ResponseEntity<ApiResponse<Void>> deleteFriendship(
                         Authentication auth,
@@ -95,6 +101,7 @@ public class FriendController {
         }
 
         @Operation(summary = "Get blocked users list", description = "API endpoint for get blocked users list")
+        @RateLimit(key = "friend_get_blocked", limit = 30, period = 60, type = LimitType.USER)
         @GetMapping("/blocked")
         public ResponseEntity<ApiResponse<PageResponse<UserSummaryResponse>>> getBlockedList(
                         Authentication auth,
@@ -110,6 +117,7 @@ public class FriendController {
         }
 
         @Operation(summary = "Block user", description = "API endpoint for block user")
+        @RateLimit(key = "friend_block", limit = 20, period = 60, type = LimitType.USER)
         @PostMapping("/block/{username}")
         public ResponseEntity<ApiResponse<Void>> blockUser(Authentication auth, @PathVariable String username) {
                 UserEntity user = (UserEntity) auth.getPrincipal();
@@ -122,6 +130,7 @@ public class FriendController {
         }
 
         @Operation(summary = "Unblock user", description = "API endpoint for unblock user")
+        @RateLimit(key = "friend_unblock", limit = 20, period = 60, type = LimitType.USER)
         @PostMapping("/unblock/{username}")
         public ResponseEntity<ApiResponse<Void>> unblockUser(Authentication auth, @PathVariable String username) {
                 UserEntity user = (UserEntity) auth.getPrincipal();
@@ -140,6 +149,7 @@ public class FriendController {
             required = true,
             description = "UUID idempotency key to prevent duplicate requests")
         @com.web.backend.idempotent.Idempotent(key = "friend_request", ttl = 300)
+        @RateLimit(key = "friend_send_req", limit = 20, period = 60, type = LimitType.USER)
         @PostMapping("/request")
         public ResponseEntity<ApiResponse<Void>> sendFriendRequest(
                         Authentication auth,
@@ -163,6 +173,7 @@ public class FriendController {
             required = true,
             description = "UUID idempotency key to prevent duplicate requests")
         @com.web.backend.idempotent.Idempotent(key = "friend_accept", ttl = 300)
+        @RateLimit(key = "friend_accept_req", limit = 20, period = 60, type = LimitType.USER)
         @PostMapping("/accept")
         public ResponseEntity<ApiResponse<Void>> acceptFriendRequest(
                         Authentication auth,

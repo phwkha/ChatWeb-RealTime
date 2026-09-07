@@ -8,7 +8,9 @@ import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 
 import org.bson.types.ObjectId;
+import org.springframework.data.redis.core.RedisOperations;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.SessionCallback;
 import org.springframework.stereotype.Service;
 
 import com.web.backend.common.ContentType;
@@ -56,6 +58,7 @@ public class ChatServiceImpl implements ChatService {
     private static final String CHAT_RECENT_HASH_STRING = "chat:recent:hash:";
     private static final String CHAT_RECENT_ZSET_STRING = "chat:recent:zset:";
     private static final String UNREAD_COUNTS_STRING = "unread_counts:";
+    private static final String SENTINEL_EMPTY_STRING = "_empty";
 
     private static final String EMPTY_STRING = "";
     private static final String DELIMITER_UNDERSCORE_STRING = "_";
@@ -231,17 +234,27 @@ public class ChatServiceImpl implements ChatService {
             String hashKey = CHAT_RECENT_HASH_STRING + convId;
             String zsetKey = CHAT_RECENT_ZSET_STRING + convId;
             long score = chatMsg.getTimestamp().toEpochMilli();
-            Duration chatTtl = getRandomTtl(300, 30);
+            Duration chatTtl = getRandomTtl(3600, 300);
 
-            redisTemplate.opsForHash().put(hashKey, chatMsg.getId(), chatMsg);
-            redisTemplate.opsForZSet().add(zsetKey, chatMsg.getId(), score);
-
-            redisTemplate.expire(hashKey, chatTtl);
-            redisTemplate.expire(zsetKey, chatTtl);
+            redisTemplate.executePipelined(new SessionCallback<Object>() {
+                @Override
+                @SuppressWarnings("unchecked")
+                public Object execute(RedisOperations operations) {
+                    operations.opsForHash().put(hashKey, chatMsg.getId(), chatMsg);
+                    operations.opsForZSet().add(zsetKey, chatMsg.getId(), score);
+                    operations.expire(hashKey, chatTtl);
+                    operations.expire(zsetKey, chatTtl);
+                    return null;
+                }
+            });
 
             if (chatMsg.getRecipient() != null && chatMsg.getSender() != null) {
                 String key = UNREAD_COUNTS_STRING + chatMsg.getRecipient();
-                redisTemplate.opsForHash().increment(key, chatMsg.getSender(), 1);
+                Boolean hasKey = redisTemplate.hasKey(key);
+                if (Boolean.TRUE.equals(hasKey)) {
+                    redisTemplate.opsForHash().delete(key, SENTINEL_EMPTY_STRING);
+                    redisTemplate.opsForHash().increment(key, chatMsg.getSender(), 1);
+                }
             }
 
             Set<Object> keysToRemove = redisTemplate.opsForZSet().range(zsetKey, 0, -51);

@@ -55,7 +55,7 @@ public class KafkaTopicConfig {
 
     @Bean
     public NewTopic chatMessagesDltTopicBean() {
-        return TopicBuilder.name("chat.messages.dlt")
+        return TopicBuilder.name(chatMessagesTopic + "-save-dlt")
                 .partitions(12)
                 .replicas(2)
                 .build();

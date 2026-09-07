@@ -14,6 +14,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import com.web.backend.model.postgres.UserEntity;
+import com.web.backend.ratelimit.LimitType;
+import com.web.backend.ratelimit.RateLimit;
 import org.springframework.web.bind.annotation.*;
 
 @Tag(name = "Search Controller")
@@ -28,6 +30,7 @@ public class SearchUserController {
     private static final String SUCCESS_SEARCH_ADVANCE_STRING = "success.search.advance";
 
     @Operation(summary = "Search users by keyword", description = "Search users by username, email, first name or last name")
+    @RateLimit(key = "search_users", limit = 30, period = 60, type = LimitType.USER)
     @GetMapping("/users")
     public ResponseEntity<ApiResponse<PageResponse<UserSummaryResponse>>> searchUsers(
             Authentication authentication,
@@ -51,6 +54,7 @@ public class SearchUserController {
     }
 
     @Operation(summary = "Advance search query by specifications", description = "Return list of users")
+    @RateLimit(key = "search_users_filter", limit = 20, period = 60, type = LimitType.USER)
     @GetMapping(path = "/users/filter")
     public ResponseEntity<ApiResponse<PageResponse<UserSummaryResponse>>> advanceSearchWithSpecifications(
             Pageable pageable,

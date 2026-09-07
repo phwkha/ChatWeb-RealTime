@@ -210,13 +210,26 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         }
     }
 
+    private final Map<String, Long> lastOnlineTimestampMap = new java.util.concurrent.ConcurrentHashMap<>();
+
     private void updateOnlineUsers(StompHeaderAccessor accessor) {
         Principal user = accessor.getUser();
-        if (user != null
-                && user.getName() != null
-                && !StompCommand.DISCONNECT.equals(accessor.getCommand())) {
-            redisTemplate.opsForZSet().add(ONLINE_USERS_KEY, user.getName(),
-                    System.currentTimeMillis());
+        if (user != null && user.getName() != null) {
+            String username = user.getName();
+            if (StompCommand.DISCONNECT.equals(accessor.getCommand())) {
+                lastOnlineTimestampMap.remove(username);
+                return;
+            }
+            long now = System.currentTimeMillis();
+            Long lastUpdate = lastOnlineTimestampMap.get(username);
+            if (lastUpdate == null || now - lastUpdate > 60_000L) {
+                lastOnlineTimestampMap.put(username, now);
+                try {
+                    redisTemplate.opsForZSet().add(ONLINE_USERS_KEY, username, now);
+                } catch (Exception e) {
+                    log.warn("Failed to update online timestamp in Redis for user '{}'", username, e);
+                }
+            }
         }
     }
 

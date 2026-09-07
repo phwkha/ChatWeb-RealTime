@@ -51,7 +51,6 @@ public class AuthController {
         private static final String UNDEFINED_STRING = "undefined";
 
         private static final String STRICT_STRING = "Strict";
-        private static final String AUTH_PATH = "/api/auth";
 
         private static final String ACCESSTOKEN = "accessToken";
         private static final String REFRESHTOKEN = "refreshToken";
@@ -137,7 +136,7 @@ public class AuthController {
                                 PATH_STRING,
                                 15 * 60L);
                 ResponseCookie newrefreshCookie = buildCookie(REFRESHTOKEN, newTokenResponse.getRefreshToken(),
-                                AUTH_PATH, 7 * 24 * 60 * 60L);
+                                API_AUTH_REFRESH_TOKEN_STRING, 7 * 24 * 60 * 60L);
 
                 return ResponseEntity.ok()
                                 .header(HttpHeaders.SET_COOKIE, newAccessCookie.toString())
@@ -187,7 +186,8 @@ public class AuthController {
                 clearTokens(request);
 
                 ResponseCookie deleteAccess = buildCookie(ACCESSTOKEN, EMPTY_STRING, PATH_STRING, 0);
-                ResponseCookie deleteRefresh = buildCookie(REFRESHTOKEN, EMPTY_STRING, AUTH_PATH, 0);
+                ResponseCookie deleteRefresh = buildCookie(REFRESHTOKEN, EMPTY_STRING, API_AUTH_REFRESH_TOKEN_STRING,
+                                0);
 
                 return ResponseEntity.ok()
                                 .header(HttpHeaders.SET_COOKIE, deleteAccess.toString())
@@ -207,7 +207,8 @@ public class AuthController {
                 clearTokens(request);
 
                 ResponseCookie deleteAccess = buildCookie(ACCESSTOKEN, EMPTY_STRING, PATH_STRING, 0);
-                ResponseCookie deleteRefresh = buildCookie(REFRESHTOKEN, EMPTY_STRING, AUTH_PATH, 0);
+                ResponseCookie deleteRefresh = buildCookie(REFRESHTOKEN, EMPTY_STRING, API_AUTH_REFRESH_TOKEN_STRING,
+                                0);
 
                 return ResponseEntity.ok()
                                 .header(HttpHeaders.SET_COOKIE, deleteAccess.toString())

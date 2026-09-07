@@ -129,19 +129,20 @@ public class MessageServiceImpl implements MessageService {
         if (!friendService.isFriend(Objects.requireNonNull(user1), Objects.requireNonNull(user2))) {
             throw new AccessForbiddenException(Translator.tolocale(ERROR_MSG_NOT_FRIENDS_STRING));
         }
+        int pageSize = (size <= 0 || size > 100) ? 20 : size;
         String conversationId = generateConversationId(user1, user2);
-        Pageable pageable = PageRequest.of(0, size + 1, Sort.by(Sort.Direction.DESC, TIMESTAMP_STRING));
+        Pageable pageable = PageRequest.of(0, pageSize + 1, Sort.by(Sort.Direction.DESC, TIMESTAMP_STRING));
 
         if (cursorStr == null || cursorStr.isEmpty()) {
-            List<ChatMessage> cachedMessages = fetchMessagesFromRedisCache(conversationId, 0, size);
-            if (cachedMessages.size() >= size + 1) {
+            List<ChatMessage> cachedMessages = fetchMessagesFromRedisCache(conversationId, 0, pageSize);
+            if (cachedMessages.size() >= pageSize + 1) {
                 cachedMessages.sort(Comparator.comparing(ChatMessage::getTimestamp).reversed());
-                return buildCursorResponse(cachedMessages, size, conversationId, user1, user2);
+                return buildCursorResponse(cachedMessages, pageSize, conversationId, user1, user2);
             }
         }
 
-        List<ChatMessage> finalMessages = fetchMessagesFromDatabaseAndMerge(conversationId, cursorStr, size, pageable);
-        return buildCursorResponse(finalMessages, size, conversationId, user1, user2);
+        List<ChatMessage> finalMessages = fetchMessagesFromDatabaseAndMerge(conversationId, cursorStr, pageSize, pageable);
+        return buildCursorResponse(finalMessages, pageSize, conversationId, user1, user2);
     }
 
     @Override
@@ -290,6 +291,10 @@ public class MessageServiceImpl implements MessageService {
 
             String unreadKey = UNREAD_COUNTS_STRING + recipientUsername;
             redisTemplate.opsForHash().delete(unreadKey, senderUsername);
+            Long remaining = redisTemplate.opsForHash().size(unreadKey);
+            if (remaining != null && remaining == 0) {
+                redisTemplate.opsForHash().put(unreadKey, SENTINEL_EMPTY_STRING, 0L);
+            }
         } catch (Exception e) {
             log.warn("Failed to update read receipt in Redis for conv '{}'", convId, e);
         }
@@ -391,7 +396,13 @@ public class MessageServiceImpl implements MessageService {
         if (msg.getStatus() != MessageStatus.READ && msg.getRecipient() != null) {
             String unreadKey = UNREAD_COUNTS_STRING + msg.getRecipient();
             try {
-                redisTemplate.opsForHash().increment(unreadKey, senderUsername, -1);
+                Boolean hasKey = redisTemplate.hasKey(unreadKey);
+                if (Boolean.TRUE.equals(hasKey)) {
+                    Object currentVal = redisTemplate.opsForHash().get(unreadKey, senderUsername);
+                    if (currentVal != null && Long.parseLong(currentVal.toString()) > 0) {
+                        redisTemplate.opsForHash().increment(unreadKey, senderUsername, -1);
+                    }
+                }
             } catch (Exception e) {
                 log.warn("Failed to decrement unread count for recipient '{}'", msg.getRecipient(), e);
             }
@@ -518,22 +529,27 @@ public class MessageServiceImpl implements MessageService {
     }
 
     private List<ChatMessage> fetchMessagesFromRedisCache(String conversationId, long start, long end) {
-        String hashKey = CHAT_RECENT_HASH_STRING + conversationId;
-        String zsetKey = CHAT_RECENT_ZSET_STRING + conversationId;
-        Set<Object> messageIds = redisTemplate.opsForZSet().reverseRange(zsetKey, start, end);
+        try {
+            String hashKey = CHAT_RECENT_HASH_STRING + conversationId;
+            String zsetKey = CHAT_RECENT_ZSET_STRING + conversationId;
+            Set<Object> messageIds = redisTemplate.opsForZSet().reverseRange(zsetKey, start, end);
 
-        if (messageIds == null || messageIds.isEmpty()) {
+            if (messageIds == null || messageIds.isEmpty()) {
+                return new ArrayList<>();
+            }
+
+            List<Object> redisObjects = redisTemplate.opsForHash().multiGet(hashKey, messageIds);
+            List<ChatMessage> messages = new ArrayList<>();
+            for (Object obj : redisObjects) {
+                if (obj != null) {
+                    messages.add((ChatMessage) obj);
+                }
+            }
+            return messages;
+        } catch (Exception e) {
+            log.warn("Failed to fetch messages from Redis cache for conv '{}'", conversationId, e);
             return new ArrayList<>();
         }
-
-        List<Object> redisObjects = redisTemplate.opsForHash().multiGet(hashKey, messageIds);
-        List<ChatMessage> messages = new ArrayList<>();
-        for (Object obj : redisObjects) {
-            if (obj != null) {
-                messages.add((ChatMessage) obj);
-            }
-        }
-        return messages;
     }
 
     private List<ChatMessage> fetchMessagesFromDatabaseAndMerge(String conversationId, String cursorStr, int size,
@@ -622,16 +638,17 @@ public class MessageServiceImpl implements MessageService {
     }
 
     private ChatMessage getMessageFromDbOrRedis(String messageId, String convId) {
-        Optional<ChatMessage> dbMsgOpt = messageRepository.findById(messageId);
-        if (dbMsgOpt.isPresent()) {
-            return dbMsgOpt.get();
-        }
         String hashKey = CHAT_RECENT_HASH_STRING + convId;
-        Object redisObj = redisTemplate.opsForHash().get(hashKey, messageId);
-        if (redisObj != null) {
-            return (ChatMessage) redisObj;
+        try {
+            Object redisObj = redisTemplate.opsForHash().get(hashKey, messageId);
+            if (redisObj != null) {
+                return (ChatMessage) redisObj;
+            }
+        } catch (Exception e) {
+            log.warn("Failed to check Redis cache for message '{}' in conv '{}'", messageId, convId, e);
         }
-        throw new ResourceNotFoundException(Translator.tolocale(ERROR_MSG_NOT_FOUND_STRING));
+        return messageRepository.findById(messageId)
+                .orElseThrow(() -> new ResourceNotFoundException(Translator.tolocale(ERROR_MSG_NOT_FOUND_STRING)));
     }
 
     private String escapeRegex(String input) {

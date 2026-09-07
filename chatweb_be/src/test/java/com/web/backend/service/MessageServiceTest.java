@@ -344,6 +344,8 @@ class MessageServiceTest {
 
         when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
         when(mongoTemplate.findAndModify(any(), any(), any(), eq(ChatMessage.class))).thenReturn(message);
+        when(redisTemplate.hasKey("unread_counts:recipient")).thenReturn(true);
+        when(hashOperations.get("unread_counts:recipient", "sender")).thenReturn("5");
 
         messageService.revokeMessage("sender", request);
 
