@@ -8,6 +8,9 @@ import LoginPage from './pages/auth/LoginPage.jsx'
 import OAuthCallbackPage from './pages/auth/OAuthCallbackPage.jsx'
 import RegisterPage from './pages/auth/RegisterPage.jsx'
 import VerifyAccountPage from './pages/auth/VerifyAccountPage.jsx'
+import ForgotPasswordPage from './pages/auth/ForgotPasswordPage.jsx'
+import SettingsPage from './pages/SettingsPage.jsx'
+import AdminPage from './pages/AdminPage.jsx'
 
 function PublicOnlyRoute({ children }) {
   const { user, isInitializing } = useAuth()
@@ -44,13 +47,17 @@ function App() {
     <AuthProvider>
       <LanguageProvider>
         <Routes>
-          <Route path="/" element={<LandingPage />} />
+          <Route path="/" element={<Navigate to="/home" replace />} />
+          <Route path="/home" element={<LandingPage />} />
           <Route path="/chat" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
+          <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+          <Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
           <Route path="/login" element={<PublicOnlyRoute><LoginPage /></PublicOnlyRoute>} />
           <Route path="/register" element={<PublicOnlyRoute><RegisterPage /></PublicOnlyRoute>} />
+          <Route path="/forgot-password" element={<PublicOnlyRoute><ForgotPasswordPage /></PublicOnlyRoute>} />
           <Route path="/verify-account" element={<VerifyAccountPage />} />
           <Route path="/oauth2/redirect" element={<OAuthCallbackPage />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/home" replace />} />
         </Routes>
       </LanguageProvider>
     </AuthProvider>
