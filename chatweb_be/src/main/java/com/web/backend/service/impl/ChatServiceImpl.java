@@ -239,11 +239,12 @@ public class ChatServiceImpl implements ChatService {
             redisTemplate.executePipelined(new SessionCallback<Object>() {
                 @Override
                 @SuppressWarnings("unchecked")
-                public Object execute(RedisOperations operations) {
-                    operations.opsForHash().put(hashKey, chatMsg.getId(), chatMsg);
-                    operations.opsForZSet().add(zsetKey, chatMsg.getId(), score);
-                    operations.expire(hashKey, chatTtl);
-                    operations.expire(zsetKey, chatTtl);
+                public <K, V> Object execute(RedisOperations<K, V> operations) {
+                    RedisOperations<String, Object> ops = (RedisOperations<String, Object>) operations;
+                    ops.opsForHash().put(hashKey, chatMsg.getId(), chatMsg);
+                    ops.opsForZSet().add(zsetKey, chatMsg.getId(), score);
+                    ops.expire(hashKey, chatTtl);
+                    ops.expire(zsetKey, chatTtl);
                     return null;
                 }
             });
