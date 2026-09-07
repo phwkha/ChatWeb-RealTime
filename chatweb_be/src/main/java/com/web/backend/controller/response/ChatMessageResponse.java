@@ -43,9 +43,5 @@ public class ChatMessageResponse {
 
     private Map<String, String> reactions;
 
-    private String iv;
-    private String wrappedKeyRecipient;
-    private String wrappedKeySender;
-
     private String localId;
 }

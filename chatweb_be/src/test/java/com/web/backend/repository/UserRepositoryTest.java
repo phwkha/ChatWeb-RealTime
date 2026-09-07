@@ -143,24 +143,12 @@ class UserRepositoryTest {
         user.setEmail("field@example.com");
         user.setPassword("password");
         user.setUserStatus(com.web.backend.common.UserStatus.ACTIVE);
-        user.setPublicKey("initial_pub");
-        user.setEncryptedRsaPrivateKey("initial_rsa");
         user.setAvatar("initial_avatar.jpg");
         user.setTokenVersion(1);
         user.setRole(role);
         entityManager.persistAndFlush(user);
 
-        // 1. findPublicKeyByUsername
-        Optional<String> pubKey = userRepository.findPublicKeyByUsername("field_user");
-        assertThat(pubKey).contains("initial_pub");
-
-        // 2. findRsaKeyProjectionByUsername
-        var rsaProj = userRepository.findRsaKeyProjectionByUsername("field_user");
-        assertThat(rsaProj).isPresent();
-        assertThat(rsaProj.get().encryptedRsaPrivateKey()).isEqualTo("initial_rsa");
-        assertThat(rsaProj.get().userStatus()).isEqualTo(com.web.backend.common.UserStatus.ACTIVE);
-
-        // 3. findAvatarByUsername & findAvatarProjectionByUsername
+        // 1. findAvatarByUsername & findAvatarProjectionByUsername
         Optional<String> avatar = userRepository.findAvatarByUsername("field_user");
         assertThat(avatar).contains("initial_avatar.jpg");
         var avatarProj = userRepository.findAvatarProjectionByUsername("field_user");
@@ -181,15 +169,6 @@ class UserRepositoryTest {
         userRepository.updateAvatar("field_user", "initial_avatar.jpg");
         entityManager.clear();
 
-        // 4. updatePublicKey
-        userRepository.updatePublicKey("field_user", "updated_pub");
-        entityManager.clear();
-        assertThat(userRepository.findPublicKeyByUsername("field_user")).contains("updated_pub");
-
-        // 5. updateEncryptedRsaPrivateKey
-        userRepository.updateEncryptedRsaPrivateKey("field_user", "updated_rsa");
-        entityManager.clear();
-        assertThat(userRepository.findRsaKeyProjectionByUsername("field_user").get().encryptedRsaPrivateKey()).isEqualTo("updated_rsa");
 
         // 6. updateAvatar
         userRepository.updateAvatar("field_user", "updated_avatar.jpg");

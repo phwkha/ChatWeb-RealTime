@@ -5,7 +5,6 @@ import com.web.backend.controller.response.UserSummaryResponse;
 import com.web.backend.model.postgres.RoleEntity;
 import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.repository.projection.UserAvatarProjection;
-import com.web.backend.repository.projection.UserRsaKeyProjection;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -48,15 +47,6 @@ public interface UserRepository extends JpaRepository<UserEntity, Long>, JpaSpec
     @Query("SELECT u.userStatus FROM UserEntity u WHERE u.username = :username")
     Optional<UserStatus> findUserStatusByUsername(@Param("username") String username);
 
-    @Query("SELECT u.publicKey FROM UserEntity u WHERE u.username = :username")
-    Optional<String> findPublicKeyByUsername(@Param("username") String username);
-
-    @Query("""
-            SELECT new com.web.backend.repository.projection.UserRsaKeyProjection(u.userStatus, u.encryptedRsaPrivateKey)
-            FROM UserEntity u
-            WHERE u.username = :username
-            """)
-    Optional<UserRsaKeyProjection> findRsaKeyProjectionByUsername(@Param("username") String username);
 
     @Query("SELECT u.avatar FROM UserEntity u WHERE u.username = :username")
     Optional<String> findAvatarByUsername(@Param("username") String username);
@@ -88,15 +78,6 @@ public interface UserRepository extends JpaRepository<UserEntity, Long>, JpaSpec
     @Query("UPDATE UserEntity u SET u.isOnline = :isOnline WHERE u.username = :username")
     void updateOnlineStatus(String username, boolean isOnline);
 
-    @Modifying(clearAutomatically = true, flushAutomatically = true)
-    @Transactional
-    @Query("UPDATE UserEntity u SET u.publicKey = :publicKey WHERE u.username = :username")
-    void updatePublicKey(@Param("username") String username, @Param("publicKey") String publicKey);
-
-    @Modifying(clearAutomatically = true, flushAutomatically = true)
-    @Transactional
-    @Query("UPDATE UserEntity u SET u.encryptedRsaPrivateKey = :encryptedKey WHERE u.username = :username")
-    void updateEncryptedRsaPrivateKey(@Param("username") String username, @Param("encryptedKey") String encryptedKey);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Transactional

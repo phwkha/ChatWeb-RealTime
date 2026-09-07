@@ -84,9 +84,6 @@ public class MessageServiceImpl implements MessageService {
     private static final String FIELD_IS_DELETED_STRING = "isDeleted";
     private static final String FIELD_CONTENT_STRING = "content";
     private static final String FIELD_IS_EDITED_STRING = "isEdited";
-    private static final String FIELD_IV_STRING = "iv";
-    private static final String FIELD_WRAPPED_KEY_RECIPIENT_STRING = "wrappedKeyRecipient";
-    private static final String FIELD_WRAPPED_KEY_SENDER_STRING = "wrappedKeySender";
     private static final String FIELD_FILE_URL_STRING = "fileUrl";
     private static final String FIELD_FILE_NAME_STRING = "fileName";
     private static final String FIELD_FILE_SIZE_STRING = "fileSize";
@@ -95,6 +92,9 @@ public class MessageServiceImpl implements MessageService {
     private static final String FIELD_IS_REACTED_STRING = "isReacted";
     private static final String FIELD_LAST_READ_TIMESTAMP_STRING = "lastReadTimestamp";
     private static final String FIELD_USERNAME_STRING = "username";
+    private static final String FIELD_STATUS_STRING = "status";
+    private static final String FIELD_RECIPIENT_STRING = "recipient";
+    private static final String FIELD_MESSAGE_TYPE_STRING = "messageType";
 
     private static final String CHAT_RECENT_HASH_STRING = "chat:recent:hash:";
     private static final String CHAT_RECENT_ZSET_STRING = "chat:recent:zset:";
@@ -239,6 +239,18 @@ public class MessageServiceImpl implements MessageService {
         }
 
         try {
+            Query msgQuery = new Query(Criteria.where(FIELD_CONVERSATION_ID_STRING).is(convId)
+                    .and(FIELD_RECIPIENT_STRING).is(recipientUsername)
+                    .and(FIELD_STATUS_STRING).is(MessageStatus.SENT)
+                    .and(FIELD_MESSAGE_TYPE_STRING).is(MessageType.CHAT));
+            Update msgUpdate = new Update().set(FIELD_STATUS_STRING, MessageStatus.READ);
+            mongoTemplate.updateMulti(msgQuery, msgUpdate, ChatMessage.class);
+            log.debug("Bulk-updated SENT→READ for conv '{}' recipient '{}'", convId, recipientUsername);
+        } catch (Exception ex) {
+            log.warn("Failed to bulk-update message statuses for conv '{}'", convId, ex);
+        }
+
+        try {
             String readReceiptKey = READ_RECEIPT_KEY_STRING + convId + DELIMITER_COLON_STRING + recipientUsername;
             redisTemplate.opsForValue().set(readReceiptKey, now.toString(), Duration.ofDays(7));
 
@@ -282,15 +294,7 @@ public class MessageServiceImpl implements MessageService {
         Update update = new Update();
         update.set(FIELD_CONTENT_STRING, request.getNewContent());
         update.set(FIELD_IS_EDITED_STRING, true);
-        if (request.getIv() != null) {
-            update.set(FIELD_IV_STRING, request.getIv());
-        }
-        if (request.getWrappedKeyRecipient() != null) {
-            update.set(FIELD_WRAPPED_KEY_RECIPIENT_STRING, request.getWrappedKeyRecipient());
-        }
-        if (request.getWrappedKeySender() != null) {
-            update.set(FIELD_WRAPPED_KEY_SENDER_STRING, request.getWrappedKeySender());
-        }
+
 
         FindAndModifyOptions options = new FindAndModifyOptions().returnNew(true);
         ChatMessage updatedMsg = mongoTemplate.findAndModify(query, update, options, ChatMessage.class);
@@ -340,9 +344,6 @@ public class MessageServiceImpl implements MessageService {
         update.set(FIELD_FILE_NAME_STRING, null);
         update.set(FIELD_FILE_SIZE_STRING, null);
         update.set(FIELD_REACTIONS_STRING, null);
-        update.set(FIELD_IV_STRING, null);
-        update.set(FIELD_WRAPPED_KEY_RECIPIENT_STRING, null);
-        update.set(FIELD_WRAPPED_KEY_SENDER_STRING, null);
         update.set(FIELD_IS_DELETED_STRING, true);
 
         FindAndModifyOptions options = new FindAndModifyOptions().returnNew(true);

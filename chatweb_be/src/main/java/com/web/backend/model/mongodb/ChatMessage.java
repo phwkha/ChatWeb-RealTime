@@ -47,8 +47,4 @@ public class ChatMessage {
     private boolean isReacted;
 
     private Map<String, String> reactions;
-
-    private String iv;
-    private String wrappedKeyRecipient;
-    private String wrappedKeySender;
 }

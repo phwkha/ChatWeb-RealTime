@@ -36,14 +36,6 @@ public class ChatMessageRequest {
 
     private Long fileSize;
 
-    @Size(max = 255)
-    private String iv;
-
-    @Size(max = 1000)
-    private String wrappedKeyRecipient;
-
-    @Size(max = 1000)
-    private String wrappedKeySender;
 
     @Size(max = 255)
     private String localId;

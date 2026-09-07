@@ -226,32 +226,6 @@ class MessageServiceTest {
         verify(eventPublisher).publishEvent(any(UpdateMessagePayload.class));
     }
 
-    @Test
-    void testEditMessage_Success_WithE2EE() {
-        EditMessageRequest request = new EditMessageRequest();
-        request.setMessageId("msg1");
-        request.setNewContent("Encrypted text");
-        request.setRecipient("recipient");
-        request.setIv("new_iv");
-        request.setWrappedKeyRecipient("new_wrapped_recipient");
-        request.setWrappedKeySender("new_wrapped_sender");
-
-        ChatMessage message = new ChatMessage();
-        message.setId("msg1");
-        message.setSender("sender");
-        message.setRecipient("recipient");
-        message.setConversationId("recipient_sender");
-        message.setIv("old_iv");
-        message.setMessageType(com.web.backend.common.MessageType.CHAT);
-
-        when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
-        when(mongoTemplate.findAndModify(any(), any(), any(), eq(ChatMessage.class))).thenReturn(message);
-
-        messageService.editMessage("sender", request);
-
-        verify(mongoTemplate).findAndModify(any(), any(), any(), eq(ChatMessage.class));
-        verify(eventPublisher).publishEvent(any(UpdateMessagePayload.class));
-    }
 
     @Test
     void testEditMessage_NotFoundInDb_ThrowsResourceNotFoundException() {
@@ -364,9 +338,6 @@ class MessageServiceTest {
         message.setConversationId("recipient_sender");
         message.setContent("Secret");
         message.setFileUrl("url");
-        message.setIv("iv123");
-        message.setWrappedKeyRecipient("key_r");
-        message.setWrappedKeySender("key_s");
         message.setStatus(MessageStatus.SENT);
         message.setMessageType(com.web.backend.common.MessageType.CHAT);
 

@@ -54,11 +54,6 @@ public class UserEntity extends AbstractEntity<Long> implements UserDetails {
     @JoinColumn(name = "role_id", nullable = false)
     private RoleEntity role;
 
-    @Column(columnDefinition = "TEXT", name = "public_key")
-    private String publicKey;
-
-    @Column(columnDefinition = "TEXT", name = "encrypted_rsa_private_key")
-    private String encryptedRsaPrivateKey;
 
     @Column(name = "first_name")
     private String firstName;

@@ -103,21 +103,6 @@
         }
       ],
       "default": null
-    },
-    {
-      "name": "iv",
-      "type": ["null", "string"],
-      "default": null
-    },
-    {
-      "name": "wrappedKeyRecipient",
-      "type": ["null", "string"],
-      "default": null
-    },
-    {
-      "name": "wrappedKeySender",
-      "type": ["null", "string"],
-      "default": null
     }
   ]
 }
