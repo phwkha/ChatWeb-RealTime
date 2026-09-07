@@ -169,4 +169,31 @@ class MessageControllerTest {
                                 .andExpect(jsonPath("$.code").value(200))
                                 .andExpect(jsonPath("$.data.id").value("msg123"));
         }
+
+        @Test
+        void testSearchMessages_Success() throws Exception {
+                ChatMessageResponse chatResponse = ChatMessageResponse.builder()
+                                .id("msg123")
+                                .content("Hello search!")
+                                .build();
+
+                CursorResponse<ChatMessageResponse> cursorResponse = new CursorResponse<>(List.of(chatResponse),
+                                "nextCursor123", true);
+
+                when(messageService.searchMessages(eq("testuser"), eq("otheruser"), eq("Hello"), eq("cursor123"),
+                                eq(20)))
+                                .thenReturn(cursorResponse);
+
+                mockMvc.perform(get("/api/messages/search")
+                                .principal(mockAuth)
+                                .param("user2", "otheruser")
+                                .param("keyword", "Hello")
+                                .param("cursor", "cursor123")
+                                .param("size", "20"))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.code").value(200))
+                                .andExpect(jsonPath("$.data.content[0].id").value("msg123"))
+                                .andExpect(jsonPath("$.data.content[0].content").value("Hello search!"))
+                                .andExpect(jsonPath("$.data.nextCursor").value("nextCursor123"));
+        }
 }

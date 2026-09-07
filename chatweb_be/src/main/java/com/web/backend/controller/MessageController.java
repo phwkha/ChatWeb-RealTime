@@ -39,6 +39,7 @@ public class MessageController {
         private static final String SUCCESS_MSG_REACTION_STRING = "success.msg.reaction";
         private static final String SUCCESS_MSG_EDIT_STRING = "success.msg.edit";
         private static final String SUCCESS_MSG_REVOKE_STRING = "success.msg.revoke";
+        private static final String SUCCESS_MSG_SEARCH_STRING = "success.msg.search";
 
         @Operation(summary = "Get private message", description = "API endpoint for get private message")
         @RateLimit(key = "msg_private", limit = 45, period = 60, type = LimitType.USER)
@@ -55,6 +56,25 @@ public class MessageController {
                                 size);
                 return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(),
                                 Translator.tolocale(SUCCESS_MSG_GET_PRIVATE_STRING), response));
+        }
+
+        @Operation(summary = "Search messages", description = "API endpoint for searching messages in a conversation")
+        @RateLimit(key = "msg_search", limit = 20, period = 60, type = LimitType.USER)
+        @GetMapping("/search")
+        public ResponseEntity<ApiResponse<CursorResponse<ChatMessageResponse>>> searchMessages(
+                        Authentication auth,
+                        @RequestParam String user2,
+                        @RequestParam String keyword,
+                        @RequestParam(required = false) String cursor,
+                        @RequestParam(defaultValue = "20") int size) {
+                UserEntity user1 = (UserEntity) auth.getPrincipal();
+                CursorResponse<ChatMessageResponse> response = messageService.searchMessages(
+                                user1.getUsername(), user2,
+                                keyword,
+                                cursor,
+                                size);
+                return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(),
+                                Translator.tolocale(SUCCESS_MSG_SEARCH_STRING), response));
         }
 
         @Operation(summary = "Get unread counts", description = "API endpoint for get unread counts")

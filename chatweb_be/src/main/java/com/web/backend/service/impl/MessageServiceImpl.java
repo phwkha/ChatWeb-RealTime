@@ -126,6 +126,9 @@ public class MessageServiceImpl implements MessageService {
     @Override
     public CursorResponse<ChatMessageResponse> findPrivateMessageWithCursor(String user1, String user2,
             String cursorStr, int size) {
+        if (!friendService.isFriend(Objects.requireNonNull(user1), Objects.requireNonNull(user2))) {
+            throw new AccessForbiddenException(Translator.tolocale(ERROR_MSG_NOT_FRIENDS_STRING));
+        }
         String conversationId = generateConversationId(user1, user2);
         Pageable pageable = PageRequest.of(0, size + 1, Sort.by(Sort.Direction.DESC, TIMESTAMP_STRING));
 
@@ -139,6 +142,37 @@ public class MessageServiceImpl implements MessageService {
 
         List<ChatMessage> finalMessages = fetchMessagesFromDatabaseAndMerge(conversationId, cursorStr, size, pageable);
         return buildCursorResponse(finalMessages, size, conversationId, user1, user2);
+    }
+
+    @Override
+    public CursorResponse<ChatMessageResponse> searchMessages(String currentUser, String otherUser,
+            String keyword, String cursorStr, int size) {
+        if (keyword == null || keyword.trim().isEmpty()) {
+            return new CursorResponse<>(new ArrayList<>(), null, false);
+        }
+        if (!friendService.isFriend(Objects.requireNonNull(currentUser), Objects.requireNonNull(otherUser))) {
+            throw new AccessForbiddenException(Translator.tolocale(ERROR_MSG_NOT_FRIENDS_STRING));
+        }
+
+        int pageSize = (size <= 0 || size > 100) ? 20 : size;
+        String conversationId = generateConversationId(currentUser, otherUser);
+        Pageable pageable = PageRequest.of(0, pageSize + 1, Sort.by(Sort.Direction.DESC, TIMESTAMP_STRING));
+
+        String escapedKeyword = escapeRegex(keyword.trim());
+        Criteria criteria = Criteria.where(FIELD_CONVERSATION_ID_STRING).is(conversationId)
+                .and(FIELD_MESSAGE_TYPE_STRING).is(MessageType.CHAT)
+                .and(FIELD_IS_DELETED_STRING).is(false)
+                .and(FIELD_CONTENT_STRING).regex(escapedKeyword, "i");
+
+        if (cursorStr != null && !cursorStr.isEmpty()) {
+            Instant cursorTime = Instant.parse(cursorStr);
+            criteria = criteria.and(TIMESTAMP_STRING).lt(cursorTime);
+        }
+
+        Query query = new Query(criteria).with(pageable);
+        List<ChatMessage> messages = new ArrayList<>(mongoTemplate.find(query, ChatMessage.class));
+
+        return buildCursorResponse(messages, pageSize, conversationId, currentUser, otherUser);
     }
 
     @Override
@@ -598,5 +632,12 @@ public class MessageServiceImpl implements MessageService {
             return (ChatMessage) redisObj;
         }
         throw new ResourceNotFoundException(Translator.tolocale(ERROR_MSG_NOT_FOUND_STRING));
+    }
+
+    private String escapeRegex(String input) {
+        if (input == null) {
+            return "";
+        }
+        return input.replaceAll("[\\\\^$.|?*+(){}\\[\\]]", "\\\\$0");
     }
 }

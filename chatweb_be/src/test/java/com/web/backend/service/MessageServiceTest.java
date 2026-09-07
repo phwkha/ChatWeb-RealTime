@@ -119,6 +119,7 @@ class MessageServiceTest {
             return payload;
         });
 
+        lenient().when(friendService.isFriend(anyString(), anyString())).thenReturn(true);
     }
 
     @Test
@@ -676,5 +677,52 @@ class MessageServiceTest {
         CursorResponse<ChatMessageResponse> result = messageService.findPrivateMessageWithCursor("user2", "user1", null,
                 10);
         assertNotNull(result);
+    }
+
+    @Test
+    void testSearchMessages_EmptyKeyword() {
+        CursorResponse<ChatMessageResponse> result = messageService.searchMessages("user1", "user2", "   ", null, 20);
+        assertNotNull(result);
+        assertTrue(result.getContent().isEmpty());
+        assertFalse(result.isHasMore());
+        assertNull(result.getNextCursor());
+        verifyNoInteractions(mongoTemplate);
+    }
+
+    @Test
+    void testSearchMessages_Success() {
+        ChatMessage msg = new ChatMessage();
+        msg.setId("msg1");
+        msg.setContent("Hello there");
+        msg.setTimestamp(Instant.now());
+        msg.setSender("user1");
+        msg.setRecipient("user2");
+
+        when(mongoTemplate.find(any(Query.class), eq(ChatMessage.class))).thenReturn(List.of(msg));
+        when(messageMapper.toResponse(any())).thenReturn(ChatMessageResponse.builder().id("msg1").content("Hello there").build());
+
+        CursorResponse<ChatMessageResponse> result = messageService.searchMessages("user1", "user2", "Hello", null, 20);
+        assertNotNull(result);
+        assertEquals(1, result.getContent().size());
+        assertEquals("msg1", result.getContent().get(0).getId());
+        assertFalse(result.isHasMore());
+    }
+
+    @Test
+    void testSearchMessages_WithCursor() {
+        ChatMessage msg = new ChatMessage();
+        msg.setId("msg2");
+        msg.setContent("Testing cursor");
+        msg.setTimestamp(Instant.now());
+        msg.setSender("user2");
+        msg.setRecipient("user1");
+
+        when(mongoTemplate.find(any(Query.class), eq(ChatMessage.class))).thenReturn(List.of(msg));
+        when(messageMapper.toResponse(any())).thenReturn(ChatMessageResponse.builder().id("msg2").content("Testing cursor").build());
+
+        CursorResponse<ChatMessageResponse> result = messageService.searchMessages("user1", "user2", "cursor", Instant.now().toString(), 20);
+        assertNotNull(result);
+        assertEquals(1, result.getContent().size());
+        assertEquals("msg2", result.getContent().get(0).getId());
     }
 }

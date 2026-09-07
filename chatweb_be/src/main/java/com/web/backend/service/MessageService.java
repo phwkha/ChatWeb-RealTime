@@ -26,4 +26,7 @@ public interface MessageService {
     ChatMessageResponse editMessage(String senderUsername, EditMessageRequest request);
 
     void revokeMessage(String senderUsername, RevokeMessageRequest request);
+
+    CursorResponse<ChatMessageResponse> searchMessages(String currentUser, String otherUser,
+            String keyword, String cursorStr, int size);
 }

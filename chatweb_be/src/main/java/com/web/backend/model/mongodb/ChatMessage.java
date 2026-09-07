@@ -16,6 +16,7 @@ import java.util.Map;
 @Data
 @CompoundIndex(name = "conv_msg_time_idx", def = "{'conversationId': 1, 'messageType': 1, 'timestamp': -1}")
 @CompoundIndex(name = "unread_msg_idx", def = "{'recipient': 1, 'status': 1, 'messageType': 1}")
+@CompoundIndex(name = "conv_content_time_idx", def = "{'conversationId': 1, 'messageType': 1, 'isDeleted': 1, 'timestamp': -1}")
 public class ChatMessage {
 
     @Id
