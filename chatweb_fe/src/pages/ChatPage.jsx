@@ -5,7 +5,6 @@ import { useAuth } from '../context/auth-context.js'
 import { useLanguage } from '../context/language-context.js'
 import { useChatSocket } from '../hooks/useChatSocket.js'
 import { apiRequest } from '../services/apiClient.js'
-import { decryptMessage, decryptMessages, encryptMessageContent } from '../services/cryptoService.js'
 import '../styles/chat.css'
 
 const FRIEND_EVENT_TYPES = new Set([
@@ -13,10 +12,8 @@ const FRIEND_EVENT_TYPES = new Set([
   'REQUEST_CANCELLED', 'REQUEST_REJECTED', 'USER_ONLINE', 'USER_OFFLINE',
 ])
 const RECEIPT_PREFIX = '__CHATWEB_RECEIPT__:'
-const PRESENCE_PREFIX = '__CHATWEB_PRESENCE__:'
 const REACTION_PREFIX = '__CHATWEB_REACTION__:'
 const STATUS_RANK = { SENDING: 0, SENT: 1, DELIVERED: 2, READ: 3 }
-const PRESENCE_TIMEOUT_MS = 35000
 const REACTION_OPTIONS = [
   { type: 'LIKE', emoji: '👍' },
   { type: 'HEART', emoji: '❤️' },
@@ -25,19 +22,11 @@ const REACTION_OPTIONS = [
   { type: 'ANGRY', emoji: '😡' },
 ]
 const REACTION_EMOJI = Object.fromEntries(REACTION_OPTIONS.map((reaction) => [reaction.type, reaction.emoji]))
-const MUTE_OPTIONS = [
-  { labelKey: 'mute15m', durationMs: 15 * 60 * 1000 },
-  { labelKey: 'mute1h', durationMs: 60 * 60 * 1000 },
-  { labelKey: 'mute2h', durationMs: 2 * 60 * 60 * 1000 },
-  { labelKey: 'mute4h', durationMs: 4 * 60 * 60 * 1000 },
-  { labelKey: 'mute8h', durationMs: 8 * 60 * 60 * 1000 },
-  { labelKey: 'muteForever', durationMs: -1 },
-]
-const MUTED_STORAGE_KEY = 'chatweb-muted-conversations'
 const BLOCKED_MESSAGES_STORAGE_KEY = 'chatweb-blocked-message-intervals'
+const EDIT_HISTORY_STORAGE_KEY = 'chatweb-message-edit-history'
 const MAX_MEDIA_SIZE_BYTES = 20 * 1024 * 1024
-const MESSAGE_SEARCH_PAGE_SIZE = 100
-const MAX_MESSAGE_SEARCH_PAGES = 10
+const MESSAGE_PAGE_SIZE = 30
+const MESSAGE_SEARCH_PAGE_SIZE = 30
 
 function getMediaContentType(file) {
   if (file?.type?.startsWith('image/')) return 'IMAGE'
@@ -96,6 +85,12 @@ function isMessageDeleted(message) {
   return Boolean(message?.deleted || message?.isDeleted)
 }
 
+function isMessageEdited(message) {
+  return [message?.edited, message?.isEdited, message?.is_edited].some((value) => (
+    value === true || value === 1 || String(value).toLocaleLowerCase('en-US') === 'true'
+  ))
+}
+
 function isDisplayableChatMessage(message) {
   if (!message || (message.messageType && message.messageType !== 'CHAT')) return false
   return Boolean(isMessageDeleted(message) || String(message.content || '').trim() || message.fileUrl)
@@ -113,7 +108,12 @@ function upsertMessage(list, incoming) {
   const status = (STATUS_RANK[currentStatus] || 0) > (STATUS_RANK[incomingStatus] || 0)
     ? currentStatus
     : incomingStatus
-  next[matchIndex] = { ...next[matchIndex], ...incoming, status, clientFailed: false }
+  const mergedMessage = { ...next[matchIndex], ...incoming, status, clientFailed: false }
+  if (isMessageEdited(next[matchIndex]) && !isMessageEdited(mergedMessage)) {
+    mergedMessage.edited = true
+    mergedMessage.isEdited = true
+  }
+  next[matchIndex] = mergedMessage
   return normalizeMessages(next)
 }
 
@@ -126,16 +126,6 @@ function parseRealtimeReceipt(content) {
   try {
     const receipt = JSON.parse(String(content).slice(RECEIPT_PREFIX.length))
     return ['DELIVERED', 'READ'].includes(receipt?.status) ? receipt : null
-  } catch {
-    return null
-  }
-}
-
-function parseRealtimePresence(content) {
-  if (!String(content || '').startsWith(PRESENCE_PREFIX)) return null
-  try {
-    const presence = JSON.parse(String(content).slice(PRESENCE_PREFIX.length))
-    return ['PING', 'PONG'].includes(presence?.kind) ? presence : null
   } catch {
     return null
   }
@@ -157,20 +147,25 @@ function summarizeReactions(reactions) {
   return [...counts.entries()].map(([type, count]) => ({ type, count, emoji: REACTION_EMOJI[type] || '✨' }))
 }
 
-function readMutedConversations() {
-  try {
-    return JSON.parse(localStorage.getItem(MUTED_STORAGE_KEY) || '{}')
-  } catch {
-    return {}
-  }
-}
-
 function readBlockedMessageIntervals() {
   try {
     return JSON.parse(localStorage.getItem(BLOCKED_MESSAGES_STORAGE_KEY) || '{}')
   } catch {
     return {}
   }
+}
+
+function readMessageEditHistory() {
+  try {
+    const history = JSON.parse(localStorage.getItem(EDIT_HISTORY_STORAGE_KEY) || '{}')
+    return history && typeof history === 'object' ? history : {}
+  } catch {
+    return {}
+  }
+}
+
+function messageEditHistoryKey(username, messageId) {
+  return `${String(username || '').toLocaleLowerCase('en-US')}:${messageId}`
 }
 
 function conversationPreferenceKey(username, peerUsername) {
@@ -229,6 +224,8 @@ function ChatPage() {
   const [blockedUsers, setBlockedUsers] = useState([])
   const [selectedUser, setSelectedUser] = useState(null)
   const [messagesByUser, setMessagesByUser] = useState({})
+  const [conversationPages, setConversationPages] = useState({})
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false)
   const [unreadCounts, setUnreadCounts] = useState({})
   const [worldMessages, setWorldMessages] = useState([])
   const [worldCursor, setWorldCursor] = useState(null)
@@ -252,12 +249,15 @@ function ChatPage() {
   const [reactionPickerMessageId, setReactionPickerMessageId] = useState(null)
   const [reactionSubmittingId, setReactionSubmittingId] = useState(null)
   const [detailMessageId, setDetailMessageId] = useState(null)
+  const [editHistoryMessageId, setEditHistoryMessageId] = useState(null)
+  const [messageContextMenu, setMessageContextMenu] = useState(null)
+  const [messageEditHistory, setMessageEditHistory] = useState(readMessageEditHistory)
   const [conversationMenuOpen, setConversationMenuOpen] = useState(false)
-  const [muteMenuOpen, setMuteMenuOpen] = useState(false)
   const [messageSearchOpen, setMessageSearchOpen] = useState(false)
   const [messageSearchQuery, setMessageSearchQuery] = useState('')
   const [messageSearchResults, setMessageSearchResults] = useState([])
   const [messageSearchHasMore, setMessageSearchHasMore] = useState(false)
+  const [messageSearchCursor, setMessageSearchCursor] = useState(null)
   const [messageSearchLoading, setMessageSearchLoading] = useState(false)
   const [searchTargetMessageId, setSearchTargetMessageId] = useState(null)
   const [confirmConversationAction, setConfirmConversationAction] = useState(null)
@@ -269,29 +269,24 @@ function ChatPage() {
   const [editingMessageContent, setEditingMessageContent] = useState('')
   const [messageActionPending, setMessageActionPending] = useState(false)
   const [revokeTargetMessage, setRevokeTargetMessage] = useState(null)
-  const [mutedConversations, setMutedConversations] = useState(readMutedConversations)
   const [blockedMessageIntervals, setBlockedMessageIntervals] = useState(readBlockedMessageIntervals)
   const selectedRef = useRef(null)
   const messagesByUserRef = useRef({})
-  const messageSearchHistoryRef = useRef(new Map())
   const messagesEndRef = useRef(null)
+  const messageStreamRef = useRef(null)
+  const preserveScrollHeightRef = useRef(null)
   const mediaInputRef = useRef(null)
   const typingTimeoutsRef = useRef(new Map())
   const readAckTimersRef = useRef(new Map())
   const socketSenderRef = useRef(null)
-  const presenceSyncTimerRef = useRef(null)
-  const friendsRef = useRef([])
-  const presenceLastSeenRef = useRef(new Map())
   const friendSyncTimersRef = useRef([])
   const conversationMenuRef = useRef(null)
-  const muteExpiryTimerRef = useRef(null)
   const searchHighlightTimerRef = useRef(null)
 
   const permissions = useMemo(() => new Set(user?.permissions || []), [user?.permissions])
   const isAdmin = String(user?.role || '').toUpperCase().includes('ADMIN') || permissions.has('ADMIN_SEND-MESSAGE')
   const currentUsernameKey = String(user?.username || '').trim().toLocaleLowerCase('en-US')
   const friendNames = useMemo(() => new Set(friends.map((friend) => friend.username)), [friends])
-  const friendPresenceKey = useMemo(() => friends.map((friend) => friend.username).sort().join('|'), [friends])
   const sentNames = useMemo(() => new Set(sentRequests.map((person) => person.username)), [sentRequests])
   const blockedNames = useMemo(() => new Set(blockedUsers.map((person) => person.username)), [blockedUsers])
   const incomingRequestNames = useMemo(() => new Set(friendRequests.map((person) => person.username)), [friendRequests])
@@ -319,9 +314,6 @@ function ChatPage() {
   const selectedUsername = selectedUser?.username || ''
   const latestWorldMessage = worldMessages.length ? worldMessages[worldMessages.length - 1] : null
   const selectedConversationKey = conversationPreferenceKey(user?.username, selectedUser?.username)
-  const selectedMuteUntil = mutedConversations[selectedConversationKey]
-  // oxlint-disable-next-line react/purity -- expiry must be evaluated against wall-clock time.
-  const selectedConversationMuted = selectedMuteUntil === -1 || Number(selectedMuteUntil) > Date.now()
   const selectedConversationBlocked = isIncomingMessageBlocked(blockedMessageIntervals, user?.username, selectedUser?.username)
 
   useEffect(() => {
@@ -333,21 +325,15 @@ function ChatPage() {
   }, [messagesByUser])
 
   useEffect(() => {
-    friendsRef.current = friends
-  }, [friends])
-
-  useEffect(() => {
     if (!conversationMenuOpen) return undefined
     const closeMenu = (event) => {
       if (!conversationMenuRef.current?.contains(event.target)) {
         setConversationMenuOpen(false)
-        setMuteMenuOpen(false)
       }
     }
     const closeOnEscape = (event) => {
       if (event.key === 'Escape') {
         setConversationMenuOpen(false)
-        setMuteMenuOpen(false)
       }
     }
     document.addEventListener('pointerdown', closeMenu)
@@ -361,6 +347,21 @@ function ChatPage() {
   const showToast = useCallback((message, tone = 'success') => {
     setToast({ message, tone, id: Date.now() })
   }, [])
+
+  const recordMessageEdit = useCallback((message, editedAt = new Date().toISOString()) => {
+    if (!message?.id || !String(message.content || '').trim() || !currentUsernameKey) return
+    const historyKey = messageEditHistoryKey(currentUsernameKey, message.id)
+    setMessageEditHistory((current) => {
+      const entries = current[historyKey] || []
+      if (entries[entries.length - 1]?.content === message.content) return current
+      const next = {
+        ...current,
+        [historyKey]: [...entries, { content: message.content, editedAt }].slice(-20),
+      }
+      localStorage.setItem(EDIT_HISTORY_STORAGE_KEY, JSON.stringify(next))
+      return next
+    })
+  }, [currentUsernameKey])
 
   useEffect(() => {
     if (!toast) return undefined
@@ -383,33 +384,10 @@ function ChatPage() {
 
   const scheduleConnectionSync = useCallback(() => {
     friendSyncTimersRef.current.forEach((timer) => window.clearTimeout(timer))
-    friendSyncTimersRef.current = [0, 350, 1200].map((delay) => window.setTimeout(() => {
+    friendSyncTimersRef.current = [window.setTimeout(() => {
       void loadConnections()
-    }, delay))
+    }, 250)]
   }, [loadConnections])
-
-  const syncFriendPresence = useCallback(async () => {
-    try {
-      const response = await apiRequest('/api/friends?size=100')
-      const now = Date.now()
-      const latestFriends = (response?.data?.content || []).map((friend) => {
-        const lastSeen = presenceLastSeenRef.current.get(friend.username?.toLocaleLowerCase('en-US'))
-        return lastSeen && now - lastSeen < PRESENCE_TIMEOUT_MS
-          ? { ...friend, online: true, isOnline: true }
-          : friend
-      })
-      setFriends(latestFriends)
-      setSelectedUser((current) => {
-        if (!current) return current
-        const latest = latestFriends.find((friend) => (
-          friend.username?.toLocaleLowerCase('en-US') === current.username?.toLocaleLowerCase('en-US')
-        ))
-        return latest ? { ...current, ...latest } : current
-      })
-    } catch {
-      // WebSocket presence events remain the primary source if reconciliation fails.
-    }
-  }, [])
 
   const loadUnreadCounts = useCallback(async () => {
     try {
@@ -450,80 +428,82 @@ function ChatPage() {
     }
   }, [showToast, t])
 
-  const loadConversation = useCallback(async (person, silent = false) => {
+  const loadConversation = useCallback(async (person, silent = false, cursor = null) => {
     if (!person || !user) return
     if (!silent) setLoadingConversation(true)
     try {
-      const query = new URLSearchParams({ user1: user.username, user2: person.username, size: '50' })
+      const query = new URLSearchParams({ user2: person.username, size: String(MESSAGE_PAGE_SIZE) })
+      if (cursor) query.set('cursor', cursor)
       const response = await apiRequest(`/api/messages/private?${query}`)
-      const decryptedHistory = await decryptMessages(response?.data?.content || [], user.username)
-      const visibleHistory = decryptedHistory.filter((message) => (
+      const visibleHistory = (response?.data?.content || []).filter((message) => (
         !wasMessageSentWhileBlocked(message, blockedMessageIntervals, user.username, person.username)
       ))
       setMessagesByUser((current) => ({
         ...current,
         [person.username]: mergeMessageLists(current[person.username], visibleHistory),
       }))
+      setConversationPages((current) => ({
+        ...current,
+        [person.username]: {
+          nextCursor: response?.data?.nextCursor || null,
+          hasMore: Boolean(response?.data?.hasMore && response?.data?.nextCursor),
+        },
+      }))
+      return visibleHistory.length
     } catch (error) {
-      if (!silent) showToast(error.message || t('errorGeneric'), 'error')
+      if (!silent || cursor) showToast(error.message || t('errorGeneric'), 'error')
+      return -1
     } finally {
       if (!silent) setLoadingConversation(false)
     }
   }, [blockedMessageIntervals, showToast, t, user])
 
-  const searchConversationMessages = useCallback(async (keyword, signal = undefined) => {
+  const loadOlderConversation = async () => {
+    const person = selectedRef.current
+    const page = conversationPages[person?.username]
+    if (!person || !page?.hasMore || !page.nextCursor || loadingOlderMessages) return
+    preserveScrollHeightRef.current = messageStreamRef.current
+      ? { height: messageStreamRef.current.scrollHeight, top: messageStreamRef.current.scrollTop }
+      : null
+    setLoadingOlderMessages(true)
+    try {
+      const loadedCount = await loadConversation(person, true, page.nextCursor)
+      if (loadedCount <= 0) preserveScrollHeightRef.current = null
+    } finally {
+      setLoadingOlderMessages(false)
+    }
+  }
+
+  const searchConversationMessages = useCallback(async (keyword, signal = undefined, cursor = null, append = false) => {
     const person = selectedRef.current
     const normalizedKeyword = keyword.trim()
     if (!person || !user || !normalizedKeyword) return
 
     setMessageSearchLoading(true)
     try {
-      const cached = messageSearchHistoryRef.current.get(person.username) || {
-        messages: [], nextCursor: null, complete: false,
-      }
-      let history = cached.messages
-      let nextCursor = cached.nextCursor
-      let hasMoreHistory = !cached.complete
-      let loadedPages = 0
-
-      while (hasMoreHistory && loadedPages < MAX_MESSAGE_SEARCH_PAGES) {
-        const query = new URLSearchParams({
-          user2: person.username,
-          size: String(MESSAGE_SEARCH_PAGE_SIZE),
-        })
-        if (nextCursor) query.set('cursor', nextCursor)
-        const response = await apiRequest(`/api/messages/private?${query}`, signal ? { signal } : {})
-        if (signal?.aborted || selectedRef.current?.username !== person.username) return
-        const decryptedPage = await decryptMessages(response?.data?.content || [], user.username)
-        const pageMessages = decryptedPage.filter((message) => (
-          isDisplayableChatMessage(message)
-          && !wasMessageSentWhileBlocked(message, blockedMessageIntervals, user.username, person.username)
-        ))
-        history = mergeMessageLists(history, pageMessages)
-        nextCursor = response?.data?.nextCursor || null
-        hasMoreHistory = Boolean(response?.data?.hasMore && nextCursor)
-        loadedPages += 1
-        messageSearchHistoryRef.current.set(person.username, {
-          messages: history,
-          nextCursor,
-          complete: !hasMoreHistory,
-        })
-      }
-
+      const query = new URLSearchParams({
+        user2: person.username,
+        keyword: normalizedKeyword,
+        size: String(MESSAGE_SEARCH_PAGE_SIZE),
+      })
+      if (cursor) query.set('cursor', cursor)
+      const response = await apiRequest(`/api/messages/search?${query}`, signal ? { signal } : {})
+      if (signal?.aborted || selectedRef.current?.username !== person.username) return
+      const pageMessages = response?.data?.content || []
       if (selectedRef.current?.username !== person.username) return
-      const searchValue = normalizeSearchValue(normalizedKeyword)
-      const allMessages = mergeMessageLists(
-        history,
-        messagesByUserRef.current[person.username] || [],
-      )
-      const results = allMessages.filter((message) => (
+      const results = pageMessages.filter((message) => (
         isDisplayableChatMessage(message)
         && !isMessageDeleted(message)
         && !wasMessageSentWhileBlocked(message, blockedMessageIntervals, user.username, person.username)
-        && normalizeSearchValue(message.content).includes(searchValue)
       )).sort((left, right) => new Date(right.timestamp) - new Date(left.timestamp))
-      setMessageSearchResults(results)
-      setMessageSearchHasMore(hasMoreHistory)
+      setMessageSearchResults((current) => {
+        if (!append) return results
+        const unique = new Map([...current, ...results].map((message) => [message.id, message]))
+        return [...unique.values()].sort((left, right) => new Date(right.timestamp) - new Date(left.timestamp))
+      })
+      const nextCursor = response?.data?.nextCursor || null
+      setMessageSearchCursor(nextCursor)
+      setMessageSearchHasMore(Boolean(response?.data?.hasMore && nextCursor))
     } catch (error) {
       if (error.name !== 'AbortError') showToast(error.message || t('messageSearchFailed'), 'error')
     } finally {
@@ -564,8 +544,6 @@ function ChatPage() {
   const updatePeerPresence = useCallback((username, online) => {
     const normalizedUsername = String(username || '').toLocaleLowerCase('en-US')
     if (!normalizedUsername) return
-    if (online) presenceLastSeenRef.current.set(normalizedUsername, Date.now())
-    else presenceLastSeenRef.current.delete(normalizedUsername)
     setFriends((current) => current.map((friend) => (
       friend.username?.toLocaleLowerCase('en-US') === normalizedUsername
         ? { ...friend, online, isOnline: online }
@@ -574,16 +552,6 @@ function ChatPage() {
     setSelectedUser((current) => current?.username?.toLocaleLowerCase('en-US') === normalizedUsername
       ? { ...current, online, isOnline: online }
       : current)
-  }, [])
-
-  const sendPresenceControl = useCallback((recipient, kind) => {
-    if (!recipient || !socketSenderRef.current) return false
-    return socketSenderRef.current({
-      recipient,
-      content: `${PRESENCE_PREFIX}${JSON.stringify({ kind, sentAt: new Date().toISOString() })}`,
-      contentType: 'TEXT',
-      messageType: 'TYPING',
-    })
   }, [])
 
   const sendReactionControl = useCallback((recipient, message) => {
@@ -615,12 +583,6 @@ function ChatPage() {
         }))
         return
       }
-      const presence = parseRealtimePresence(message.content)
-      if (presence && message.sender !== user.username) {
-        updatePeerPresence(message.sender, true)
-        if (presence.kind === 'PING') sendPresenceControl(message.sender, 'PONG')
-        return
-      }
       const reactionMessage = parseRealtimeReaction(message.content)
       if (reactionMessage && message.sender !== user.username) {
         const reactionPeer = reactionMessage.sender === user.username
@@ -643,7 +605,7 @@ function ChatPage() {
       return
     }
 
-    const displayMessage = await decryptMessage(message, user.username)
+    const displayMessage = message
     if (!isDisplayableChatMessage(displayMessage)) return
     if (displayMessage.sender !== user.username) updatePeerPresence(displayMessage.sender, true)
     if (displayMessage.sender !== user.username
@@ -660,7 +622,7 @@ function ChatPage() {
       if (isActivelyReading) markAsRead(peer)
       else setUnreadCounts((current) => ({ ...current, [peer]: (current[peer] || 0) + 1 }))
     }
-  }, [blockedMessageIntervals, markAsRead, sendPresenceControl, sendRealtimeReceipt, updatePeerPresence, user])
+  }, [blockedMessageIntervals, markAsRead, sendRealtimeReceipt, updatePeerPresence, user])
 
   const handleNotification = useCallback(async (notification) => {
     if (!notification?.type) return
@@ -692,11 +654,17 @@ function ChatPage() {
     }
 
     if (['EDIT_MESSAGE', 'REVOKE_MESSAGE', 'REACT_MESSAGE'].includes(notification.type) && notification.data && user) {
-      const data = await decryptMessage(notification.data, user.username)
+      const data = notification.type === 'EDIT_MESSAGE'
+        ? { ...notification.data, edited: true, isEdited: true }
+        : notification.data
       const peer = data.sender === user.username ? data.recipient : data.sender
+      if (notification.type === 'EDIT_MESSAGE') {
+        const previousMessage = (messagesByUserRef.current[peer] || []).find((message) => message.id === data.id)
+        if (previousMessage && previousMessage.content !== data.content) recordMessageEdit(previousMessage)
+      }
       setMessagesByUser((current) => ({ ...current, [peer]: upsertMessage(current[peer] || [], data) }))
     }
-  }, [blockedMessageIntervals, scheduleConnectionSync, showToast, updatePeerPresence, user])
+  }, [blockedMessageIntervals, recordMessageEdit, scheduleConnectionSync, showToast, updatePeerPresence, user])
 
   const handleWorldMessage = useCallback((message) => {
     if (!String(message?.content || '').trim()) return
@@ -705,18 +673,25 @@ function ChatPage() {
       ...current,
     ].slice(0, 50))
     showToast(message.content)
-    if (isAdmin) setWorldMessages((current) => normalizeMessages([...current, message]))
-  }, [isAdmin, showToast])
+    setWorldMessages((current) => normalizeMessages([...current, message]))
+  }, [showToast])
 
   const handleSocketError = useCallback((error) => {
+    const failedRequest = error?.request || error?.data?.request
+    if (failedRequest?.localId && failedRequest?.recipient) {
+      setMessagesByUser((current) => ({
+        ...current,
+        [failedRequest.recipient]: (current[failedRequest.recipient] || []).map((message) => (
+          message.localId === failedRequest.localId
+            ? { ...message, clientFailed: true, status: 'FAILED', failureAttempt: (message.failureAttempt || 0) + 1 }
+            : message
+        )),
+      }))
+    }
     showToast(error?.message || t('socketError'), 'error')
   }, [showToast, t])
 
   const handleSocketConnected = useCallback(() => {
-    void loadUnreadCounts()
-    window.clearTimeout(presenceSyncTimerRef.current)
-    presenceSyncTimerRef.current = window.setTimeout(() => void syncFriendPresence(), 650)
-    friendsRef.current.forEach((friend) => sendPresenceControl(friend.username, 'PING'))
     if (selectedRef.current) {
       void loadConversation(selectedRef.current, true)
       const blocked = isIncomingMessageBlocked(
@@ -727,7 +702,7 @@ function ChatPage() {
         sendRealtimeReceipt(selectedRef.current.username, 'READ')
       }
     }
-  }, [blockedMessageIntervals, loadConversation, loadUnreadCounts, markAsRead, sendPresenceControl, sendRealtimeReceipt, syncFriendPresence, user?.username])
+  }, [blockedMessageIntervals, loadConversation, markAsRead, sendRealtimeReceipt, user?.username])
 
   const { connectionState, sendPrivateMessage, sendWorldMessage } = useChatSocket({
     enabled: Boolean(user), language, subscribeToWorld: true,
@@ -741,60 +716,11 @@ function ChatPage() {
   }, [sendPrivateMessage])
 
   useEffect(() => {
-    if (connectionState !== 'connected' || !friendPresenceKey) return undefined
-
-    const pingFriends = () => {
-      if (document.visibilityState !== 'visible') return
-      friendsRef.current.forEach((friend) => sendPresenceControl(friend.username, 'PING'))
-    }
-    const expireSilentFriends = () => {
-      const now = Date.now()
-      friendsRef.current.forEach((friend) => {
-        const normalizedUsername = friend.username?.toLocaleLowerCase('en-US')
-        const lastSeen = presenceLastSeenRef.current.get(normalizedUsername)
-        if (lastSeen && now - lastSeen >= PRESENCE_TIMEOUT_MS) updatePeerPresence(friend.username, false)
-      })
-    }
-
-    const initialPing = window.setTimeout(pingFriends, 350)
-    const heartbeat = window.setInterval(pingFriends, 15000)
-    const expiryCheck = window.setInterval(expireSilentFriends, 5000)
-    return () => {
-      window.clearTimeout(initialPing)
-      window.clearInterval(heartbeat)
-      window.clearInterval(expiryCheck)
-    }
-  }, [connectionState, friendPresenceKey, sendPresenceControl, updatePeerPresence])
-
-  useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- initial data hydration synchronizes external APIs.
     void loadConnections()
     void loadUnreadCounts()
-    if (isAdmin) void loadWorldHistory()
-  }, [isAdmin, loadConnections, loadUnreadCounts, loadWorldHistory])
-
-  useEffect(() => {
-    const synchronizeWhenVisible = () => {
-      if (document.visibilityState === 'visible') {
-        void syncFriendPresence()
-        void loadConnections()
-      }
-    }
-    const presenceInterval = window.setInterval(() => {
-      if (document.visibilityState === 'visible') void syncFriendPresence()
-    }, 15000)
-    const relationInterval = window.setInterval(() => {
-      if (document.visibilityState === 'visible') void loadConnections()
-    }, 30000)
-    window.addEventListener('focus', synchronizeWhenVisible)
-    document.addEventListener('visibilitychange', synchronizeWhenVisible)
-    return () => {
-      window.clearInterval(presenceInterval)
-      window.clearInterval(relationInterval)
-      window.removeEventListener('focus', synchronizeWhenVisible)
-      document.removeEventListener('visibilitychange', synchronizeWhenVisible)
-    }
-  }, [loadConnections, syncFriendPresence])
+    void loadWorldHistory()
+  }, [loadConnections, loadUnreadCounts, loadWorldHistory])
 
   useEffect(() => {
     if (activeSection !== 'friends' || searchQuery.trim() || suggestions.length) return
@@ -814,8 +740,6 @@ function ChatPage() {
   }, [loadConversation, markAsRead, selectedConversationBlocked, selectedUsername, sendRealtimeReceipt])
 
   useEffect(() => () => {
-    window.clearTimeout(presenceSyncTimerRef.current)
-    window.clearTimeout(muteExpiryTimerRef.current)
     window.clearTimeout(searchHighlightTimerRef.current)
     friendSyncTimersRef.current.forEach((timer) => window.clearTimeout(timer))
     readAckTimersRef.current.forEach((timer) => window.clearTimeout(timer))
@@ -823,6 +747,13 @@ function ChatPage() {
   }, [])
 
   useEffect(() => {
+    const preserved = preserveScrollHeightRef.current
+    if (preserved && messageStreamRef.current) {
+      messageStreamRef.current.scrollTop = preserved.top
+        + messageStreamRef.current.scrollHeight - preserved.height
+      preserveScrollHeightRef.current = null
+      return
+    }
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }, [activeMessages.length, selectedUser?.username])
 
@@ -867,6 +798,7 @@ function ChatPage() {
       // oxlint-disable-next-line react/set-state-in-effect -- reset search results when the drawer closes or query clears.
       setMessageSearchResults([])
       setMessageSearchHasMore(false)
+      setMessageSearchCursor(null)
       setMessageSearchLoading(false)
       return undefined
     }
@@ -875,6 +807,7 @@ function ChatPage() {
     // oxlint-disable-next-line react/set-state-in-effect -- clear stale results before the debounced request starts.
     setMessageSearchResults([])
     setMessageSearchHasMore(false)
+    setMessageSearchCursor(null)
     setMessageSearchLoading(true)
     const timeout = window.setTimeout(() => {
       void searchConversationMessages(keyword, controller.signal)
@@ -886,17 +819,19 @@ function ChatPage() {
   }, [messageSearchOpen, messageSearchQuery, searchConversationMessages, selectedUser?.username])
 
   useEffect(() => {
-    if (!reactionPickerMessageId && !detailMessageId) return undefined
+    if (!reactionPickerMessageId && !detailMessageId && !editHistoryMessageId) return undefined
     const closePicker = (event) => {
       if (!event.target.closest('.message-reaction-anchor')) {
         setReactionPickerMessageId(null)
         setDetailMessageId(null)
       }
+      if (!event.target.closest('.message-edit-history-anchor')) setEditHistoryMessageId(null)
     }
     const closeOnEscape = (event) => {
       if (event.key === 'Escape') {
         setReactionPickerMessageId(null)
         setDetailMessageId(null)
+        setEditHistoryMessageId(null)
       }
     }
     document.addEventListener('pointerdown', closePicker)
@@ -905,11 +840,29 @@ function ChatPage() {
       document.removeEventListener('pointerdown', closePicker)
       document.removeEventListener('keydown', closeOnEscape)
     }
-  }, [detailMessageId, reactionPickerMessageId])
+  }, [detailMessageId, editHistoryMessageId, reactionPickerMessageId])
+
+  useEffect(() => {
+    if (!messageContextMenu) return undefined
+    const closeMenu = (event) => {
+      if (!event.target.closest('.message-context-menu')) setMessageContextMenu(null)
+    }
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setMessageContextMenu(null)
+    }
+    document.addEventListener('pointerdown', closeMenu)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('pointerdown', closeMenu)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [messageContextMenu])
 
   const selectFriend = (friend) => {
     setReactionPickerMessageId(null)
     setDetailMessageId(null)
+    setEditHistoryMessageId(null)
+    setMessageContextMenu(null)
     setSelectedUser(friend)
     setActiveSection('chat')
     setWorldOpen(false)
@@ -982,9 +935,8 @@ function ChatPage() {
       [selectedUser.username]: upsertMessage(current[selectedUser.username] || [], optimisticMessage),
     }))
     setMessageDraft('')
-    const encryptedPayload = await encryptMessageContent(content, user.username, selectedUser.username).catch(() => null)
     const sent = sendPrivateMessage({
-      recipient: selectedUser.username, ...(encryptedPayload || { content }), contentType: 'TEXT', messageType: 'CHAT', localId,
+      recipient: selectedUser.username, content, contentType: 'TEXT', messageType: 'CHAT', localId,
     })
     if (!sent) {
       setMessagesByUser((current) => ({
@@ -1003,6 +955,39 @@ function ChatPage() {
         )),
       }))
     }
+  }
+
+  const retryFailedMessage = (message) => {
+    if (!message?.localId || !selectedUser || connectionState !== 'connected') return
+    const previousLocalId = message.localId
+    const retryLocalId = crypto.randomUUID()
+    setMessagesByUser((current) => ({
+      ...current,
+      [selectedUser.username]: (current[selectedUser.username] || []).map((item) => (
+        item.localId === previousLocalId
+          ? { ...item, localId: retryLocalId, clientFailed: false, status: 'SENDING', failureAttempt: (item.failureAttempt || 0) + 1 }
+          : item
+      )),
+    }))
+    const sent = sendPrivateMessage({
+      recipient: selectedUser.username,
+      content: message.content || '',
+      contentType: message.contentType || 'TEXT',
+      messageType: 'CHAT',
+      fileUrl: message.fileUrl || null,
+      fileName: message.fileName || null,
+      fileSize: message.fileSize || null,
+      localId: retryLocalId,
+    })
+    setMessagesByUser((current) => ({
+      ...current,
+      [selectedUser.username]: (current[selectedUser.username] || []).map((item) => (
+        item.localId === retryLocalId
+          ? { ...item, status: sent ? 'SENT' : 'SENDING', clientFailed: !sent }
+          : item
+      )),
+    }))
+    if (!sent) showToast(t('messageFailed'), 'error')
   }
 
   const handleMediaSelection = async (event) => {
@@ -1107,7 +1092,7 @@ function ChatPage() {
         method: 'POST',
         body: { messageId: message.id, recipient: selectedUser.username, reactionType: nextReaction },
       })
-      const updatedMessage = response?.data ? await decryptMessage(response.data, user.username) : optimisticMessage
+      const updatedMessage = response?.data || optimisticMessage
       setMessagesByUser((current) => ({
         ...current,
         [selectedUser.username]: upsertMessage(current[selectedUser.username] || [], updatedMessage),
@@ -1125,9 +1110,40 @@ function ChatPage() {
   }
 
   const beginMessageEdit = (message) => {
+    setMessageContextMenu(null)
     setEditingMessageId(message.id)
     setEditingMessageContent(message.content || '')
     setReactionPickerMessageId(null)
+  }
+
+  const openMessageContextMenu = (event, message, messageKey) => {
+    event.preventDefault()
+    if (!message?.id || isMessageDeleted(message)) {
+      setMessageContextMenu(null)
+      return
+    }
+    const menuWidth = 236
+    const menuHeight = 220
+    setReactionPickerMessageId(null)
+    setDetailMessageId(null)
+    setEditHistoryMessageId(null)
+    setMessageContextMenu({
+      message,
+      messageKey,
+      x: Math.max(8, Math.min(event.clientX, window.innerWidth - menuWidth - 8)),
+      y: Math.max(8, Math.min(event.clientY, window.innerHeight - menuHeight - 8)),
+    })
+  }
+
+  const copyMessageContent = async (message) => {
+    try {
+      if (!message?.content || !navigator.clipboard) throw new Error('Clipboard unavailable')
+      await navigator.clipboard.writeText(message.content)
+      setMessageContextMenu(null)
+      showToast(t('messageCopied'))
+    } catch {
+      showToast(t('copyMessageFailed'), 'error')
+    }
   }
 
   const saveMessageEdit = async (event, message) => {
@@ -1136,23 +1152,16 @@ function ChatPage() {
     if (!newContent || !selectedUser || messageActionPending) return
     setMessageActionPending(true)
     try {
-      const encryptedPayload = await encryptMessageContent(newContent, user.username, selectedUser.username).catch(() => null)
-      if (message.iv && !encryptedPayload) {
-        showToast(t('encryptedEditUnavailable'), 'error')
-        return
-      }
       const response = await apiRequest('/api/messages/edit', {
         method: 'PUT',
         body: {
           messageId: message.id,
           recipient: selectedUser.username,
-          newContent: encryptedPayload?.content || newContent,
-          iv: encryptedPayload?.iv || null,
-          wrappedKeyRecipient: encryptedPayload?.wrappedKeyRecipient || null,
-          wrappedKeySender: encryptedPayload?.wrappedKeySender || null,
+          newContent,
         },
       })
-      const updated = await decryptMessage(response?.data, user.username)
+      const updated = { ...response?.data, edited: true, isEdited: true }
+      recordMessageEdit(message)
       setMessagesByUser((current) => ({
         ...current,
         [selectedUser.username]: upsertMessage(current[selectedUser.username] || [], updated),
@@ -1187,42 +1196,6 @@ function ChatPage() {
     } finally {
       setMessageActionPending(false)
     }
-  }
-
-  const saveMutedConversations = (nextPreferences) => {
-    setMutedConversations(nextPreferences)
-    localStorage.setItem(MUTED_STORAGE_KEY, JSON.stringify(nextPreferences))
-  }
-
-  const unmuteSelectedConversation = () => {
-    window.clearTimeout(muteExpiryTimerRef.current)
-    const nextPreferences = { ...mutedConversations }
-    delete nextPreferences[selectedConversationKey]
-    saveMutedConversations(nextPreferences)
-    setConversationMenuOpen(false)
-    setMuteMenuOpen(false)
-    showToast(t('unmutedSuccess'))
-  }
-
-  const muteSelectedConversation = (durationMs) => {
-    if (!selectedUser) return
-    window.clearTimeout(muteExpiryTimerRef.current)
-    // oxlint-disable-next-line react/purity -- this runs only from an explicit user event.
-    const mutedUntil = durationMs === -1 ? -1 : Date.now() + durationMs
-    saveMutedConversations({ ...mutedConversations, [selectedConversationKey]: mutedUntil })
-    if (durationMs !== -1) {
-      muteExpiryTimerRef.current = window.setTimeout(() => {
-        setMutedConversations((current) => {
-          const nextPreferences = { ...current }
-          delete nextPreferences[selectedConversationKey]
-          localStorage.setItem(MUTED_STORAGE_KEY, JSON.stringify(nextPreferences))
-          return nextPreferences
-        })
-      }, durationMs)
-    }
-    setConversationMenuOpen(false)
-    setMuteMenuOpen(false)
-    showToast(t('mutedSuccess'))
   }
 
   const removeConversationLocally = (username) => {
@@ -1307,10 +1280,10 @@ function ChatPage() {
 
   const openMessageSearch = () => {
     setConversationMenuOpen(false)
-    setMuteMenuOpen(false)
     setMessageSearchQuery('')
     setMessageSearchResults([])
     setMessageSearchHasMore(false)
+    setMessageSearchCursor(null)
     setMessageSearchOpen(true)
   }
 
@@ -1400,29 +1373,14 @@ function ChatPage() {
               <button className="mobile-back" type="button" aria-label="Back" onClick={() => setSelectedUser(null)}><ChatIcon name="arrowLeft" /></button>
               <Avatar person={selectedUser} size="medium" showStatus />
               <span><strong>{displayName(selectedUser)}</strong><small className={isPersonOnline(selectedUser) ? 'is-online' : ''}>{typingUsers[selectedUser.username] ? t('typing') : (isPersonOnline(selectedUser) ? t('online') : t('offline'))}</small></span>
-              {selectedConversationMuted && <div className="muted-pill"><ChatIcon name="mute" size={13} />{t('muted')}</div>}
               <div className={`connection-pill connection-pill--${connectionState}`}><i />{t(connectionState === 'connected' ? 'connected' : connectionState === 'disconnected' ? 'disconnected' : 'reconnecting')}</div>
               <div className="conversation-actions" ref={conversationMenuRef}>
                 <button className="conversation-actions__trigger" type="button" aria-label={t('conversationOptions')} aria-expanded={conversationMenuOpen} onClick={() => {
                   setConversationMenuOpen((current) => !current)
-                  setMuteMenuOpen(false)
                 }}><ChatIcon name="more" /></button>
                 {conversationMenuOpen && (
                   <div className="conversation-menu">
                     <button type="button" onClick={openMessageSearch}><ChatIcon name="search" size={17} /><span>{t('searchMessages')}</span></button>
-                    <span className="conversation-menu__divider" />
-                    {selectedConversationMuted ? (
-                      <button type="button" onClick={unmuteSelectedConversation}><ChatIcon name="bell" size={17} /><span>{t('unmuteNotifications')}</span></button>
-                    ) : (
-                      <>
-                        <button type="button" onClick={() => setMuteMenuOpen((current) => !current)}><ChatIcon name="mute" size={17} /><span>{t('muteNotifications')}</span><ChatIcon name="chevronRight" size={15} /></button>
-                        {muteMenuOpen && (
-                          <div className="mute-menu">
-                            {MUTE_OPTIONS.map((option) => <button key={option.labelKey} type="button" onClick={() => muteSelectedConversation(option.durationMs)}>{t(option.labelKey)}</button>)}
-                          </div>
-                        )}
-                      </>
-                    )}
                     <span className="conversation-menu__divider" />
                     {selectedConversationBlocked ? (
                       <button type="button" onClick={unblockSelectedConversation}><ChatIcon name="block" size={17} /><span>{t('unblockMessages')}</span></button>
@@ -1444,8 +1402,13 @@ function ChatPage() {
                 )}
               </div>
             </header>
-            <div className="message-stream">
+            <div className="message-stream" ref={messageStreamRef}>
               {loadingConversation && <div className="message-loading"><i /><i /><i /></div>}
+              {!loadingConversation && conversationPages[selectedUser.username]?.hasMore && (
+                <button className="load-older" type="button" disabled={loadingOlderMessages} onClick={loadOlderConversation}>
+                  <ChatIcon name="history" size={16} />{loadingOlderMessages ? t('loadingOlder') : t('loadOlder')}
+                </button>
+              )}
               {!loadingConversation && activeMessages.length === 0 && (
                 <div className="conversation-start"><Avatar person={selectedUser} size="large" /><h2>{displayName(selectedUser)}</h2><p>@{selectedUser.username}</p></div>
               )}
@@ -1456,17 +1419,34 @@ function ChatPage() {
                 const reactionSummary = summarizeReactions(message.reactions)
                 const currentUserReaction = message.reactions?.[user?.username]
                 const messageKey = message.id || message.localId || `${message.timestamp}-${index}`
-                const showDetails = detailMessageId
-                  ? detailMessageId === messageKey
-                  : index === activeMessages.length - 1
+                const showActions = detailMessageId === messageKey
+                const showDetails = showActions || index === activeMessages.length - 1
+                const editHistory = message.id
+                  ? (messageEditHistory[messageEditHistoryKey(user?.username, message.id)] || [])
+                  : []
                 return (
                   <div
                     id={message.id ? `chat-message-${message.id}` : undefined}
-                    key={messageKey}
+                    key={`${messageKey}-${message.failureAttempt || 0}`}
                     className={`message-row${mine ? ' is-mine' : ''}${grouped ? ' is-grouped' : ''}${searchTargetMessageId === message.id ? ' is-search-target' : ''}`}
+                    onContextMenu={(event) => openMessageContextMenu(event, message, messageKey)}
                   >
                     {!mine && !grouped && <Avatar person={selectedUser} size="tiny" />}
                     <div className="message-content message-reaction-anchor">
+                      {editHistoryMessageId === messageKey && (
+                        <aside className="message-edit-history message-edit-history-anchor" aria-label={t('editHistoryTitle')}>
+                          <header><strong>{t('editHistoryTitle')}</strong><button type="button" aria-label={t('cancel')} onClick={() => setEditHistoryMessageId(null)}><ChatIcon name="close" size={13} /></button></header>
+                          {editHistory.length > 0 ? (
+                            <div>{[...editHistory].reverse().map((entry, historyIndex) => (
+                              <article key={`${entry.editedAt}-${historyIndex}`}>
+                                <span>{t('previousVersion')}</span>
+                                <p>{entry.content}</p>
+                                <time>{formatDateTime(entry.editedAt, language)}</time>
+                              </article>
+                            ))}</div>
+                          ) : <p className="message-edit-history__empty">{t('editHistoryUnavailable')}</p>}
+                        </aside>
+                      )}
                       <div
                         className={`message-bubble${message.clientFailed ? ' is-failed' : ''}${isMessageDeleted(message) ? ' is-deleted' : ''}${!message.id || isMessageDeleted(message) ? ' is-static' : ''}`}
                         role={message.id && !isMessageDeleted(message) ? 'button' : undefined}
@@ -1498,6 +1478,21 @@ function ChatPage() {
                           </>
                         )}
                       </div>
+                      {(isMessageEdited(message) || editHistory.length > 0) && !isMessageDeleted(message) && (
+                        <button
+                          className="message-edited-label message-edit-history-anchor"
+                          type="button"
+                          aria-expanded={editHistoryMessageId === messageKey}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            setReactionPickerMessageId(null)
+                            if (editHistoryMessageId !== messageKey) {
+                              event.currentTarget.closest('.message-row')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                            }
+                            setEditHistoryMessageId((current) => current === messageKey ? null : messageKey)
+                          }}
+                        >{t('editedLabel')}</button>
+                      )}
                       {reactionPickerMessageId === messageKey && (
                         <div className="reaction-picker" role="menu" aria-label={t('reactToMessage')}>
                           {REACTION_OPTIONS.map((reaction) => (
@@ -1521,7 +1516,13 @@ function ChatPage() {
                           {reactionSummary.map((reaction) => <span key={reaction.type}>{reaction.emoji}{reaction.count > 1 && <b>{reaction.count}</b>}</span>)}
                         </button>
                       )}
-                      {showDetails && !isMessageDeleted(message) && (
+                      {message.clientFailed && (
+                        <div className="message-send-error" role="alert">
+                          <span>{t('messageFailed')}</span>
+                          <button type="button" disabled={connectionState !== 'connected'} onClick={() => retryFailedMessage(message)}>{t('retry')}</button>
+                        </div>
+                      )}
+                      {showActions && !isMessageDeleted(message) && (
                         editingMessageId === message.id ? (
                           <form className="message-edit-form" onSubmit={(event) => saveMessageEdit(event, message)}>
                             <input autoFocus maxLength="10000" value={editingMessageContent} onChange={(event) => setEditingMessageContent(event.target.value)} />
@@ -1541,6 +1542,46 @@ function ChatPage() {
                 )
               })}
               <div ref={messagesEndRef} />
+              {messageContextMenu && (
+                <div
+                  className="message-context-menu"
+                  role="menu"
+                  aria-label={t('messageMenu')}
+                  style={{ left: messageContextMenu.x, top: messageContextMenu.y }}
+                  onContextMenu={(event) => event.preventDefault()}
+                >
+                  <span className="message-context-menu__label">{t('reactToMessage')}</span>
+                  <div className="message-context-menu__reactions">
+                    {REACTION_OPTIONS.map((reaction) => (
+                      <button
+                        key={reaction.type}
+                        className={messageContextMenu.message.reactions?.[user?.username] === reaction.type ? 'is-active' : ''}
+                        type="button"
+                        role="menuitem"
+                        aria-label={reaction.type}
+                        disabled={reactionSubmittingId === messageContextMenu.message.id}
+                        onClick={() => {
+                          setMessageContextMenu(null)
+                          void toggleReaction(messageContextMenu.message, reaction.type)
+                        }}
+                      >{reaction.emoji}</button>
+                    ))}
+                  </div>
+                  <span className="message-context-menu__divider" />
+                  {Boolean(messageContextMenu.message.content) && (
+                    <button type="button" role="menuitem" onClick={() => void copyMessageContent(messageContextMenu.message)}><ChatIcon name="copy" size={16} /><span>{t('copyMessage')}</span></button>
+                  )}
+                  {messageContextMenu.message.sender === user?.username && String(messageContextMenu.message.contentType || 'TEXT').toUpperCase() === 'TEXT' && (
+                    <button type="button" role="menuitem" disabled={messageActionPending} onClick={() => beginMessageEdit(messageContextMenu.message)}><ChatIcon name="edit" size={16} /><span>{t('editMessage')}</span></button>
+                  )}
+                  {messageContextMenu.message.sender === user?.username && (
+                    <button className="is-danger" type="button" role="menuitem" disabled={messageActionPending} onClick={() => {
+                      setMessageContextMenu(null)
+                      setRevokeTargetMessage(messageContextMenu.message)
+                    }}><ChatIcon name="trash" size={16} /><span>{t('revokeMessage')}</span></button>
+                  )}
+                </div>
+              )}
             </div>
             <form className="message-composer-bar" onSubmit={submitMessage}>
               <input ref={mediaInputRef} className="media-input" type="file" accept="image/*,video/*" onChange={handleMediaSelection} />
@@ -1577,9 +1618,11 @@ function ChatPage() {
               <button className={searchType === 'username' ? 'is-active' : ''} type="button" onClick={() => setSearchType('username')}>@ {t('username')}</button>
               <button className={searchType === 'displayName' ? 'is-active' : ''} type="button" onClick={() => setSearchType('displayName')}>{t('displayName')}</button>
             </div>
-            {friendRequests.length > 0 && !searchQuery && <div className="panel-section"><h3>{t('pendingRequests')} <span>{friendRequests.length}</span></h3>{friendRequests.map((person) => <PersonResult key={person.username} person={person} actionLabel={t('accept')} onAction={() => acceptFriend(person)} secondaryActionLabel={t('rejectRequest')} onSecondaryAction={() => removeFriendRelation(person, 'requestRejected')} />)}</div>}
-            {sentRequests.length > 0 && !searchQuery && <div className="panel-section"><h3>{t('sentRequests')} <span>{sentRequests.length}</span></h3>{sentRequests.map((person) => <PersonResult key={person.username} person={person} actionLabel={t('requested')} disabled secondaryActionLabel={t('cancelRequest')} onSecondaryAction={() => removeFriendRelation(person, 'requestCancelled')} />)}</div>}
-            {blockedUsers.length > 0 && !searchQuery && <div className="panel-section blocked-users-section"><h3>{t('blockedUsers')} <span>{blockedUsers.length}</span></h3>{blockedUsers.map((person) => <PersonResult key={person.username} person={person} actionLabel={t('unblockUser')} onAction={() => unblockServerUser(person)} />)}</div>}
+            {!searchQuery && <div className="relationship-lists">
+              <div className="panel-section"><h3>{t('pendingRequests')} <span>{friendRequests.length}</span></h3>{friendRequests.map((person) => <PersonResult key={person.username} person={person} actionLabel={t('accept')} onAction={() => acceptFriend(person)} secondaryActionLabel={t('rejectRequest')} onSecondaryAction={() => removeFriendRelation(person, 'requestRejected')} />)}{!friendRequests.length && <p className="relationship-empty">{t('noPendingRequests')}</p>}</div>
+              <div className="panel-section"><h3>{t('sentRequests')} <span>{sentRequests.length}</span></h3>{sentRequests.map((person) => <PersonResult key={person.username} person={person} actionLabel={t('requested')} disabled secondaryActionLabel={t('cancelRequest')} onSecondaryAction={() => removeFriendRelation(person, 'requestCancelled')} />)}{!sentRequests.length && <p className="relationship-empty">{t('noSentRequests')}</p>}</div>
+              <div className="panel-section blocked-users-section"><h3>{t('blockedUsers')} <span>{blockedUsers.length}</span></h3>{blockedUsers.map((person) => <PersonResult key={person.username} person={person} actionLabel={t('unblockUser')} onAction={() => unblockServerUser(person)} />)}{!blockedUsers.length && <p className="relationship-empty">{t('noBlockedUsers')}</p>}</div>
+            </div>}
             {!searchQuery && (
               <div className="panel-section suggestion-section">
                 <div className="panel-section__heading">
@@ -1622,7 +1665,7 @@ function ChatPage() {
                   <p>{message.content}</p>
                 </button>
               ))}
-              {messageSearchHasMore && <button className="load-older" type="button" disabled={messageSearchLoading} onClick={() => searchConversationMessages(messageSearchQuery)}><ChatIcon name="history" size={16} />{t('loadMoreResults')}</button>}
+              {messageSearchHasMore && <button className="load-older" type="button" disabled={messageSearchLoading} onClick={() => searchConversationMessages(messageSearchQuery, undefined, messageSearchCursor, true)}><ChatIcon name="history" size={16} />{t('loadMoreResults')}</button>}
             </div>
           </section>
         </div>
@@ -1634,14 +1677,14 @@ function ChatPage() {
           <div className="app-section-page__content notifications-page__content">
             <div className="panel-section notifications-page__list">
               {friendRequests.map((person) => <PersonResult key={person.username} person={person} actionLabel={t('accept')} onAction={() => acceptFriend(person)} />)}
-              {worldNotifications.map((message, index) => <article className="notification-card" key={`${message.receivedAt}-${index}`}><span><ChatIcon name="globe" size={17} /></span><div><strong>{message.sender || t('admin')}</strong><p>{message.content}</p><time>{formatTime(message.receivedAt, language)}</time></div></article>)}
+              {worldNotifications.map((message, index) => <button className="notification-card" type="button" key={`${message.receivedAt}-${index}`} onClick={() => setWorldOpen(true)}><span><ChatIcon name="globe" size={17} /></span><div><strong>{message.sender || t('admin')}</strong><p>{message.content}</p><time>{formatTime(message.receivedAt, language)}</time></div></button>)}
               {!friendRequests.length && !worldNotifications.length && <div className="panel-empty"><ChatIcon name="bell" size={30} /><p>{t('noNotifications')}</p></div>}
             </div>
           </div>
         </section>
       )}
 
-      {isAdmin && worldOpen && (
+      {worldOpen && (
         <div className="panel-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setWorldOpen(false)}>
           <section className="side-panel world-panel" role="dialog" aria-modal="true" aria-label={t('worldHistory')}>
             <header><div><span>LIVE · CHATWEB</span><h2>{t('worldHistory')}</h2></div><button type="button" onClick={() => setWorldOpen(false)}><ChatIcon name="close" /></button></header>

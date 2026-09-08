@@ -3,21 +3,13 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import AppRail from '../components/chat/AppRail.jsx'
 import { useAuth } from '../context/auth-context.js'
 import { accountApi } from '../services/accountApi.js'
-import {
-  backupLocalKeyPair,
-  createAndPublishKeyPair,
-  getLocalKeyStatus,
-  lookupPublicKey,
-  publishLocalPublicKey,
-  restoreKeyPair,
-} from '../services/cryptoService.js'
 import '../styles/workspace.css'
 import '../styles/chat.css'
 
 const EMPTY_ADDRESS = {
   houseNumber: '', street: '', ward: '', district: '', city: '', country: 'Việt Nam', postalCode: '',
 }
-const SETTINGS_TABS = new Set(['profile', 'addresses', 'contact', 'security', 'keys'])
+const SETTINGS_TABS = new Set(['profile', 'addresses', 'contact', 'security'])
 
 function addressPayload(address) {
   return Object.fromEntries(Object.keys(EMPTY_ADDRESS).map((key) => [key, address[key] || '']))
@@ -39,10 +31,6 @@ function SettingsPage() {
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' })
   const [emailFlow, setEmailFlow] = useState({ newEmail: '', currentPassword: '', otp: '', pending: false })
   const [phoneFlow, setPhoneFlow] = useState({ newPhone: '', currentPassword: '', otp: '', pending: false })
-  const [keyPassword, setKeyPassword] = useState('')
-  const [keyLookup, setKeyLookup] = useState('')
-  const [publicKeyResult, setPublicKeyResult] = useState('')
-  const [keyStatus, setKeyStatus] = useState({ hasLocalKey: false, createdAt: null })
   const [busy, setBusy] = useState('')
   const [notice, setNotice] = useState(null)
 
@@ -55,8 +43,8 @@ function SettingsPage() {
 
   const loadProfile = useCallback(async () => {
     try {
-      const [profileResponse, addressResponse, localKey] = await Promise.all([
-        accountApi.getProfile(), accountApi.getAddresses(), getLocalKeyStatus(user.username),
+      const [profileResponse, addressResponse] = await Promise.all([
+        accountApi.getProfile(), accountApi.getAddresses(),
       ])
       const data = profileResponse?.data || {}
       setProfile(data)
@@ -65,11 +53,10 @@ function SettingsPage() {
         birthday: data.birthday || '', gender: data.gender || '',
       })
       setAddresses(addressResponse?.data || data.addresses || [])
-      setKeyStatus(localKey)
     } catch (error) {
       notify(error.message || 'Không thể tải thông tin tài khoản.', 'error')
     }
-  }, [notify, user.username])
+  }, [notify])
 
   // oxlint-disable-next-line react/set-state-in-effect -- the page hydrates account data from remote APIs.
   useEffect(() => { void loadProfile() }, [loadProfile])
@@ -164,12 +151,6 @@ function SettingsPage() {
     if (response) { setPhoneFlow({ newPhone: '', currentPassword: '', otp: '', pending: false }); await refreshUser(); await loadProfile() }
   }
 
-  const generateKeys = async () => {
-    if (keyStatus.hasLocalKey && !window.confirm('Tạo khóa mới sẽ khiến thiết bị không đọc được tin nhắn mã hóa bằng khóa cũ. Tiếp tục?')) return
-    const record = await run('key-generate', () => createAndPublishKeyPair(user.username), 'Đã tạo và công bố khóa mới.')
-    if (record) setKeyStatus(await getLocalKeyStatus(user.username))
-  }
-
   const endAllSessions = async () => {
     if (!window.confirm('Đăng xuất tài khoản khỏi tất cả thiết bị?')) return
     await logoutEverywhere().catch(() => {})
@@ -195,7 +176,7 @@ function SettingsPage() {
         <aside className="workspace-sidebar">
           <div className="workspace-user"><span>{(user.firstName?.[0] || user.username?.[0] || 'U').toUpperCase()}</span><div><strong>{user.firstName || user.username}</strong><small>@{user.username}</small></div></div>
           <h1>Cài đặt</h1>
-          {[['profile', 'Hồ sơ'], ['addresses', 'Địa chỉ'], ['contact', 'Email & điện thoại'], ['security', 'Bảo mật'], ['keys', 'Mã hóa E2EE']].map(([value, label]) => (
+          {[['profile', 'Hồ sơ'], ['addresses', 'Địa chỉ'], ['contact', 'Email & điện thoại'], ['security', 'Bảo mật']].map(([value, label]) => (
             <button key={value} className={tab === value ? 'is-active' : ''} type="button" onClick={() => selectTab(value)}>{label}</button>
           ))}
         </aside>
@@ -231,13 +212,6 @@ function SettingsPage() {
             <div className="danger-zone"><h3>Phiên và tài khoản</h3><p>Đăng xuất mọi thiết bị sẽ vô hiệu hóa toàn bộ refresh token hiện tại.</p><div className="button-row"><button className="workspace-button is-secondary" type="button" onClick={endAllSessions}>Đăng xuất mọi thiết bị</button><button className="workspace-button is-danger" type="button" onClick={removeAccount}>Xóa tài khoản</button></div></div>
           </div>}
 
-          {tab === 'keys' && <div className="workspace-section"><header><small>END-TO-END ENCRYPTION</small><h2>Khóa mã hóa</h2><p>Khóa riêng nằm trên thiết bị; máy chủ chỉ giữ khóa công khai và bản sao đã mã hóa.</p></header>
-            <div className="key-status"><span className={keyStatus.hasLocalKey ? 'is-ready' : ''} /> <strong>{keyStatus.hasLocalKey ? 'Thiết bị đã có khóa riêng' : 'Thiết bị chưa có khóa riêng'}</strong>{keyStatus.createdAt && <small>Tạo lúc {new Date(keyStatus.createdAt).toLocaleString('vi-VN')}</small>}</div>
-            <div className="button-row"><button className="workspace-button" type="button" onClick={generateKeys}>Tạo cặp khóa mới</button><button className="workspace-button is-secondary" type="button" disabled={!keyStatus.hasLocalKey} onClick={() => run('key-publish', () => publishLocalPublicKey(user.username), 'Đã công bố lại public key.')}>Công bố public key</button></div>
-            <div className="split-cards"><div className="workspace-card workspace-form"><h3>Sao lưu / khôi phục</h3><label>Mật khẩu bảo vệ<input type="password" value={keyPassword} onChange={(e) => setKeyPassword(e.target.value)} /></label><div className="button-row"><button className="workspace-button" type="button" onClick={() => run('key-backup', () => backupLocalKeyPair(user.username, keyPassword), 'Đã lưu bản sao mã hóa.')}>Sao lưu</button><button className="workspace-button is-secondary" type="button" onClick={async () => { const result = await run('key-restore', () => restoreKeyPair(user.username, keyPassword), 'Đã khôi phục khóa.'); if (result) setKeyStatus(await getLocalKeyStatus(user.username)) }}>Khôi phục</button></div></div>
-              <form className="workspace-card workspace-form" onSubmit={async (e) => { e.preventDefault(); const result = await run('key-lookup', () => lookupPublicKey(keyLookup), 'Đã lấy public key.'); if (typeof result === 'string') setPublicKeyResult(result) }}><h3>Tra cứu public key</h3><label>Username<input required value={keyLookup} onChange={(e) => setKeyLookup(e.target.value)} /></label><button className="workspace-button">Tra cứu</button>{publicKeyResult && <textarea readOnly rows="5" value={publicKeyResult} />}</form>
-            </div>
-          </div>}
         </section>
       </div>
       </section>
