@@ -10,7 +10,6 @@ const SETTINGS_ITEMS = [
   ['addresses', 'globe', 'addressSettings'],
   ['contact', 'users', 'contactSettings'],
   ['security', 'shield', 'securitySettings'],
-  ['keys', 'settings', 'encryptionSettings'],
 ]
 
 function initials(person) {
@@ -92,7 +91,7 @@ export default function AppRail({
       <button className={`${activeSection === 'chat' ? 'is-active ' : ''}rail-badge`} type="button" title={t('conversations')} onClick={() => selectSection('chat')}><ChatIcon name="chat" />{totalUnreadMessages > 0 && <span>{totalUnreadMessages > 99 ? '99+' : totalUnreadMessages}</span>}</button>
       <button className={`${activeSection === 'friends' ? 'is-active ' : ''}rail-badge`} type="button" title={t('friends')} onClick={() => selectSection('friends')}><ChatIcon name="users" />{friendRequestCount > 0 && <span>{friendRequestCount > 99 ? '99+' : friendRequestCount}</span>}</button>
       <button className={`${activeSection === 'notifications' ? 'is-active ' : ''}rail-badge`} type="button" title={t('notifications')} onClick={() => selectSection('notifications')}><ChatIcon name="bell" />{friendRequestCount + worldNotificationCount > 0 && <span>{friendRequestCount + worldNotificationCount}</span>}</button>
-      {isAdmin && <button type="button" title={t('worldShort')} onClick={openWorld}><ChatIcon name="globe" /></button>}
+      <button type="button" title={t('worldShort')} onClick={openWorld}><ChatIcon name="globe" /></button>
       {isAdmin && <button type="button" title={t('adminConsole')} onClick={() => navigate('/admin')}><ChatIcon name="shield" /></button>}
     </nav>
     <div className="chat-rail__bottom">

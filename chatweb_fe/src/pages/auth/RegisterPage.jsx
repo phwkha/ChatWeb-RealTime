@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import AuthShell from '../../components/auth/AuthShell.jsx'
 import GoogleButton from '../../components/auth/GoogleButton.jsx'
 import { useAuth } from '../../context/auth-context.js'
+import { getErrorMessage } from '../../services/apiClient.js'
 
 function RegisterPage() {
   const { register } = useAuth()
@@ -48,7 +49,7 @@ function RegisterPage() {
         replace: true,
       })
     } catch (requestError) {
-      setError(requestError.message || 'Đăng ký không thành công. Vui lòng thử lại.')
+      setError(getErrorMessage(requestError, 'Đăng ký không thành công. Vui lòng thử lại.'))
       if (requestError.data && typeof requestError.data === 'object') setFieldErrors(requestError.data)
     } finally {
       setIsSubmitting(false)

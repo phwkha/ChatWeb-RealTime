@@ -9,7 +9,7 @@ function parseFrame(frame) {
   try {
     return normalizeSocketPayload(JSON.parse(frame.body))
   } catch {
-    return { message: frame.body }
+    return { errorCode: 'STOMP_ERROR' }
   }
 }
 

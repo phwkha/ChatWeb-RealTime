@@ -246,31 +246,33 @@ function LandingPage() {
         <section className="experience-section section" id="experience">
           <div className="container experience-grid">
             <div className="experience-visual" data-reveal>
-              <div className="phone-card phone-card--back">
-                <div className="phone-card__top"><span>9:41</span><i /></div>
-                <p>Cuộc trò chuyện</p>
-                {MINI_MESSAGES.map((message) => (
-                  <div className="phone-contact" key={message.name}>
-                    <div className={`avatar avatar--${message.tone}`}>{message.initials}</div>
-                    <div><strong>{message.name}</strong><small>{message.text}</small></div>
+              <div className="experience-device-stage">
+                <div className="phone-card phone-card--back">
+                  <div className="phone-card__top"><span>9:41</span><i /></div>
+                  <p>Cuộc trò chuyện</p>
+                  {MINI_MESSAGES.map((message) => (
+                    <div className="phone-contact" key={message.name}>
+                      <div className={`avatar avatar--${message.tone}`}>{message.initials}</div>
+                      <div><strong>{message.name}</strong><small>{message.text}</small></div>
+                    </div>
+                  ))}
+                </div>
+                <div className="phone-card phone-card--front">
+                  <div className="phone-card__top"><span>9:41</span><i /></div>
+                  <div className="phone-profile">
+                    <div className="avatar avatar--purple">LN</div>
+                    <strong>Linh Nguyễn</strong><small>Đang hoạt động</small>
                   </div>
-                ))}
-              </div>
-              <div className="phone-card phone-card--front">
-                <div className="phone-card__top"><span>9:41</span><i /></div>
-                <div className="phone-profile">
-                  <div className="avatar avatar--purple">LN</div>
-                  <strong>Linh Nguyễn</strong><small>Đang hoạt động</small>
+                  <div className="phone-chat">
+                    <span>Chào buổi sáng! ☀️</span>
+                    <span className="is-mine">Chúc cậu một ngày thật vui nhé!</span>
+                    <span>Nhất định rồi ✨</span>
+                  </div>
+                  <div className="phone-input">Aa <span>➤</span></div>
                 </div>
-                <div className="phone-chat">
-                  <span>Chào buổi sáng! ☀️</span>
-                  <span className="is-mine">Chúc cậu một ngày thật vui nhé!</span>
-                  <span>Nhất định rồi ✨</span>
-                </div>
-                <div className="phone-input">Aa <span>➤</span></div>
+                <div className="experience-badge experience-badge--secure"><span>✓</span> Mã hóa an toàn</div>
+                <div className="experience-badge experience-badge--online"><i /> 12 bạn đang online</div>
               </div>
-              <div className="experience-badge experience-badge--secure"><span>✓</span> Mã hóa an toàn</div>
-              <div className="experience-badge experience-badge--online"><i /> 12 bạn đang online</div>
             </div>
 
             <div className="experience-copy" data-reveal>

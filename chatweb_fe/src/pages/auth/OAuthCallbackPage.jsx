@@ -2,13 +2,18 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import Brand from '../../components/Brand.jsx'
 import { useAuth } from '../../context/auth-context.js'
+import { getErrorMessage } from '../../services/apiClient.js'
 import '../../styles/auth.css'
 
 function OAuthCallbackPage() {
   const { refreshUser } = useAuth()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const oauthError = searchParams.get('error') || ''
+  const oauthErrorCode = searchParams.get('error') || ''
+  const oauthError = oauthErrorCode ? getErrorMessage({
+    code: oauthErrorCode,
+    message: searchParams.get('error_description') || '',
+  }, 'Không thể đăng nhập bằng Google. Vui lòng thử lại.') : ''
   const [error, setError] = useState(oauthError)
   const hasHandledCallback = useRef(false)
 
