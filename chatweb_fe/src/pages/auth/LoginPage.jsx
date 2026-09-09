@@ -4,6 +4,7 @@ import AuthShell from '../../components/auth/AuthShell.jsx'
 import GoogleButton from '../../components/auth/GoogleButton.jsx'
 import { useAuth } from '../../context/auth-context.js'
 import { getErrorMessage } from '../../services/apiClient.js'
+import { isAdminUser } from '../../services/authorization.js'
 
 function LoginPage() {
   const { login } = useAuth()
@@ -27,8 +28,8 @@ function LoginPage() {
     setIsSubmitting(true)
 
     try {
-      await login({ username: form.username.trim(), password: form.password })
-      navigate('/chat', { replace: true })
+      const response = await login({ username: form.username.trim(), password: form.password })
+      navigate(isAdminUser(response?.data) ? '/admin' : '/chat', { replace: true })
     } catch (requestError) {
       setError(getErrorMessage(requestError, 'Đăng nhập không thành công. Vui lòng thử lại.'))
     } finally {
