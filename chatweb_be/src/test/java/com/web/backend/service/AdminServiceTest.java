@@ -324,7 +324,6 @@ class AdminServiceTest {
     void testAdminUpdateAddress() {
         AddressEntity addr = new AddressEntity();
         addr.setId(1L);
-        when(userRepository.findWithAuthoritiesByUsername("testuser")).thenReturn(Optional.of(activeUser));
         when(addressRepository.findByIdAndUser_Username(1L, "testuser")).thenReturn(Optional.of(addr));
 
         AddressRequest req = new AddressRequest();
@@ -336,7 +335,6 @@ class AdminServiceTest {
 
     @Test
     void testAdminUpdateAddress_NotOwned() {
-        when(userRepository.findWithAuthoritiesByUsername("testuser")).thenReturn(Optional.of(activeUser));
         when(addressRepository.findByIdAndUser_Username(1L, "testuser")).thenReturn(Optional.empty());
         AddressRequest req = new AddressRequest();
         assertThrows(ResourceNotFoundException.class, () -> adminService.adminUpdateAddress("testuser", 1L, req));

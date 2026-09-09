@@ -210,7 +210,7 @@ class UserServiceTest {
 
     @Test
     void testAddAddress() {
-        when(userRepository.findWithAuthoritiesByUsername("testuser")).thenReturn(Optional.of(activeUser));
+        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(activeUser));
         AddressRequest req = new AddressRequest();
         AddressEntity address = new AddressEntity();
         address.setId(1L);
@@ -384,7 +384,6 @@ class UserServiceTest {
     void testUpdateAddress_Success() {
         AddressEntity address = new AddressEntity();
         address.setId(1L);
-        when(userRepository.findWithAuthoritiesByUsername("testuser")).thenReturn(Optional.of(activeUser));
         when(addressRepository.findByIdAndUser_Username(1L, "testuser")).thenReturn(Optional.of(address));
 
         AddressRequest req = new AddressRequest();
@@ -396,7 +395,6 @@ class UserServiceTest {
 
     @Test
     void testUpdateAddress_NotFound() {
-        when(userRepository.findWithAuthoritiesByUsername("testuser")).thenReturn(Optional.of(activeUser));
         when(addressRepository.findByIdAndUser_Username(1L, "testuser")).thenReturn(Optional.empty());
         AddressRequest req = new AddressRequest();
         assertThrows(ResourceNotFoundException.class, () -> userService.updateAddress("testuser", 1L, req));
@@ -407,7 +405,7 @@ class UserServiceTest {
         AddressEntity address = new AddressEntity();
         address.setId(1L);
         activeUser.addAddress(address);
-        when(userRepository.findWithAuthoritiesByUsername("testuser")).thenReturn(Optional.of(activeUser));
+        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(activeUser));
         when(addressRepository.findByIdAndUser_Username(1L, "testuser")).thenReturn(Optional.of(address));
 
         userService.deleteAddress("testuser", 1L);
@@ -418,7 +416,7 @@ class UserServiceTest {
 
     @Test
     void testDeleteAddress_NotFound() {
-        when(userRepository.findWithAuthoritiesByUsername("testuser")).thenReturn(Optional.of(activeUser));
+        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(activeUser));
         when(addressRepository.findByIdAndUser_Username(1L, "testuser")).thenReturn(Optional.empty());
         assertThrows(ResourceNotFoundException.class, () -> userService.deleteAddress("testuser", 1L));
     }
@@ -501,15 +499,10 @@ class UserServiceTest {
 
     @Test
     void testUpdateAddress_NotOwned() {
-        AddressEntity address = new AddressEntity();
-        address.setId(2L);
-        activeUser.addAddress(address); // User owns address 2
-        when(userRepository.findWithAuthoritiesByUsername("testuser")).thenReturn(Optional.of(activeUser));
+        when(addressRepository.findByIdAndUser_Username(1L, "testuser")).thenReturn(Optional.empty());
 
         AddressRequest req = new AddressRequest();
-        assertThrows(ResourceNotFoundException.class, () -> userService.updateAddress("testuser", 1L, req)); // Trying
-                                                                                                             // to
-                                                                                                             // update 1
+        assertThrows(ResourceNotFoundException.class, () -> userService.updateAddress("testuser", 1L, req));
     }
 
     @Test
@@ -546,7 +539,7 @@ class UserServiceTest {
 
     @Test
     void testAddAddress_UserNotFound() {
-        when(userRepository.findWithAuthoritiesByUsername("testuser")).thenReturn(Optional.empty());
+        when(userRepository.findByUsername("testuser")).thenReturn(Optional.empty());
         assertThrows(ResourceNotFoundException.class, () -> userService.addAddress("testuser", new AddressRequest()));
     }
 
@@ -578,14 +571,14 @@ class UserServiceTest {
 
     @Test
     void testUpdateAddress_UserNotFound() {
-        when(userRepository.findWithAuthoritiesByUsername("testuser")).thenReturn(Optional.empty());
+        when(addressRepository.findByIdAndUser_Username(1L, "testuser")).thenReturn(Optional.empty());
         assertThrows(ResourceNotFoundException.class,
                 () -> userService.updateAddress("testuser", 1L, new AddressRequest()));
     }
 
     @Test
     void testDeleteAddress_UserNotFound() {
-        when(userRepository.findWithAuthoritiesByUsername("testuser")).thenReturn(Optional.empty());
+        when(userRepository.findByUsername("testuser")).thenReturn(Optional.empty());
         assertThrows(ResourceNotFoundException.class, () -> userService.deleteAddress("testuser", 1L));
     }
 
