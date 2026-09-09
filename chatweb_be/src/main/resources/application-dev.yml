@@ -5,7 +5,7 @@ spring:
 
   data:
     mongodb:
-      uri: mongodb://${MONGO_USER}:${MONGO_PASSWORD}@${MONGO_HOST}:27017/${MONGO_DB}?authSource=admin
+      uri: mongodb://${MONGO_USER}:${MONGO_PASSWORD}@${MONGO_HOST}:${MONGO_PORT}/${MONGO_DB}?authSource=admin
       auto-index-creation: true
     redis:
       host: ${REDIS_HOST}
@@ -17,7 +17,7 @@ spring:
         time-to-live: 10m
         cache-null-values: false
   datasource:
-    url: jdbc:postgresql://${POSTGRES_HOST}:5432/${POSTGRES_DB}
+    url: jdbc:postgresql://${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}
     username: ${POSTGRES_USER}
     password: ${POSTGRES_PASSWORD}
   jpa:
