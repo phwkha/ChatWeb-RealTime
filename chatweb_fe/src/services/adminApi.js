@@ -28,6 +28,11 @@ export const adminApi = {
   updateRole: (id, body) => apiRequest(`/api/roles/${encodeURIComponent(id)}`, { method: 'PUT', body }),
   deleteRole: (id) => apiRequest(`/api/roles/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   sendEmail: (body) => apiRequest('/api/email/send', { method: 'POST', body }),
+  getSystemMessages: (cursor = null, size = 20) => {
+    const query = new URLSearchParams({ size: String(size) })
+    if (cursor) query.set('cursor', cursor)
+    return apiRequest(`/api/systems/message?${query}`)
+  },
   advancedSearch: ({ user = [], address = [], page = 0, size = 20 } = {}) => {
     const query = new URLSearchParams({ page: String(page), size: String(size) })
     user.filter(Boolean).forEach((item) => query.append('user', item))

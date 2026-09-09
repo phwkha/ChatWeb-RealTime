@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import Brand from '../../components/Brand.jsx'
 import { useAuth } from '../../context/auth-context.js'
 import { getErrorMessage } from '../../services/apiClient.js'
+import { isAdminUser } from '../../services/authorization.js'
 import '../../styles/auth.css'
 
 function OAuthCallbackPage() {
@@ -27,7 +28,7 @@ function OAuthCallbackPage() {
     }
 
     refreshUser().then((currentUser) => {
-      if (currentUser) navigate('/chat', { replace: true })
+      if (currentUser) navigate(isAdminUser(currentUser) ? '/admin' : '/chat', { replace: true })
       else {
         const message = 'Google đã xác thực nhưng ChatWeb chưa nhận được phiên đăng nhập.'
         setError(message)

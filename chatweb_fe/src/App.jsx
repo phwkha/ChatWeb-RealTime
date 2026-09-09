@@ -11,6 +11,7 @@ import VerifyAccountPage from './pages/auth/VerifyAccountPage.jsx'
 import ForgotPasswordPage from './pages/auth/ForgotPasswordPage.jsx'
 import SettingsPage from './pages/SettingsPage.jsx'
 import AdminPage from './pages/AdminPage.jsx'
+import { isAdminUser } from './services/authorization.js'
 
 function PublicOnlyRoute({ children }) {
   const { user, isInitializing } = useAuth()
@@ -24,7 +25,7 @@ function PublicOnlyRoute({ children }) {
     )
   }
 
-  return user ? <Navigate to="/chat" replace /> : children
+  return user ? <Navigate to={isAdminUser(user) ? '/admin' : '/chat'} replace /> : children
 }
 
 function ProtectedRoute({ children }) {
