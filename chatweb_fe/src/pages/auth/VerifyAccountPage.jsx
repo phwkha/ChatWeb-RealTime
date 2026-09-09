@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import Brand from '../../components/Brand.jsx'
 import { useAuth } from '../../context/auth-context.js'
+import { getErrorMessage } from '../../services/apiClient.js'
 import '../../styles/auth.css'
 
 function VerifyAccountPage() {
@@ -41,7 +42,7 @@ function VerifyAccountPage() {
         state: { message: response?.message || 'Xác minh thành công. Bạn có thể đăng nhập ngay.' },
       })
     } catch (requestError) {
-      setError(requestError.message || 'Mã OTP không hợp lệ hoặc đã hết hạn.')
+      setError(getErrorMessage(requestError, 'Mã OTP không hợp lệ hoặc đã hết hạn.'))
     } finally {
       setIsSubmitting(false)
     }
@@ -55,7 +56,7 @@ function VerifyAccountPage() {
       setMessage(response?.message || 'Đã gửi lại mã OTP.')
       setCountdown(60)
     } catch (requestError) {
-      setError(requestError.message || 'Chưa thể gửi lại mã OTP.')
+      setError(getErrorMessage(requestError, 'Chưa thể gửi lại mã OTP. Vui lòng thử lại.'))
     }
   }
 

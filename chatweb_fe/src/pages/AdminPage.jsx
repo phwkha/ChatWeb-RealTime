@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import Brand from '../components/Brand.jsx'
 import { useAuth } from '../context/auth-context.js'
 import { adminApi } from '../services/adminApi.js'
+import { getErrorMessage } from '../services/apiClient.js'
 import '../styles/workspace.css'
 
 const EMPTY_USER = { username: '', password: '', firstName: '', lastName: '', email: '', phone: '', roleId: '' }
@@ -45,7 +46,7 @@ function AdminPage() {
       if (successMessage || response?.message) notify(response?.message || successMessage)
       return response
     } catch (error) {
-      notify(error.message || 'Thao tác quản trị không thành công.', 'error')
+      notify(getErrorMessage(error, 'Thao tác quản trị không thành công.'), 'error')
       return null
     } finally {
       setBusy('')
@@ -60,7 +61,7 @@ function AdminPage() {
         : await adminApi.getUsers(filters)
       setUsers(response?.data?.content || [])
     } catch (error) {
-      notify(error.message || 'Không thể tải danh sách người dùng.', 'error')
+      notify(getErrorMessage(error, 'Không thể tải danh sách người dùng.'), 'error')
     } finally {
       setBusy('')
     }

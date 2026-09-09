@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import AuthShell from '../../components/auth/AuthShell.jsx'
-import { apiRequest } from '../../services/apiClient.js'
+import { apiRequest, getErrorMessage } from '../../services/apiClient.js'
 
 function ForgotPasswordPage() {
   const navigate = useNavigate()
@@ -28,7 +28,7 @@ function ForgotPasswordPage() {
       setMessage(response?.message || 'Mã xác nhận đã được gửi đến email của bạn.')
       setStep('reset')
     } catch (requestError) {
-      setError(requestError.message || 'Không thể gửi mã xác nhận.')
+      setError(getErrorMessage(requestError, 'Không thể gửi mã xác nhận. Vui lòng thử lại.'))
     } finally {
       setSubmitting(false)
     }
@@ -50,7 +50,7 @@ function ForgotPasswordPage() {
       })
       navigate('/login', { replace: true, state: { message: response?.message || 'Đổi mật khẩu thành công.' } })
     } catch (requestError) {
-      setError(requestError.message || 'Không thể đặt lại mật khẩu.')
+      setError(getErrorMessage(requestError, 'Không thể đặt lại mật khẩu. Vui lòng thử lại.'))
     } finally {
       setSubmitting(false)
     }
@@ -64,7 +64,7 @@ function ForgotPasswordPage() {
       })
       setMessage(response?.message || 'Đã gửi lại mã xác nhận.')
     } catch (requestError) {
-      setError(requestError.message || 'Không thể gửi lại mã.')
+      setError(getErrorMessage(requestError, 'Không thể gửi lại mã. Vui lòng thử lại.'))
     }
   }
 

@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import AuthShell from '../../components/auth/AuthShell.jsx'
 import GoogleButton from '../../components/auth/GoogleButton.jsx'
 import { useAuth } from '../../context/auth-context.js'
+import { getErrorMessage } from '../../services/apiClient.js'
 
 function LoginPage() {
   const { login } = useAuth()
@@ -10,7 +11,9 @@ function LoginPage() {
   const location = useLocation()
   const [form, setForm] = useState({ username: '', password: '' })
   const [showPassword, setShowPassword] = useState(false)
-  const [error, setError] = useState(location.state?.error || '')
+  const [error, setError] = useState(() => location.state?.error
+    ? getErrorMessage({ message: location.state.error }, 'Đăng nhập không thành công. Vui lòng thử lại.')
+    : '')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const handleChange = (event) => {
@@ -27,7 +30,7 @@ function LoginPage() {
       await login({ username: form.username.trim(), password: form.password })
       navigate('/chat', { replace: true })
     } catch (requestError) {
-      setError(requestError.message || 'Đăng nhập không thành công. Vui lòng thử lại.')
+      setError(getErrorMessage(requestError, 'Đăng nhập không thành công. Vui lòng thử lại.'))
     } finally {
       setIsSubmitting(false)
     }

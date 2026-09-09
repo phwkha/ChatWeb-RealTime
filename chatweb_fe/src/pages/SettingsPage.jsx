@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import AppRail from '../components/chat/AppRail.jsx'
 import { useAuth } from '../context/auth-context.js'
 import { accountApi } from '../services/accountApi.js'
+import { getErrorMessage } from '../services/apiClient.js'
 import '../styles/workspace.css'
 import '../styles/chat.css'
 
@@ -54,7 +55,7 @@ function SettingsPage() {
       })
       setAddresses(addressResponse?.data || data.addresses || [])
     } catch (error) {
-      notify(error.message || 'Không thể tải thông tin tài khoản.', 'error')
+      notify(getErrorMessage(error, 'Không thể tải thông tin tài khoản.'), 'error')
     }
   }, [notify])
 
@@ -69,7 +70,7 @@ function SettingsPage() {
       notify(response?.message || successMessage)
       return response
     } catch (error) {
-      notify(error.message || 'Thao tác không thành công.', 'error')
+      notify(getErrorMessage(error, 'Thao tác không thành công.'), 'error')
       return null
     } finally {
       setBusy('')
@@ -163,7 +164,7 @@ function SettingsPage() {
       await deleteAccount()
       navigate('/home', { replace: true })
     } catch (error) {
-      notify(error.message || 'Không thể xóa tài khoản.', 'error')
+      notify(getErrorMessage(error, 'Không thể xóa tài khoản.'), 'error')
     }
   }
 

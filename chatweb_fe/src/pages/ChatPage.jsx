@@ -4,7 +4,8 @@ import AppRail from '../components/chat/AppRail.jsx'
 import { useAuth } from '../context/auth-context.js'
 import { useLanguage } from '../context/language-context.js'
 import { useChatSocket } from '../hooks/useChatSocket.js'
-import { apiRequest } from '../services/apiClient.js'
+import { useNotificationSound } from '../hooks/useNotificationSound.js'
+import { apiRequest, getErrorMessage } from '../services/apiClient.js'
 import '../styles/chat.css'
 
 const FRIEND_EVENT_TYPES = new Set([
@@ -82,7 +83,15 @@ function normalizeMessages(items) {
 }
 
 function isMessageDeleted(message) {
-  return Boolean(message?.deleted || message?.isDeleted)
+  const explicitFlag = [message?.deleted, message?.isDeleted, message?.is_deleted].some((value) => (
+    value === true || value === 1 || String(value).toLocaleLowerCase('en-US') === 'true'
+  ))
+  if (explicitFlag) return true
+
+  const isPersistedChatMessage = Boolean(message?.id)
+    && (!message.messageType || String(message.messageType).toUpperCase() === 'CHAT')
+  const hasNoPayload = !String(message?.content || '').trim() && !message?.fileUrl
+  return isPersistedChatMessage && hasNoPayload
 }
 
 function isMessageEdited(message) {
@@ -218,6 +227,8 @@ function initialChatSection() {
 function ChatPage() {
   const { user } = useAuth()
   const { language, t } = useLanguage()
+  const playNotificationSound = useNotificationSound()
+  const playInboxSound = useNotificationSound('inbox')
   const [friends, setFriends] = useState([])
   const [friendRequests, setFriendRequests] = useState([])
   const [sentRequests, setSentRequests] = useState([])
@@ -271,6 +282,7 @@ function ChatPage() {
   const [revokeTargetMessage, setRevokeTargetMessage] = useState(null)
   const [blockedMessageIntervals, setBlockedMessageIntervals] = useState(readBlockedMessageIntervals)
   const selectedRef = useRef(null)
+  const activeSectionRef = useRef(activeSection)
   const messagesByUserRef = useRef({})
   const messagesEndRef = useRef(null)
   const messageStreamRef = useRef(null)
@@ -321,8 +333,17 @@ function ChatPage() {
   }, [selectedUser])
 
   useEffect(() => {
+    activeSectionRef.current = activeSection
+  }, [activeSection])
+
+  useEffect(() => {
     messagesByUserRef.current = messagesByUser
   }, [messagesByUser])
+
+  const changeActiveSection = useCallback((section) => {
+    activeSectionRef.current = section
+    setActiveSection(section)
+  }, [])
 
   useEffect(() => {
     if (!conversationMenuOpen) return undefined
@@ -404,7 +425,7 @@ function ChatPage() {
       const response = await apiRequest('/api/search/users?size=24&sortDir=asc')
       setSuggestions(response?.data?.content || [])
     } catch (error) {
-      showToast(error.message || t('errorGeneric'), 'error')
+      showToast(getErrorMessage(error, t('errorGeneric')), 'error')
     } finally {
       setLoadingSuggestions(false)
     }
@@ -424,7 +445,7 @@ function ChatPage() {
       setWorldCursor(response?.data?.nextCursor || null)
       setWorldHasMore(Boolean(response?.data?.hasMore))
     } catch (error) {
-      showToast(error.message || t('errorGeneric'), 'error')
+      showToast(getErrorMessage(error, t('errorGeneric')), 'error')
     }
   }, [showToast, t])
 
@@ -451,7 +472,7 @@ function ChatPage() {
       }))
       return visibleHistory.length
     } catch (error) {
-      if (!silent || cursor) showToast(error.message || t('errorGeneric'), 'error')
+      if (!silent || cursor) showToast(getErrorMessage(error, t('errorGeneric')), 'error')
       return -1
     } finally {
       if (!silent) setLoadingConversation(false)
@@ -505,7 +526,7 @@ function ChatPage() {
       setMessageSearchCursor(nextCursor)
       setMessageSearchHasMore(Boolean(response?.data?.hasMore && nextCursor))
     } catch (error) {
-      if (error.name !== 'AbortError') showToast(error.message || t('messageSearchFailed'), 'error')
+      if (error.name !== 'AbortError') showToast(getErrorMessage(error, t('messageSearchFailed')), 'error')
     } finally {
       if (!signal?.aborted) setMessageSearchLoading(false)
     }
@@ -540,6 +561,13 @@ function ChatPage() {
       messageType: 'TYPING',
     })
   }, [])
+
+  const isActivelyViewingConversation = useCallback((username) => (
+    activeSectionRef.current === 'chat'
+    && selectedRef.current?.username === username
+    && document.visibilityState === 'visible'
+    && document.hasFocus()
+  ), [])
 
   const updatePeerPresence = useCallback((username, online) => {
     const normalizedUsername = String(username || '').toLocaleLowerCase('en-US')
@@ -617,24 +645,31 @@ function ChatPage() {
     }))
 
     if (displayMessage.sender !== user.username) {
-      const isActivelyReading = selectedRef.current?.username === peer && document.visibilityState === 'visible'
+      playInboxSound()
+      const isActivelyReading = isActivelyViewingConversation(peer)
       sendRealtimeReceipt(peer, isActivelyReading ? 'READ' : 'DELIVERED', displayMessage)
       if (isActivelyReading) markAsRead(peer)
       else setUnreadCounts((current) => ({ ...current, [peer]: (current[peer] || 0) + 1 }))
     }
-  }, [blockedMessageIntervals, markAsRead, sendRealtimeReceipt, updatePeerPresence, user])
+  }, [blockedMessageIntervals, isActivelyViewingConversation, markAsRead, playInboxSound, sendRealtimeReceipt, updatePeerPresence, user])
 
   const handleNotification = useCallback(async (notification) => {
     if (!notification?.type) return
-    const isMessageUpdate = ['EDIT_MESSAGE', 'REVOKE_MESSAGE', 'REACT_MESSAGE', 'STATUS_MESSAGE']
-      .includes(notification.type)
+    const isEditNotification = ['EDIT_MESSAGE', 'MESSAGE_EDITED'].includes(notification.type)
+    const isRevokeNotification = ['REVOKE_MESSAGE', 'MESSAGE_REVOKED'].includes(notification.type)
+    const isReactionNotification = ['REACT_MESSAGE', 'MESSAGE_REACTED'].includes(notification.type)
+    const isMessageUpdate = isEditNotification || isRevokeNotification
+      || isReactionNotification || notification.type === 'STATUS_MESSAGE'
     const notificationPeer = notification.data?.sender === user?.username
       ? notification.data?.recipient
       : notification.data?.sender || notification.data?.reader || notification.relatedUsername
     const isBlockedMessageUpdate = isMessageUpdate
       && isIncomingMessageBlocked(blockedMessageIntervals, user?.username, notificationPeer)
     if (isBlockedMessageUpdate) return
-    if (notification.type === 'FRIEND_REQUEST' && notification.message) showToast(notification.message)
+    if (notification.type === 'FRIEND_REQUEST') {
+      playNotificationSound()
+      if (notification.message) showToast(notification.message)
+    }
     if (FRIEND_EVENT_TYPES.has(notification.type)
       && !['USER_ONLINE', 'USER_OFFLINE'].includes(notification.type)) scheduleConnectionSync()
 
@@ -653,18 +688,29 @@ function ChatPage() {
       }))
     }
 
-    if (['EDIT_MESSAGE', 'REVOKE_MESSAGE', 'REACT_MESSAGE'].includes(notification.type) && notification.data && user) {
-      const data = notification.type === 'EDIT_MESSAGE'
+    if ((isEditNotification || isRevokeNotification || isReactionNotification) && notification.data && user) {
+      const data = isEditNotification
         ? { ...notification.data, edited: true, isEdited: true }
-        : notification.data
+        : isRevokeNotification
+          ? {
+              ...notification.data,
+              content: '',
+              fileUrl: null,
+              fileName: null,
+              fileSize: null,
+              reactions: null,
+              deleted: true,
+              isDeleted: true,
+            }
+          : notification.data
       const peer = data.sender === user.username ? data.recipient : data.sender
-      if (notification.type === 'EDIT_MESSAGE') {
+      if (isEditNotification) {
         const previousMessage = (messagesByUserRef.current[peer] || []).find((message) => message.id === data.id)
         if (previousMessage && previousMessage.content !== data.content) recordMessageEdit(previousMessage)
       }
       setMessagesByUser((current) => ({ ...current, [peer]: upsertMessage(current[peer] || [], data) }))
     }
-  }, [blockedMessageIntervals, recordMessageEdit, scheduleConnectionSync, showToast, updatePeerPresence, user])
+  }, [blockedMessageIntervals, playNotificationSound, recordMessageEdit, scheduleConnectionSync, showToast, updatePeerPresence, user])
 
   const handleWorldMessage = useCallback((message) => {
     if (!String(message?.content || '').trim()) return
@@ -672,9 +718,10 @@ function ChatPage() {
       { ...message, receivedAt: message.timestamp || new Date().toISOString() },
       ...current,
     ].slice(0, 50))
+    if (String(message.sender || '').toLocaleLowerCase('en-US') !== currentUsernameKey) playNotificationSound()
     showToast(message.content)
     setWorldMessages((current) => normalizeMessages([...current, message]))
-  }, [showToast])
+  }, [currentUsernameKey, playNotificationSound, showToast])
 
   const handleSocketError = useCallback((error) => {
     const failedRequest = error?.request || error?.data?.request
@@ -688,21 +735,21 @@ function ChatPage() {
         )),
       }))
     }
-    showToast(error?.message || t('socketError'), 'error')
+    showToast(getErrorMessage(error, t('socketError')), 'error')
   }, [showToast, t])
 
   const handleSocketConnected = useCallback(() => {
-    if (selectedRef.current) {
+    if (selectedRef.current && activeSectionRef.current === 'chat') {
       void loadConversation(selectedRef.current, true)
       const blocked = isIncomingMessageBlocked(
         blockedMessageIntervals, user?.username, selectedRef.current.username,
       )
-      if (!blocked) {
+      if (!blocked && isActivelyViewingConversation(selectedRef.current.username)) {
         markAsRead(selectedRef.current.username)
         sendRealtimeReceipt(selectedRef.current.username, 'READ')
       }
     }
-  }, [blockedMessageIntervals, loadConversation, markAsRead, sendRealtimeReceipt, user?.username])
+  }, [blockedMessageIntervals, isActivelyViewingConversation, loadConversation, markAsRead, sendRealtimeReceipt, user?.username])
 
   const { connectionState, sendPrivateMessage, sendWorldMessage } = useChatSocket({
     enabled: Boolean(user), language, subscribeToWorld: true,
@@ -730,14 +777,31 @@ function ChatPage() {
 
   useEffect(() => {
     const currentSelection = selectedRef.current
-    if (!currentSelection || currentSelection.username !== selectedUsername) return
+    if (activeSection !== 'chat' || !currentSelection || currentSelection.username !== selectedUsername) return
     // oxlint-disable-next-line react/set-state-in-effect -- switching conversations synchronizes external history.
     void loadConversation(currentSelection)
-    if (!selectedConversationBlocked) {
+    if (!selectedConversationBlocked && isActivelyViewingConversation(selectedUsername)) {
       markAsRead(selectedUsername)
       sendRealtimeReceipt(selectedUsername, 'READ')
     }
-  }, [loadConversation, markAsRead, selectedConversationBlocked, selectedUsername, sendRealtimeReceipt])
+  }, [activeSection, isActivelyViewingConversation, loadConversation, markAsRead, selectedConversationBlocked, selectedUsername, sendRealtimeReceipt])
+
+  useEffect(() => {
+    const markVisibleConversationAsRead = () => {
+      const selected = selectedRef.current
+      if (!selected || !isActivelyViewingConversation(selected.username)) return
+      if (isIncomingMessageBlocked(blockedMessageIntervals, user?.username, selected.username)) return
+      if (Number(unreadCounts[selected.username] || 0) <= 0) return
+      markAsRead(selected.username)
+      sendRealtimeReceipt(selected.username, 'READ')
+    }
+    window.addEventListener('focus', markVisibleConversationAsRead)
+    document.addEventListener('visibilitychange', markVisibleConversationAsRead)
+    return () => {
+      window.removeEventListener('focus', markVisibleConversationAsRead)
+      document.removeEventListener('visibilitychange', markVisibleConversationAsRead)
+    }
+  }, [blockedMessageIntervals, isActivelyViewingConversation, markAsRead, sendRealtimeReceipt, unreadCounts, user?.username])
 
   useEffect(() => () => {
     window.clearTimeout(searchHighlightTimerRef.current)
@@ -780,7 +844,7 @@ function ChatPage() {
         })
         setSearchResults(filtered)
       } catch (error) {
-        if (error.name !== 'AbortError') showToast(error.message || t('errorGeneric'), 'error')
+        if (error.name !== 'AbortError') showToast(getErrorMessage(error, t('errorGeneric')), 'error')
       } finally {
         setSearching(false)
       }
@@ -863,8 +927,9 @@ function ChatPage() {
     setDetailMessageId(null)
     setEditHistoryMessageId(null)
     setMessageContextMenu(null)
+    selectedRef.current = friend
     setSelectedUser(friend)
-    setActiveSection('chat')
+    changeActiveSection('chat')
     setWorldOpen(false)
   }
 
@@ -879,7 +944,7 @@ function ChatPage() {
       setSentRequests((current) => [...current, person])
       showToast(response?.message || t('requested'))
     } catch (error) {
-      showToast(error.message || t('errorGeneric'), 'error')
+      showToast(getErrorMessage(error, t('errorGeneric')), 'error')
     }
   }
 
@@ -896,7 +961,7 @@ function ChatPage() {
       scheduleConnectionSync()
       showToast(response?.message || t('unblockedUserSuccess'))
     } catch (error) {
-      showToast(error.message || t('actionFailed'), 'error')
+      showToast(getErrorMessage(error, t('actionFailed')), 'error')
     }
   }
 
@@ -907,7 +972,7 @@ function ChatPage() {
       await loadConnections()
       selectFriend(person)
     } catch (error) {
-      showToast(error.message || t('errorGeneric'), 'error')
+      showToast(getErrorMessage(error, t('errorGeneric')), 'error')
     }
   }
 
@@ -917,7 +982,7 @@ function ChatPage() {
       await loadConnections()
       showToast(response?.message || t(successKey))
     } catch (error) {
-      showToast(error.message || t('actionFailed'), 'error')
+      showToast(getErrorMessage(error, t('actionFailed')), 'error')
     }
   }
 
@@ -1060,7 +1125,7 @@ function ChatPage() {
       }))
       if (!sent) showToast(t('messageFailed'), 'error')
     } catch (error) {
-      showToast(error.message || t('uploadFailed'), 'error')
+      showToast(getErrorMessage(error, t('uploadFailed')), 'error')
     } finally {
       setUploadingMedia(false)
     }
@@ -1103,7 +1168,7 @@ function ChatPage() {
         ...current,
         [selectedUser.username]: upsertMessage(current[selectedUser.username] || [], previousMessage),
       }))
-      showToast(error.message || t('reactionFailed'), 'error')
+      showToast(getErrorMessage(error, t('reactionFailed')), 'error')
     } finally {
       setReactionSubmittingId(null)
     }
@@ -1170,7 +1235,7 @@ function ChatPage() {
       setEditingMessageContent('')
       showToast(response?.message || t('messageEdited'))
     } catch (error) {
-      showToast(error.message || t('actionFailed'), 'error')
+      showToast(getErrorMessage(error, t('actionFailed')), 'error')
     } finally {
       setMessageActionPending(false)
     }
@@ -1192,7 +1257,7 @@ function ChatPage() {
       setRevokeTargetMessage(null)
       showToast(response?.message || t('messageRevoked'))
     } catch (error) {
-      showToast(error.message || t('actionFailed'), 'error')
+      showToast(getErrorMessage(error, t('actionFailed')), 'error')
     } finally {
       setMessageActionPending(false)
     }
@@ -1205,6 +1270,7 @@ function ChatPage() {
       delete nextMessages[username]
       return nextMessages
     })
+    selectedRef.current = null
     setSelectedUser(null)
     setConversationMenuOpen(false)
     setConfirmConversationAction(null)
@@ -1221,7 +1287,7 @@ function ChatPage() {
       await apiRequest(`/api/friends/unblock/${encodeURIComponent(selectedUser.username)}`, { method: 'POST' })
       setBlockedUsers((current) => current.filter((person) => person.username !== selectedUser.username))
     } catch (error) {
-      showToast(error.message || t('actionFailed'), 'error')
+      showToast(getErrorMessage(error, t('actionFailed')), 'error')
       return
     }
     const intervals = [...(blockedMessageIntervals[selectedConversationKey] || [])]
@@ -1248,7 +1314,7 @@ function ChatPage() {
         scheduleConnectionSync()
         showToast(response?.message || t('blockedSuccess'))
       } catch (error) {
-        showToast(error.message || t('actionFailed'), 'error')
+        showToast(getErrorMessage(error, t('actionFailed')), 'error')
       } finally {
         setConversationActionPending(false)
       }
@@ -1264,7 +1330,7 @@ function ChatPage() {
       scheduleConnectionSync()
       showToast(response?.message || t('unfriend'))
     } catch (error) {
-      showToast(error.message || t('actionFailed'), 'error')
+      showToast(getErrorMessage(error, t('actionFailed')), 'error')
     } finally {
       setConversationActionPending(false)
     }
@@ -1314,7 +1380,7 @@ function ChatPage() {
         totalUnreadMessages={totalUnreadMessages}
         friendRequestCount={friendRequests.length}
         worldNotificationCount={worldNotifications.length}
-        onSelectSection={setActiveSection}
+        onSelectSection={changeActiveSection}
         onOpenWorld={() => setWorldOpen(true)}
       />
 
@@ -1335,7 +1401,7 @@ function ChatPage() {
         </div>
         <div className="conversation-filter"><button className="is-active" type="button">{t('all')}</button><span>{filteredFriends.length}</span></div>
         <div className="friend-list">
-          {friends.length === 0 && <div className="empty-friends"><ChatIcon name="users" size={26} /><p>{t('noFriends')}</p><button type="button" onClick={() => setActiveSection('friends')}>{t('search')}</button></div>}
+          {friends.length === 0 && <div className="empty-friends"><ChatIcon name="users" size={26} /><p>{t('noFriends')}</p><button type="button" onClick={() => changeActiveSection('friends')}>{t('search')}</button></div>}
           {friends.length > 0 && filteredFriends.length === 0 && <div className="empty-friends"><ChatIcon name="search" size={26} /><p>{t('noConversationResults')}</p></div>}
           {filteredFriends.map((friend) => (
             <button key={friend.username} className={`friend-row${selectedUser?.username === friend.username ? ' is-active' : ''}`} type="button" onClick={() => selectFriend(friend)}>
@@ -1370,7 +1436,10 @@ function ChatPage() {
         {selectedUser ? (
           <>
             <header className="chat-header">
-              <button className="mobile-back" type="button" aria-label="Back" onClick={() => setSelectedUser(null)}><ChatIcon name="arrowLeft" /></button>
+              <button className="mobile-back" type="button" aria-label="Back" onClick={() => {
+                selectedRef.current = null
+                setSelectedUser(null)
+              }}><ChatIcon name="arrowLeft" /></button>
               <Avatar person={selectedUser} size="medium" showStatus />
               <span><strong>{displayName(selectedUser)}</strong><small className={isPersonOnline(selectedUser) ? 'is-online' : ''}>{typingUsers[selectedUser.username] ? t('typing') : (isPersonOnline(selectedUser) ? t('online') : t('offline'))}</small></span>
               <div className={`connection-pill connection-pill--${connectionState}`}><i />{t(connectionState === 'connected' ? 'connected' : connectionState === 'disconnected' ? 'disconnected' : 'reconnecting')}</div>
@@ -1604,7 +1673,7 @@ function ChatPage() {
             <span className="chat-welcome__eyebrow">CHATWEB · REALTIME</span>
             <h2>{t('welcomeTitle')}, {user?.firstName || user?.username}!</h2>
             <p>{t('welcomeBody')}</p>
-            <button type="button" onClick={() => setActiveSection('friends')}><ChatIcon name="search" size={18} />{t('searchPeople')}</button>
+            <button type="button" onClick={() => changeActiveSection('friends')}><ChatIcon name="search" size={18} />{t('searchPeople')}</button>
           </div>
         )}
       </section>
