@@ -11,26 +11,26 @@ Dưới đây là sơ đồ tổng thể các thành phần trong hệ sinh thá
 ```mermaid
 graph TB
     subgraph ClientLayer["🖥️ Tầng Client"]
-        WebClient["React 18 + Vite SPA<br/>(TailwindCSS, STOMP.js)"]
+        WebClient["React 19 + Vite SPA<br/>(Modular CSS, STOMP.js)"]
     end
 
     subgraph IngressLayer["🛡️ Tầng Cổng Vào & Tải (Ingress & Load Balancing)"]
-        Nginx["Nginx Reverse Proxy & Load Balancer<br/>- SSL Termination (HTTPS/WSS: 443 -> 8080)<br/>- IP Rate Limiting (auth: 10r/m, global: 30r/s)<br/>- mTLS Backend Verification"]
+        Nginx["Nginx Reverse Proxy & Load Balancer<br/>- HTTP Port 80 (Docker Host: 8080)<br/>- IP Rate Limiting (auth: 10r/m, global: 30r/s)<br/>- Upstream TLS Verification (Private CA)"]
     end
 
     subgraph AppLayer["⚙️ Tầng Ứng Dụng (Application Layer)"]
-        Backend["Spring Boot 3.5.x (Java 21 LTS)<br/>- Spring Security 6 (JWT + OAuth2 Google)<br/>- WebSocket STOMP Message Broker (/ws)<br/>- Business Services & Dynamic Rate Limiting (@RateLimit)"]
+        Backend["Spring Boot 3.5.x (Java 21 LTS)<br/>- Spring Security 6 (JWT + OAuth2 Google)<br/>- WebSocket STOMP Message Broker (/ws)<br/>- Dynamic Rate Limiting (@RateLimit Sliding Window)<br/>- Idempotency Engine (@Idempotent)"]
     end
 
     subgraph EventLayer["⚡ Tầng Xử Lý Sự Kiện (Event Streaming & Buffer)"]
-        Kafka["Apache Kafka Cluster (2 Brokers - KRaft)<br/>- Topics: chat-messages, system-messages, etc.<br/>- Write-Behind & WebSocket Routing"]
+        Kafka["Apache Kafka Cluster (2 Brokers - KRaft)<br/>- Topics: chat-messages, system-messages, email-messages...<br/>- Write-Behind & WebSocket Routing"]
         SchemaRegistry["Confluent Schema Registry<br/>- Quản lý Avro Schemas (ChatMessageAvro)"]
     end
 
     subgraph StorageLayer["💾 Tầng Lưu Trữ Đa Hình (Polyglot Persistence)"]
-        Postgres[("PostgreSQL 16+<br/>- Users, Roles, Permissions<br/>- Friendships, Addresses, Credentials")]
+        Postgres[("PostgreSQL 16+<br/>- Users, Roles, Permissions<br/>- Friendships, Addresses")]
         Mongo[("MongoDB 7+<br/>- Chat Messages, Read Receipts<br/>- System Messages (TTL Auto-expire)")]
-        Redis[("Redis Stack<br/>- Session Routing & Pub/Sub<br/>- Presence ZSet & Heartbeat<br/>- Token Blacklist & Message Cache")]
+        Redis[("Redis Stack<br/>- Session Routing & Pub/Sub<br/>- Presence ZSet & Heartbeat<br/>- Token Blacklist & Recent Cache<br/>- Cuckoo Filters (filter:usernames, filter:emails)<br/>- Sliding Window Rate Limit & Idempotency")]
         Cloudinary[("Cloudinary Storage<br/>- Media files, Avatars, Attachments")]
     end
 
@@ -42,82 +42,54 @@ graph TB
     end
 
     %% Network Connections
-    WebClient -->|"HTTPS / WSS"| Nginx
-    Nginx -->|"mTLS (Port 8443)<br/>PKCS12 Keystore"| Backend
+    WebClient -->|"HTTP / WS (Port 8080)"| Nginx
+    Nginx -->|"HTTPS / WSS (Port 8443)<br/>Upstream TLS Verified"| Backend
     Backend -->|"Pub / Sub & State"| Redis
-    Backend -->|"Schema Check"| SchemaRegistry
+    Backend -->|"Relational Data"| Postgres
+    Backend -->|"Document Data"| Mongo
     Backend -->|"Produce / Consume Events"| Kafka
-    Backend -->|"JPA / Hibernate"| Postgres
-    Backend -->|"MongoTemplate (Bulk Write)"| Mongo
-    Backend -->|"REST API SDK"| Cloudinary
+    Backend -->|"Schema Registry"| SchemaRegistry
+    Backend -->|"Direct Upload"| Cloudinary
 ```
 
 ---
 
-## 2. Phân Tích Các Tầng Thành Phần
+## 2. Chi Tiết Các Phân Tầng Cốt Lõi
 
-### 2.1. Tầng Client (Frontend)
-- **Công nghệ**: [React 18](file:///home/phanhuukha/Dev/ChatWeb/chatweb_fe/package.json), Vite, TailwindCSS, STOMP.js over SockJS.
-- **Nhiệm vụ**:
-  - Giao diện chat thời gian thực, quản lý danh bạ bạn bè, trạng thái online/offline.
-  - Tích hợp thư viện mã hóa phía client (Web Crypto API) phục vụ cơ chế **End-to-End Encryption (E2EE)**: Tự sinh cặp khóa RSA, chỉ gửi Public Key lên server và mã hóa đối xứng nội dung tin nhắn trước khi truyền đi.
-  - Tự động duy trì kết nối WebSocket và cơ chế Reconnect thông minh.
+### 2.1. Tầng Client (Frontend Application)
+- **Công nghệ**: [React 19](file:///home/phanhuukha/Dev/ChatWeb/chatweb_fe/package.json), Vite 8, React Router DOM 7, STOMP.js.
+- **Phong cách giao diện**: Kiến trúc CSS Module theo từng phân hệ (`auth.css`, `chat.css`, `admin.css`), tối ưu dung lượng tải và độ tương thích trình duyệt.
+- **Giao tiếp kép**:
+  - **REST Client (`apiClient.js`)**: Thực hiện các yêu cầu HTTP xác thực, quản lý profile, lịch sử tin nhắn và tải media. Tự động đính kèm `X-Idempotency-Key` với các tác vụ nhạy cảm.
+  - **WebSocket Client (`useChatSocket.js`)**: Duy trì kết nối hai chiều thời gian thực qua SockJS/STOMP, tự động reconnect và heartbeat định kỳ (10s).
 
-### 2.2. Tầng Cổng Vào (Ingress / Reverse Proxy)
-- **Công nghệ**: Nginx Alpine ([nginx/nginx.conf](file:///home/phanhuukha/Dev/ChatWeb/nginx/nginx.conf)).
-- **Nhiệm vụ**:
-  - **Chấm dứt SSL (SSL Termination)**: Tiếp nhận lưu lượng HTTPS/WSS từ bên ngoài và chuyển tiếp nội bộ.
-  - **Kiểm soát lưu lượng (IP Rate Limiting)**:
-    - Vùng `auth_limit` (10 requests/phút, burst 5) áp dụng cho các API nhạy cảm (`/api/auth/`).
-    - Vùng `global_limit` (30 requests/giây, burst 20) cho toàn bộ hệ thống.
-  - **Bảo mật kênh truyền nội bộ qua mTLS**: Xác thực chứng chỉ số Backend (`rootCA.crt` và server certificate) khi chuyển tiếp gói tin tới [cw_backend](file:///home/phanhuukha/Dev/ChatWeb/docker-compose.yml#L207-L221).
-  - **Reverse proxy định tuyến dịch vụ giám sát**: Cung cấp đường dẫn truy cập Kibana (`/kibana/`) và Grafana (`/grafana/`).
+### 2.2. Tầng Cổng Vào & Tải (Ingress & Reverse Proxy)
+- Điểm tiếp nhận lưu lượng duy nhất của toàn bộ hệ thống từ bên ngoài.
+- **Rate Limiting tầng mạng**: 
+  - Vùng bảo vệ xác thực: Tối đa 10 requests/phút (burst 5) cho các endpoint `/api/auth/`.
+  - Vùng toàn cục: Tối đa 30 requests/giây (burst 20) cho các endpoint khác.
+- **Bảo mật kết nối nội bộ**: Nginx kết nối ngược tới Spring Boot qua cổng an toàn `8443` (HTTPS) và kiểm tra tính hợp lệ của chứng chỉ thông qua chứng chỉ gốc nội bộ `rootCA.crt` (`proxy_ssl_verify on`).
 
-### 2.3. Tầng Ứng Dụng (Application Layer)
-- **Công nghệ**: Spring Boot 3.5.x, Java 21 LTS ([chatweb_be](file:///home/phanhuukha/Dev/ChatWeb/chatweb_be)).
-- **Nhiệm vụ**:
-  - **Xác thực & Ủy quyền**: Spring Security 6 với JWT kép (Access Token ngắn hạn + Refresh Token dài hạn lưu trong HttpOnly Cookie), hỗ trợ Single Sign-On qua Google OAuth2.
-  - **Quản lý phiên bản Token (Token Versioning)**: Thu hồi quyền truy cập tức thì trên toàn bộ thiết bị khi người dùng đổi mật khẩu hoặc đăng xuất từ xa.
-  - **WebSocket Message Broker**: Xử lý handshake xác thực token, quản lý phiên kết nối STOMP.
-  - **Định tuyến tin nhắn phân tán**: Điều phối tin nhắn giữa các node Backend thông qua Redis Hash và Redis Pub/Sub.
+### 2.3. Tầng Ứng Dụng (Spring Boot Application)
+- Trung tâm điều phối nghiệp vụ backend viết trên **Java 21 LTS** và **Spring Boot 3.5.x**.
+- **Kiến trúc phân lớp chuẩn mực**: `Controller` $\rightarrow$ `Service` $\rightarrow$ `Repository` $\rightarrow$ `Model / DTO`.
+- **Bảo vệ chống tấn công & quá tải**:
+  - Tích hợp `@RateLimit` theo thuật toán Sliding Window Log (lưu tại Redis).
+  - Tích hợp `@Idempotent` dựa trên header `X-Idempotency-Key` để bảo đảm tính an toàn khi client retry.
+  - Kiểm tra tức thì sự tồn tại của tài khoản thông qua **Redis Cuckoo Filter** trước khi truy vấn PostgreSQL.
 
 ### 2.4. Tầng Xử Lý Sự Kiện (Event Streaming Layer)
-- **Công nghệ**: Apache Kafka (2 Brokers chạy chế độ KRaft) + Confluent Schema Registry.
-- **Nhiệm vụ**:
-  - **Khử ghép nối (Decoupling)**: Phân tách luồng nhận tin từ người gửi và luồng lưu trữ xuống cơ sở dữ liệu.
-  - **Chống mất mát dữ liệu**: Cho phép hệ thống tiếp nhận lượng tin nhắn cực lớn trong giờ cao điểm mà không gây sập cơ sở dữ liệu (Buffer).
-  - **Đảm bảo tính tương thích (Schema Evolution)**: Sử dụng Apache Avro ([ChatMessageAvro.avsc](file:///home/phanhuukha/Dev/ChatWeb/chatweb_be/src/main/resources/avro/ChatMessageAvro.avsc)) để định dạng nhị phân nhỏ gọn và kiểm soát chặt chẽ các phiên bản payload.
+- Cụm Kafka gồm **2 Brokers chạy chế độ KRaft** kết hợp **Confluent Schema Registry**.
+- Đảm bảo luồng xử lý bất đồng bộ không gây nghẽn:
+  - Tách luồng đẩy tin nhắn nhanh cho WebSocket (`ChatConsumer`) và luồng ghi MongoDB theo lô (`DatabaseWriteBehindConsumer`).
+  - Phục vụ worker gửi email xác thực OTP ngầm mà không làm chậm API đăng ký.
 
 ### 2.5. Tầng Lưu Trữ Đa Dạng (Polyglot Persistence)
-Hệ thống sử dụng nguyên lý *"chọn đúng công cụ cho đúng bài toán"*:
-1. **PostgreSQL**: Dữ liệu quan hệ chặt chẽ, cần toàn vẹn ACID (Người dùng, mật khẩu đã mã hóa BCrypt, quyền hạn RBAC, quan hệ kết bạn, khóa RSA).
-2. **MongoDB**: Dữ liệu tin nhắn chat dạng tài liệu phi cấu trúc, tốc độ ghi lớn, hỗ trợ phân trang thời gian mượt mà, và tự động thu hồi tin nhắn hệ thống hết hạn bằng **TTL Index**.
-3. **Redis**: Bộ nhớ đệm tốc độ microsecond, lưu danh sách user online (ZSet), bộ đếm phiên kết nối (Hash), khóa phân tán chống gửi trùng lặp (Dedup SETNX), và kênh pub/sub liên node.
-4. **Cloudinary**: Dịch vụ lưu trữ đám mây cho hình ảnh đại diện và file đính kèm trong tin nhắn chat.
+Hệ thống không phụ thuộc vào một cơ sở dữ liệu duy nhất mà phân công chuyên biệt theo bản chất dữ liệu:
+1. **PostgreSQL**: Lưu trữ dữ liệu quan hệ có cấu trúc khắt khe (Users, Roles, Permissions, Friendships, Addresses).
+2. **MongoDB**: Lưu trữ dữ liệu phi cấu trúc, tốc độ ghi cao (Messages, Read Receipts, System Messages).
+3. **Redis Stack**: Duy trì trạng thái in-memory, session routing WebSocket, bộ lọc Cuckoo Filter, hàng đợi Sliding Window và Cache.
 
-### 2.6. Tầng Giám Sát & Nhật Ký (Observability)
-- **ELK Stack**: Filebeat đọc file log định dạng JSON cấu trúc từ thư mục [chatweb_be/logs](file:///home/phanhuukha/Dev/ChatWeb/chatweb_be/logs), chuyển qua Logstash để lọc/chuẩn hóa rồi lưu trữ vào Elasticsearch, hiển thị tập trung trên Kibana.
-- **Prometheus & Grafana**: Thu thập metrics định kỳ từ `/actuator/prometheus` (CPU, JVM heap, Kafka consumer lag, số lượng kết nối STOMP) và hiển thị trực quan qua [grafana-dashboard.json](file:///home/phanhuukha/Dev/ChatWeb/chatweb_be/grafana-dashboard.json).
-
----
-
-## 3. Kiến Trúc Mạng & Bảo Mật (Network Security Architecture)
-
-```
-[ Internet ]
-     │
-     ▼ (HTTPS / WSS)
-[ Nginx Load Balancer (Port 80/443) ]
-     │
-     │  ◄─── mTLS (Bảo vệ Certificate xác thực 2 chiều)
-     ▼       Port 8443 (PKCS12 Keystore)
-[ Spring Boot Service (cw_backend) ]
-     │
-     ├─────► [ Redis (Port 6379) - Password Protected ]
-     ├─────► [ Kafka Brokers (Port 9092) - Internal Docker Network ]
-     ├─────► [ PostgreSQL (Port 5432) - Isolated Network ]
-     └─────► [ MongoDB (Port 27017) - Isolated Network ]
-```
-
-- **Nguyên tắc cô lập**: Tất cả các database (Postgres, Mongo, Redis) và Kafka brokers chỉ mở cổng trong mạng nội bộ Docker (`chatweb_default`). Chỉ Nginx công khai cổng ra bên ngoài.
-- **Mã hóa kênh truyền nội bộ**: Giữa Nginx và Spring Boot backend sử dụng kết nối TLS bảo mật qua chứng chỉ tự ký sinh bởi CA riêng ([ssl/ca/rootCA.crt](file:///home/phanhuukha/Dev/ChatWeb/ssl/ca/rootCA.crt)).
+### 2.6. Tầng Giám Sát & Nhật Ký (Observability Layer)
+- **ELK Stack**: Filebeat đọc file log định dạng JSON từ backend, chuyển tới Logstash để chuẩn hóa, lưu trữ tại Elasticsearch và hiển thị qua Kibana.
+- **Prometheus & Grafana**: Prometheus định kỳ cào chỉ số hoạt động từ Spring Actuator (`/actuator/prometheus`) và biểu diễn qua bảng điều khiển Grafana.

@@ -7,23 +7,23 @@ Tài liệu này ghi lại các quyết định thiết kế quan trọng nhất
 ## ADR-01: Sử Dụng Mô Hình Lưu Trữ Đa Dạng (Polyglot Persistence)
 
 ### Ngữ cảnh
-Một ứng dụng nhắn tin thời gian thực vừa có các dữ liệu quan hệ chặt chẽ (tài khoản, bạn bè, phân quyền), vừa có dữ liệu tin nhắn phi cấu trúc với tần suất ghi cực lớn, vừa đòi hỏi các cấu trúc dữ liệu in-memory tốc độ cao cho phiên kết nối và trạng thái online/offline. Nếu chỉ dùng 1 loại cơ sở dữ liệu duy nhất (ví dụ chỉ PostgreSQL hoặc chỉ MongoDB), hệ thống sẽ gặp các nút thắt cổ chai về I/O hoặc vi phạm tính toàn vẹn dữ liệu.
+Một ứng dụng nhắn tin thời gian thực vừa có các dữ liệu quan hệ chặt chẽ (tài khoản, bạn bè, phân quyền), vừa có dữ liệu tin nhắn phi cấu trúc với tần suất ghi lớn, vừa đòi hỏi các cấu trúc dữ liệu in-memory tốc độ cao cho phiên kết nối và trạng thái trực tuyến. Nếu chỉ dùng 1 loại cơ sở dữ liệu duy nhất, hệ thống sẽ gặp các nút thắt cổ chai về I/O hoặc vi phạm tính toàn vẹn dữ liệu.
 
 ### Quyết định
 Chia tách cơ sở dữ liệu thành 3 tầng chuyên biệt:
 1. **PostgreSQL**:
    - Lưu trữ: `users`, `roles`, `permissions`, `friendships`, `addresses`.
-   - Lý do: Yêu cầu tính toàn vẹn quan hệ (Foreign Keys, Constraints), bảo đảm tính nhất quán nghiêm ngặt (ACID) cho luồng tiền tệ/xác thực/kết bạn.
+   - Lý do: Yêu cầu tính toàn vẹn quan hệ (Foreign Keys, Constraints), bảo đảm tính nhất quán nghiêm ngặt (ACID) cho luồng đăng ký, phân quyền và quản lý bạn bè.
 2. **MongoDB**:
-   - Lưu trữ: `messages` ([ChatMessage](file:///home/phanhuukha/Dev/ChatWeb/chatweb_be/src/main/java/com/web/backend/model/mongodb/ChatMessage.java)), `read_receipts`, `system_message`.
-   - Lý do: Dữ liệu tin nhắn tăng trưởng theo hàm mũ, kích thước linh hoạt (văn bản, emoji, fileUrl, reactions map, khóa mã hóa E2EE). MongoDB hỗ trợ ghi hàng loạt (bulk write) cực nhanh và có tính năng TTL Index tự hủy tin nhắn hệ thống.
-3. **Redis**:
-   - Lưu trữ: Trạng thái presence, bộ đếm session, caching tin nhắn gần nhất, blacklist token, rate limiting.
-   - Lý do: Tốc độ phản hồi microsecond, cung cấp sẵn các cấu trúc dữ liệu mạnh mẽ (Sorted Set, Hash, String bitwise).
+   - Lưu trữ: `messages` ([ChatMessage.java](file:///home/phanhuukha/Dev/ChatWeb/chatweb_be/src/main/java/com/web/backend/model/mongodb/ChatMessage.java)), `read_receipts`, `system_message`.
+   - Lý do: Dữ liệu tin nhắn tăng trưởng theo thời gian, kích thước linh hoạt (văn bản, emoji, fileUrl, reactions map). MongoDB hỗ trợ ghi hàng loạt (bulk write) cực nhanh và có tính năng TTL Index tự động hủy tin nhắn hệ thống.
+3. **Redis Stack**:
+   - Lưu trữ: Trạng thái presence, bộ đếm session, caching tin nhắn gần nhất, blacklist token, hàng đợi Sliding Window Rate Limit, khóa lũy đẳng `@Idempotent`, và bộ lọc Cuckoo Filter (`filter:usernames`, `filter:emails`).
+   - Lý do: Tốc độ phản hồi microsecond, cung cấp sẵn các cấu trúc dữ liệu mạnh mẽ (Sorted Set, Hash, Cuckoo Filter).
 
 ### Đánh đổi (Trade-offs)
 - **Ưu điểm**: Tối ưu hiệu năng tối đa cho từng nghiệp vụ; không bị nghẽn I/O giữa tác vụ đọc tài khoản và tác vụ ghi hàng triệu tin nhắn chat.
-- **Nhược điểm**: Phải quản lý nhiều engine cơ sở dữ liệu, không thể dùng Transaction phân tán (Distributed Transaction) trực tiếp giữa Postgres và Mongo (khắc phục bằng Eventual Consistency qua Kafka).
+- **Nhược điểm**: Phải quản lý nhiều engine cơ sở dữ liệu; tính nhất quán giữa Postgres và Mongo được bảo đảm theo mô hình Eventual Consistency qua Kafka.
 
 ---
 
@@ -31,7 +31,7 @@ Chia tách cơ sở dữ liệu thành 3 tầng chuyên biệt:
 
 ### Ngữ cảnh
 Khi người dùng A gửi tin nhắn cho người dùng B:
-- Nếu Backend thực hiện ghi vào database trước rồi mới gửi WebSocket: Độ trễ giao tiếp sẽ phụ thuộc vào tốc độ ghi ổ cứng của database. Khi có hàng chục nghìn người cùng nhắn tin, DB nghẽn I/O sẽ khiến tin nhắn hiển thị rất chậm.
+- Nếu Backend thực hiện ghi vào database trước rồi mới gửi WebSocket: Độ trễ giao tiếp sẽ phụ thuộc vào tốc độ ghi đĩa của database. Khi có tải lớn, DB nghẽn I/O sẽ khiến tin nhắn hiển thị rất chậm.
 - Nếu Backend chỉ gửi WebSocket mà không có cơ chế đệm tin: Khi DB tạm thời quá tải hoặc restart, tin nhắn sẽ bị mất vĩnh viễn.
 
 ### Quyết định
@@ -48,102 +48,86 @@ sequenceDiagram
     participant Mongo as 🍃 MongoDB (messages)
     participant Recipient as 👤 Client B
 
-    Sender->>Backend: Gửi tin nhắn STOMP
-    Backend->>Backend: Redis SETNX Dedup + Validate
-    Backend->>Kafka: Produce ChatMessageAvro
+    Sender->>Backend: Gửi STOMP frame (/app/chat/sendPrivateMessage)
+    Backend->>Backend: Khử trùng lặp (SETNX ws:dedup) & kiểm tra bạn bè
+    Backend->>Kafka: Publish ChatMessageAvro vào topic "chat-messages"
     
-    par Luồng 1: Push Thời Gian Thực (Zero-Wait DB)
-        Kafka->>FastPush: Consume (Group: chat-websocket-group)
+    par Luồng 1: Fast-Push (Độ trễ thấp < 10ms)
+        Kafka->>FastPush: Consume tin nhắn
         FastPush->>Recipient: Đẩy ngay qua WebSocket (/user/queue/messages)
-    and Luồng 2: Ghi Batch Bất Đồng Bộ (Write-Behind)
-        Kafka->>BatchSave: Consume Batch (Group: chat-save-group)
-        BatchSave->>Mongo: Bulk Write Unordered (Gom nhiều tin ghi 1 lần)
+    and Luồng 2: Write-Behind (Ghi gom lô)
+        Kafka->>BatchSave: Consume theo batch
+        BatchSave->>Mongo: Bulk Write (insert hàng loạt vào collection messages)
     end
 ```
 
-1. **Consumer Group 1 (`chat-websocket-group`)**: 
-   - [ChatConsumer.java](file:///home/phanhuukha/Dev/ChatWeb/chatweb_be/src/main/java/com/web/backend/kafka/consumer/ChatConsumer.java) ngay lập tức chuyển đổi Avro sang DTO và chuyển tiếp qua [WebSocketRoutingService](file:///home/phanhuukha/Dev/ChatWeb/chatweb_be/src/main/java/com/web/backend/service/WebSocketRoutingService.java) tới người nhận. Hoàn toàn không đợi MongoDB.
-2. **Consumer Group 2 (`chat-save-group`)**:
-   - [DatabaseWriteBehindConsumer.java](file:///home/phanhuukha/Dev/ChatWeb/chatweb_be/src/main/java/com/web/backend/kafka/consumer/DatabaseWriteBehindConsumer.java) sử dụng `batchChatAvroListenerContainerFactory` gom nhóm các tin nhắn và thực hiện `bulkOps.insert(entitiesToSave)` vào MongoDB.
-   - Nếu gặp lỗi trùng khóa (`DuplicateKeyException`), tự động bỏ qua (idempotent write).
-   - Nếu lỗi nghiêm trọng, chuyển sang topic dự phòng **DLT (Dead Letter Topic)** `chat-messages-save-dlt` để retry với backoff.
-
 ### Đánh đổi (Trade-offs)
-- **Ưu điểm**: Người nhận thấy tin nhắn gần như tức thời (< 30ms); database được bảo vệ nhờ việc ghi theo batch gom cụm, triệt tiêu áp lực I/O cục bộ.
-- **Nhược điểm**: Trạng thái nhất quán cuối cùng (Eventual Consistency) — trong một tích tắc nhỏ, tin nhắn đã hiển thị trên màn hình người nhận nhưng chưa kịp nằm trong MongoDB.
+- **Ưu điểm**: Người nhận thấy tin nhắn gần như tức thì mà không phải chờ database hoàn tất lệnh INSERT; CSDL MongoDB được bảo vệ khỏi tình trạng quá tải nhờ khả năng đệm (buffering) của Kafka.
+- **Nhược điểm**: Trường hợp hãn hữu khi DB gặp sự cố nghiêm trọng, tin nhắn đã hiển thị trên màn hình nhưng chưa kịp ghi vào đĩa (xử lý triệt để bằng hàng đợi thư chết `chat-messages-save-dlt` để cứu hộ).
 
 ---
 
-## ADR-03: Định Tuyến WebSocket Phân Tán Đa Node (Distributed Session Routing)
+## ADR-03: Cơ Chế Định Tuyến WebSocket Đa Node Bằng Redis Hash & Pub/Sub
 
 ### Ngữ cảnh
-WebSocket duy trì kết nối TCP có trạng thái (stateful). Khi hệ thống scale ngang nhiều instance backend (Node 1, Node 2...):
-- Client A kết nối vào Node 1.
-- Client B kết nối vào Node 2.
-- Node 1 không thể trực tiếp gửi message qua bộ nhớ cục bộ (in-memory) cho Client B.
+Khi hệ thống mở rộng ngang (Horizontal Scaling) thành nhiều instance backend phía sau Nginx Load Balancer, kết nối WebSocket là Stateful (duy trì liên tục). Người gửi A có thể kết nối vào `Server-1`, trong khi người nhận B lại đang kết nối vào `Server-2`. Server 1 không thể trực tiếp gửi frame tới Server 2 nếu không có cơ chế định tuyến liên node.
 
 ### Quyết định
-Tích hợp **Redis Hash Registry** kết hợp **Redis Pub/Sub** ([WebSocketRoutingService.java](file:///home/phanhuukha/Dev/ChatWeb/chatweb_be/src/main/java/com/web/backend/service/WebSocketRoutingService.java)):
-1. Khi Client B kết nối, [WebSocketListener](file:///home/phanhuukha/Dev/ChatWeb/chatweb_be/src/main/java/com/web/backend/listener/WebSocketListener.java) ghi nhận vào Redis:
-   `HINCRBY ws:routing:servers:ClientB Node2 1`
-2. Khi Node 1 cần gửi tin nhắn cho Client B:
-   - Tra cứu Redis Hash `ws:routing:servers:ClientB` để biết Client B đang ở `Node2`.
-   - Đóng gói DTO thành `RedisWsMessage(username, destination, payload)`.
-   - Publish gói tin vào kênh `channel:server:Node2`.
-3. Node 2 lắng nghe kênh của chính mình, nhận được tin và chuyển tiếp qua kết nối WebSocket nội bộ tới Client B.
-
-### Đánh đổi (Trade-offs)
-- **Ưu điểm**: Hỗ trợ mở rộng không giới hạn số lượng backend instance; người dùng mở nhiều tab/thiết bị cùng lúc vẫn nhận đủ tin nhắn.
-- **Nhược điểm**: Cần thêm một bước trung gian qua Redis Pub/Sub nếu 2 user ở 2 node khác nhau.
+Sử dụng kiến trúc phân tán điều phối bởi **Redis Hash** và **Redis Pub/Sub**:
+1. **Lập bản đồ phiên kết nối**: Khi một user kết nối WebSocket, backend tự gán một định danh `ServerIdentity.SERVER_ID` và lưu vào Redis Hash `ws:routing:servers:{username}`.
+2. **Định tuyến thông minh (`WebSocketRoutingService`)**:
+   - Nếu người nhận có session ngay trên server hiện tại: Đẩy trực tiếp ra WebSocket Session cục bộ.
+   - Nếu người nhận đang ở server khác: Publish bản tin bọc (`RedisWsMessage`) vào kênh `channel:server:{targetServerId}`. Node server đích lắng nghe kênh này sẽ nhận gói tin và bắn xuống client của họ.
 
 ---
 
-## ADR-04: Bảo Vệ Hai Tầng Bằng Rate Limiting (Defense in Depth)
+## ADR-04: Chiến Lược Giới Hạn Tốc Độ Hai Tầng (Two-Tier Rate Limiting)
 
 ### Ngữ cảnh
-Một hệ thống chat rất dễ bị tấn công từ chối dịch vụ (DoS/DDoS) hoặc brute-force mật khẩu/OTP, cũng như bị script spam hàng nghìn tin nhắn WebSocket/giây làm tràn bộ đệm.
+Hệ thống chat đối mặt với các nguy cơ spam tin nhắn, brute-force mật khẩu và tấn công từ chối dịch vụ (DoS/DDoS). Cần có cơ chế rate limiting hiệu quả ở cả tầng mạng và tầng ứng dụng.
 
 ### Quyết định
-Thiết lập 2 tầng giới hạn tốc độ (Rate Limiting) độc lập:
-1. **Tầng 1 - Ingress Level (Nginx)**:
-   - Dùng module `limit_req_zone` dựa trên IP nhị phân (`$binary_remote_addr`).
-   - Ngăn chặn triệt để các đợt càn quét botnet trước khi yêu cầu chạm tới Java Virtual Machine (JVM).
-   - Rate: 10 requests/phút cho Auth, 30 requests/giây cho các endpoint còn lại.
-2. **Tầng 2 - Application Level (Redis Token Bucket / Aspect)**:
-   - Dùng `@RateLimit` và Redis cho từng tài khoản đăng nhập (User ID / Username) thay vì chỉ IP.
-   - Giới hạn cụ thể: Mỗi user chỉ được gửi tối đa 30 tin nhắn chat / 60 giây ([ChatServiceImpl.java](file:///home/phanhuukha/Dev/ChatWeb/chatweb_be/src/main/java/com/web/backend/service/impl/ChatServiceImpl.java#L67-L70)).
-   - Sử dụng Redis `SETNX` với TTL 300 giây trên key `ws:dedup:{sender}:{localId}` để loại bỏ hoàn toàn các gói tin bị gửi lặp lại do lag mạng client.
+Thiết lập giới hạn tốc độ 2 tầng:
+1. **Tầng Ingress (Nginx - IP Level)**:
+   - Sử dụng module `ngx_http_limit_req_module` chặn đứng các luồng tấn công tầng mạng trước khi chạm tới Spring Boot:
+     - Auth Zone: Tối đa 10 requests/phút (burst 5).
+     - Global Zone: Tối đa 30 requests/giây (burst 20).
+2. **Tầng Ứng Dụng (Spring Boot - User & Method Level)**:
+   - Cài đặt `@RateLimit` kết hợp **thuật toán Sliding Window Log** chạy bằng Lua Script trên Redis Stack:
+     - Tự động dọn dẹp các yêu cầu ngoài cửa sổ trượt bằng `ZREMRANGEBYSCORE`.
+     - Đếm số lượng trong cửa sổ trượt bằng `ZCARD`. Nếu nhỏ hơn `limit` thì thêm yêu cầu mới vào Sorted Set bằng `ZADD` với score = timestamp hiện tại.
+     - Cho phép cấu hình theo `LimitType.USER` (dựa trên username xác thực) hoặc `LimitType.IP`.
 
 ---
 
-## ADR-05: Mô Hình Mã Hóa Đầu-Cuối Lai (Hybrid E2EE Architecture)
+## ADR-05: Cơ Chế Bảo Đảm Tính Lũy Đẳng (Idempotency) & Chống Gửi Trùng Lặp (Deduplication)
 
 ### Ngữ cảnh
-Quyền riêng tư là yếu tố hàng đầu trong ứng dụng nhắn tin. Server không nên và không được phép đọc nội dung tin nhắn nhạy cảm của người dùng dạng văn bản thuần (plaintext).
+Trong điều kiện mạng di động hoặc Wi-Fi chập chờn, Client thường tự động retry khi không nhận được ACK phản hồi kịp thời. Điều này có thể dẫn tới việc gửi lặp 2 lần cùng một tin nhắn, tạo 2 lời mời kết bạn, hoặc upload lặp tệp tin gây lãng phí dung lượng.
 
 ### Quyết định
-Triển khai mô hình mã hóa kết hợp giữa **Bất đối xứng (RSA)** và **Đối xứng (AES-GCM)**:
-1. **Client**:
-   - Khi tạo tài khoản hoặc đăng nhập lần đầu, sinh cặp khóa RSA 2048-bit (Web Crypto API).
-   - Đẩy Public Key lên server qua [KeyController](file:///home/phanhuukha/Dev/ChatWeb/chatweb_be/src/main/java/com/web/backend/controller/KeyController.java) (`/api/keys/public-key`).
-   - Private Key được mã hóa bằng mật khẩu người dùng trước khi lưu trữ hoặc lưu an toàn trong IndexedDB của trình duyệt.
-2. **Khi gửi tin nhắn**:
-   - Client sinh một khóa phiên đối xứng ngẫu nhiên (AES-256 Session Key).
-   - Mã hóa nội dung tin nhắn bằng AES-GCM (thu được ciphertext và vector khởi tạo `iv`).
-   - Lấy Public Key của người nhận (từ API) và Public Key của chính mình, mã hóa AES Session Key thành `wrappedKeyRecipient` và `wrappedKeySender`.
-   - Gửi payload gồm `{ iv, wrappedKeyRecipient, wrappedKeySender, ciphertext }` lên server.
-3. **Phía Server**:
-   - Server và Database (Kafka, MongoDB) chỉ lưu trữ và chuyển tiếp các chuỗi ký tự đã mã hóa. Quản trị viên hệ thống hoặc kẻ tấn công chiếm quyền DB cũng không thể đọc được nội dung tin nhắn.
+Triển khai giải pháp chống trùng lặp đa tầng:
+1. **Tầng REST API (`@Idempotent`)**:
+   - Áp dụng trên các endpoint quan trọng (upload ảnh/video, chấp nhận kết bạn). Client gửi header `X-Idempotency-Key: <UUID>`.
+   - [`IdempotentAspect.java`](file:///home/phanhuukha/Dev/ChatWeb/chatweb_be/src/main/java/com/web/backend/idempotent/IdempotentAspect.java) sử dụng Redis khóa `idempotent:{key}:{idempotencyKey}`. Nếu request có cùng key gửi lại trong khoảng TTL (300-600s), hệ thống lập tức từ chối hoặc trả về kết quả đã xử lý.
+2. **Tầng WebSocket STOMP (`ws:dedup`)**:
+   - Client sinh `localId` (UUID) cho mỗi tin nhắn trước khi gửi qua WebSocket.
+   - Backend dùng lệnh `SETNX` với key `ws:dedup:{sender}:{localId}` (TTL 300 giây). Nếu key đã tồn tại (gói tin retry), server âm thầm bỏ qua để tránh phát tán trùng lặp.
+3. **Tầng Lưu Trữ MongoDB**:
+   - Bắt ngoại lệ `DuplicateKeyException` trong `DatabaseWriteBehindConsumer` để đảm bảo thao tác ghi gom lô (bulk insert) luôn mang tính lũy đẳng.
 
 ---
 
-## ADR-06: Cơ Chế Debounce Trạng Thái Online/Offline (Presence Debounce 5s)
+## ADR-06: Cơ Chế Debounce 5 Giây Xử Lý Hiện Diện (Online/Offline Presence)
 
 ### Ngữ cảnh
-Người dùng web thường xuyên thực hiện các thao tác: bấm F5 tải lại trang, đổi tab, hoặc mạng di động bị nhảy sóng trong vài giây. Nếu server cập nhật ngay trạng thái `Offline` khi ngắt kết nối WebSocket và `Online` khi kết nối lại, danh bạ bạn bè sẽ bị hiện tượng nhấp nháy (status flickering) liên tục, đồng thời sinh ra lượng lớn thông báo không cần thiết.
+Khi người dùng tải lại trang (F5) hoặc mạng di động chuyển giao giữa 4G và Wi-Fi, kết nối WebSocket sẽ bị ngắt (DISCONNECT) và mở lại ngay lập tức (CONNECT) sau 1 - 2 giây. Nếu hệ thống lập tức cập nhật CSDL và phát sóng thông báo "Người dùng đã Offline" rồi ngay sau đó lại phát "Người dùng đã Online", mạng lưới bạn bè sẽ nhận thông báo rác liên tục (Flapping Presence).
 
 ### Quyết định
-Áp dụng **Debounce 5 giây** với `ScheduledExecutorService` và Redis hash counter ([WebSocketListener.java](file:///home/phanhuukha/Dev/ChatWeb/chatweb_be/src/main/java/com/web/backend/listener/WebSocketListener.java#L94-L118)):
-- Khi một session đóng: Giảm bộ đếm session `online_users_count`.
-- Nếu bộ đếm $\le 0$: Không đánh dấu Offline ngay, mà lên lịch một tác vụ chờ 5 giây.
-- Sau 5 giây: Kiểm tra lại bộ đếm trong Redis. Nếu người dùng đã mở lại trang (hoặc kết nối lại), bộ đếm $> 0 \rightarrow$ Hủy tác vụ, người dùng vẫn hiển thị Online liên tục. Chỉ khi bộ đếm vẫn $= 0$ sau 5 giây thì mới broadcast sự kiện Offline.
+Thiết lập bộ đếm session kết hợp trễ hoãn 5 giây (Debounce 5s) tại [WebSocketListener.java](file:///home/phanhuukha/Dev/ChatWeb/chatweb_be/src/main/java/com/web/backend/listener/WebSocketListener.java):
+1. Quản lý tổng số tab/session đang mở của mỗi user trong Redis Hash `online_users_count`.
+2. Khi một kết nối đóng, trừ 1 khỏi bộ đếm.
+3. Chỉ khi bộ đếm rơi về $\le 0$, hệ thống **không vội cập nhật Offline ngay** mà lên lịch trì hoãn 5 giây qua `ScheduledExecutorService`.
+4. Sau 5 giây, kiểm tra lại bộ đếm một lần nữa:
+   - Nếu người dùng đã kết nối lại (count > 0): Hủy bỏ sự kiện Offline (giữ nguyên trạng thái Online mượt mà).
+   - Nếu người dùng thực sự vẫn ngắt kết nối (count <= 0): Chính thức cập nhật trạng thái `isOnline = false` trong PostgreSQL, xóa khỏi Redis ZSet `online_users` và phát sóng sự kiện Offline tới danh sách bạn bè.
