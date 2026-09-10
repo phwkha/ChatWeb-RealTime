@@ -1,0 +1,67 @@
+name: Backend CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "chatweb_be/**"
+      - ".github/workflows/backend-ci.yml"
+  push:
+    branches: [develop]
+    paths:
+      - "chatweb_be/**"
+      - ".github/workflows/backend-ci.yml"
+
+jobs:
+  test-and-verify:
+    name: Backend Test & Verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: "temurin"
+          cache: maven
+
+      - name: Grant execute permission for mvnw
+        run: chmod +x chatweb_be/mvnw
+
+      - name: Compile Backend
+        run: |
+          cd chatweb_be
+          ./mvnw clean compile
+
+      - name: Run Unit Tests
+        run: |
+          cd chatweb_be
+          ./mvnw test
+
+      - name: Publish Test Report
+        uses: mikepenz/action-junit-report@v4
+        if: always()
+        with:
+          report_paths: "chatweb_be/target/surefire-reports/*.xml"
+
+      - name: Cache SonarCloud packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.sonar/cache
+          key: ${{ runner.os }}-sonar
+          restore-keys: ${{ runner.os }}-sonar
+
+      - name: SonarCloud Code Analysis
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd chatweb_be
+          ./mvnw -B verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
+            -Dsonar.host.url=https://sonarcloud.io
