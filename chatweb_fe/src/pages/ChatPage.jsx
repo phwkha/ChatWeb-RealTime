@@ -22,6 +22,7 @@ const REACTION_OPTIONS = [
   { type: 'SAD', emoji: '😢' },
   { type: 'ANGRY', emoji: '😡' },
 ]
+const MESSAGE_EMOJI_OPTIONS = ['😀', '😂', '😍', '😊', '😎', '😢', '😡', '😮', '👍', '👏', '🙏', '🔥', '🎉', '❤️', '✨', '💯']
 const REACTION_EMOJI = Object.fromEntries(REACTION_OPTIONS.map((reaction) => [reaction.type, reaction.emoji]))
 const BLOCKED_MESSAGES_STORAGE_KEY = 'chatweb-blocked-message-intervals'
 const EDIT_HISTORY_STORAGE_KEY = 'chatweb-message-edit-history'
@@ -253,6 +254,7 @@ function ChatPage() {
   const [loadingSuggestions, setLoadingSuggestions] = useState(false)
   const [loadingConversation, setLoadingConversation] = useState(false)
   const [messageDraft, setMessageDraft] = useState('')
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false)
   const [uploadingMedia, setUploadingMedia] = useState(false)
   const [worldDraft, setWorldDraft] = useState('')
   const [typingUsers, setTypingUsers] = useState({})
@@ -288,6 +290,7 @@ function ChatPage() {
   const messageStreamRef = useRef(null)
   const preserveScrollHeightRef = useRef(null)
   const mediaInputRef = useRef(null)
+  const messageInputRef = useRef(null)
   const typingTimeoutsRef = useRef(new Map())
   const readAckTimersRef = useRef(new Map())
   const socketSenderRef = useRef(null)
@@ -883,19 +886,21 @@ function ChatPage() {
   }, [messageSearchOpen, messageSearchQuery, searchConversationMessages, selectedUser?.username])
 
   useEffect(() => {
-    if (!reactionPickerMessageId && !detailMessageId && !editHistoryMessageId) return undefined
+    if (!reactionPickerMessageId && !detailMessageId && !editHistoryMessageId && !emojiPickerOpen) return undefined
     const closePicker = (event) => {
       if (!event.target.closest('.message-reaction-anchor')) {
         setReactionPickerMessageId(null)
         setDetailMessageId(null)
       }
       if (!event.target.closest('.message-edit-history-anchor')) setEditHistoryMessageId(null)
+      if (!event.target.closest('.composer-emoji-anchor')) setEmojiPickerOpen(false)
     }
     const closeOnEscape = (event) => {
       if (event.key === 'Escape') {
         setReactionPickerMessageId(null)
         setDetailMessageId(null)
         setEditHistoryMessageId(null)
+        setEmojiPickerOpen(false)
       }
     }
     document.addEventListener('pointerdown', closePicker)
@@ -904,7 +909,7 @@ function ChatPage() {
       document.removeEventListener('pointerdown', closePicker)
       document.removeEventListener('keydown', closeOnEscape)
     }
-  }, [detailMessageId, editHistoryMessageId, reactionPickerMessageId])
+  }, [detailMessageId, editHistoryMessageId, emojiPickerOpen, reactionPickerMessageId])
 
   useEffect(() => {
     if (!messageContextMenu) return undefined
@@ -1133,6 +1138,20 @@ function ChatPage() {
 
   const handleDraftChange = (event) => {
     setMessageDraft(event.target.value)
+  }
+
+  const insertMessageEmoji = (emoji) => {
+    const input = messageInputRef.current
+    const start = input?.selectionStart ?? messageDraft.length
+    const end = input?.selectionEnd ?? start
+    const nextDraft = `${messageDraft.slice(0, start)}${emoji}${messageDraft.slice(end)}`
+    const nextCursor = start + emoji.length
+    setMessageDraft(nextDraft)
+    setEmojiPickerOpen(false)
+    window.requestAnimationFrame(() => {
+      input?.focus()
+      input?.setSelectionRange(nextCursor, nextCursor)
+    })
   }
 
   const toggleReaction = async (message, reactionType) => {
@@ -1662,8 +1681,17 @@ function ChatPage() {
                 disabled={uploadingMedia || connectionState !== 'connected'}
                 onClick={() => mediaInputRef.current?.click()}
               ><ChatIcon name="image" /></button>
-              <input value={messageDraft} onChange={handleDraftChange} placeholder={t('messagePlaceholder')} aria-label={t('messagePlaceholder')} />
-              <button type="button" aria-label="Emoji"><ChatIcon name="smile" /></button>
+              <input ref={messageInputRef} value={messageDraft} onChange={handleDraftChange} placeholder={t('messagePlaceholder')} aria-label={t('messagePlaceholder')} />
+              <span className="composer-emoji-anchor">
+                <button type="button" aria-label="Chọn emoji" aria-expanded={emojiPickerOpen} onClick={() => setEmojiPickerOpen((open) => !open)}><ChatIcon name="smile" /></button>
+                {emojiPickerOpen && (
+                  <div className="composer-emoji-picker" role="menu" aria-label="Chọn emoji">
+                    {MESSAGE_EMOJI_OPTIONS.map((emoji) => (
+                      <button key={emoji} type="button" role="menuitem" aria-label={`Chèn ${emoji}`} onClick={() => insertMessageEmoji(emoji)}>{emoji}</button>
+                    ))}
+                  </div>
+                )}
+              </span>
               <button className="composer-send" type="submit" aria-label={t('send')} disabled={!messageDraft.trim() || connectionState !== 'connected'}><ChatIcon name="send" size={18} /></button>
             </form>
           </>

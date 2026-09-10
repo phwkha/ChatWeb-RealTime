@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Footer from '../components/layout/Footer.jsx'
 import Header from '../components/layout/Header.jsx'
 import '../styles/landing.css'
@@ -131,6 +131,56 @@ function ChatPreview() {
   )
 }
 
+function AnimatedProof() {
+  const [conversationCount, setConversationCount] = useState(0)
+  const [avatarCount, setAvatarCount] = useState(0)
+  const [isVisible, setIsVisible] = useState(false)
+  const proofRef = useRef(null)
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(([entry]) => {
+      setIsVisible(entry.isIntersecting)
+      if (!entry.isIntersecting) {
+        setConversationCount(0)
+        setAvatarCount(0)
+      }
+    }, { threshold: 0.5 })
+    if (proofRef.current) observer.observe(proofRef.current)
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
+    if (!isVisible) return undefined
+
+    const duration = 1500
+    const start = performance.now()
+    let animationFrame
+
+    const animate = (now) => {
+      const progress = Math.min((now - start) / duration, 1)
+      const easedProgress = 1 - (1 - progress) ** 3
+      setConversationCount(Math.round(2000 * easedProgress))
+      setAvatarCount(Math.round(2 * easedProgress))
+      if (progress < 1) animationFrame = window.requestAnimationFrame(animate)
+    }
+
+    animationFrame = window.requestAnimationFrame(animate)
+    return () => window.cancelAnimationFrame(animationFrame)
+  }, [isVisible])
+
+  return (
+    <div ref={proofRef} className="hero-proof hero-entry hero-entry--five">
+      <div className="avatar-stack" aria-hidden="true">
+        <span className="avatar avatar--purple">AN</span>
+        <span className="avatar avatar--orange">MK</span>
+        <span className="avatar avatar--green">TH</span>
+        <span className="avatar avatar--blue">+{avatarCount}k</span>
+      </div>
+      <div><strong>{conversationCount.toLocaleString('vi-VN')}+ cuộc trò chuyện</strong><span>được kết nối mỗi ngày</span></div>
+    </div>
+  )
+}
+
 function LandingPage() {
   useEffect(() => {
     const elements = document.querySelectorAll('[data-reveal]')
@@ -139,8 +189,7 @@ function LandingPage() {
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
             entry.target.classList.add('is-visible')
-            observer.unobserve(entry.target)
-          }
+          } else entry.target.classList.remove('is-visible')
         })
       },
       { threshold: 0.14 },
@@ -180,15 +229,7 @@ function LandingPage() {
                   Xem trải nghiệm
                 </a>
               </div>
-              <div className="hero-proof hero-entry hero-entry--five">
-                <div className="avatar-stack" aria-hidden="true">
-                  <span className="avatar avatar--purple">AN</span>
-                  <span className="avatar avatar--orange">MK</span>
-                  <span className="avatar avatar--green">TH</span>
-                  <span className="avatar avatar--blue">+2k</span>
-                </div>
-                <div><strong>2.000+ cuộc trò chuyện</strong><span>được kết nối mỗi ngày</span></div>
-              </div>
+              <AnimatedProof />
             </div>
 
             <div className="hero-visual hero-entry hero-entry--visual">
@@ -202,14 +243,15 @@ function LandingPage() {
         </section>
 
         <section className="trust-strip" aria-label="Giá trị nổi bật">
-          <div className="container trust-strip__inner">
-            <span>Kết nối không giới hạn</span>
-            <i />
-            <span>Riêng tư là ưu tiên</span>
-            <i />
-            <span>Đồng bộ thời gian thực</span>
-            <i />
-            <span>Trải nghiệm liền mạch</span>
+          <div className="container trust-strip__viewport">
+            <div className="trust-strip__inner">
+              <div className="trust-strip__group">
+                <span>Kết nối không giới hạn</span><i /><span>Riêng tư là ưu tiên</span><i /><span>Đồng bộ thời gian thực</span><i /><span>Trải nghiệm liền mạch</span>
+              </div>
+              <div className="trust-strip__group" aria-hidden="true">
+                <span>Kết nối không giới hạn</span><i /><span>Riêng tư là ưu tiên</span><i /><span>Đồng bộ thời gian thực</span><i /><span>Trải nghiệm liền mạch</span>
+              </div>
+            </div>
           </div>
         </section>
 

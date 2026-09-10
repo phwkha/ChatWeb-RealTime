@@ -379,6 +379,10 @@ body:has(.chat-app) { overflow: hidden; background: var(--cw-canvas); }
 .message-composer-bar input { min-width: 0; padding: 0 6px; border: 0; outline: 0; flex: 1; color: var(--cw-ink); font-size: 12px; }
 .message-composer-bar input::placeholder { color: #b0b1b8; }
 .message-composer-bar button { display: grid; width: 35px; height: 35px; padding: 0; border: 0; border-radius: 11px; place-items: center; background: transparent; color: #999ba4; cursor: pointer; }
+.composer-emoji-anchor { position: relative; display: grid; }
+.composer-emoji-picker { position: absolute; right: 0; bottom: calc(100% + 10px); z-index: 15; display: grid; width: 208px; padding: 8px; grid-template-columns: repeat(4, 1fr); gap: 3px; border: 1px solid #e5e4eb; border-radius: 14px; background: white; box-shadow: 0 14px 34px rgba(28,24,48,.16); animation: cw-reaction-in 150ms ease; }
+.composer-emoji-picker button { width: 43px; height: 36px; border-radius: 9px; font-size: 19px; }
+.composer-emoji-picker button:hover { background: var(--cw-purple-soft); transform: translateY(-1px); }
 .message-composer-bar .composer-send { background: var(--cw-purple); color: white; transition: 160ms ease; }
 .message-composer-bar .composer-send:hover { background: var(--cw-purple-dark); transform: translateY(-1px); }
 .message-composer-bar .composer-send:disabled { background: #d8d6e0; cursor: not-allowed; transform: none; }

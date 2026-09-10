@@ -1,15 +1,18 @@
+import { Link } from 'react-router-dom'
+import Brand from '../Brand.jsx'
+
 const FOOTER_LINKS = [
   {
     title: 'Sản phẩm',
-    links: ['Tính năng', 'Bảo mật', 'Ứng dụng', 'Cập nhật'],
+    links: [{ label: 'Tính năng', href: '/home#features' }, { label: 'Trải nghiệm', href: '/experience' }, { label: 'Bảo mật', href: '/security' }, { label: 'Cập nhật', href: '/home#start' }],
   },
   {
     title: 'Hỗ trợ',
-    links: ['Trung tâm trợ giúp', 'Liên hệ', 'Trạng thái', 'Cộng đồng'],
+    links: [{ label: 'Trung tâm trợ giúp', href: '/home#start' }, { label: 'Liên hệ', href: '/home#start' }, { label: 'Trạng thái', href: '/home#start' }, { label: 'Cộng đồng', href: '/home#start' }],
   },
   {
     title: 'Pháp lý',
-    links: ['Quyền riêng tư', 'Điều khoản', 'Cookie'],
+    links: [{ label: 'Quyền riêng tư', href: '/security' }, { label: 'Điều khoản', href: '/home#start' }, { label: 'Cookie', href: '/security' }],
   },
 ]
 
@@ -33,7 +36,7 @@ function Footer() {
               <div key={group.title} className="footer-column">
                 <h3>{group.title}</h3>
                 {group.links.map((link) => (
-                  <a key={link} href="#top">{link}</a>
+                  <Link key={link.label} to={link.href}>{link.label}</Link>
                 ))}
               </div>
             ))}
@@ -53,4 +56,3 @@ function Footer() {
 }
 
 export default Footer
-import Brand from '../Brand.jsx'
