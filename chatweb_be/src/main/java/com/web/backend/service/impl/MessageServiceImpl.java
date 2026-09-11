@@ -574,7 +574,7 @@ public class MessageServiceImpl implements MessageService {
         return uniqueMessagesMap.values().stream()
                 .sorted(Comparator.comparing(ChatMessage::getTimestamp).reversed())
                 .limit(size + 1L)
-                .toList();
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
     private Duration getRandomTtl(long baseSeconds, long jitterSeconds) {
@@ -585,6 +585,7 @@ public class MessageServiceImpl implements MessageService {
     private CursorResponse<ChatMessageResponse> buildCursorResponse(List<ChatMessage> messages, int size,
             String conversationId, String user1, String user2) {
 
+        messages = new ArrayList<>(messages);
         boolean hasMore = false;
         if (messages.size() > size) {
             hasMore = true;
