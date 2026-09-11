@@ -368,10 +368,11 @@ public class UserServiceImpl implements UserService {
 
         if (friends != null && !friends.isEmpty()) {
             eventPublisher.publishEvent(FriendPayload.builder()
+                    .senderUsername(username)
+                    .senderDisplayName(username)
                     .recipientUsernames(friends)
                     .recipientType(
                             isOnline ? NotificationsType.USER_ONLINE : NotificationsType.USER_OFFLINE)
-                    .senderDisplayName(username)
                     .build());
         }
     }
