@@ -2,6 +2,7 @@ package com.web.backend.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.web.backend.config.localresolverconfig.Translator;
+import com.web.backend.controller.request.FriendRequest;
 import com.web.backend.controller.response.PageResponse;
 import com.web.backend.controller.response.UserSummaryResponse;
 import com.web.backend.jwt.JwtAuthenticationFilter;
@@ -19,12 +20,14 @@ import org.springframework.boot.autoconfigure.security.oauth2.resource.servlet.O
 import org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration;
 import org.springframework.boot.autoconfigure.security.servlet.SecurityFilterAutoConfiguration;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
 import org.springframework.context.support.ResourceBundleMessageSource;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Collections;
@@ -39,6 +42,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
+@ActiveProfiles("test")
 @WebMvcTest(controllers = FriendController.class, excludeAutoConfiguration = {
                 SecurityAutoConfiguration.class,
                 SecurityFilterAutoConfiguration.class,
@@ -56,22 +60,22 @@ class FriendControllerTest {
         @Autowired
         private ObjectMapper objectMapper;
 
-        @MockBean
+        @MockitoBean
         private FriendService friendService;
 
-        @MockBean
+        @MockitoBean
         private JwtService jwtService;
 
-        @MockBean
+        @MockitoBean
         private UserServiceDetail userServiceDetail;
 
-        @MockBean
+        @MockitoBean
         private RedisTemplate<String, Object> redisTemplate;
 
-        @MockBean
+        @MockitoBean
         private SimpMessagingTemplate simpMessagingTemplate;
 
-        @MockBean
+        @MockitoBean
         private com.web.backend.service.WebSocketRoutingService webSocketRoutingService;
 
         private UsernamePasswordAuthenticationToken mockAuth;
@@ -206,5 +210,37 @@ class FriendControllerTest {
                                 .andExpect(status().isOk())
                                 .andExpect(jsonPath("$.code").value(200))
                                 .andExpect(jsonPath("$.data.content[0].username").value("blocked1"));
+        }
+
+        @Test
+        void testSendFriendRequest_Success() throws Exception {
+                FriendRequest request = new FriendRequest();
+                request.setTargetUsername("otheruser");
+
+                mockMvc.perform(post("/api/friends/request")
+                                .principal(mockAuth)
+                                .header("X-Idempotency-Key", "test-idempotency-key")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(request)))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.code").value(200));
+
+                verify(friendService).sendFriendRequest("testuser", "otheruser");
+        }
+
+        @Test
+        void testAcceptFriendRequest_Success() throws Exception {
+                FriendRequest request = new FriendRequest();
+                request.setTargetUsername("otheruser");
+
+                mockMvc.perform(post("/api/friends/accept")
+                                .principal(mockAuth)
+                                .header("X-Idempotency-Key", "test-idempotency-key")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(request)))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.code").value(200));
+
+                verify(friendService).acceptFriendRequest("testuser", "otheruser");
         }
 }

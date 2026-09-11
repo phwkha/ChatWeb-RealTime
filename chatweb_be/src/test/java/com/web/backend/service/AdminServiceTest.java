@@ -1,8 +1,15 @@
 package com.web.backend.service;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import java.util.List;
 import java.util.Optional;
@@ -11,6 +18,7 @@ import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentMatchers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -96,7 +104,7 @@ class AdminServiceTest {
         when(zSetOperations.size("online_users")).thenReturn(0L);
 
         PageResponse<UserSummaryResponse> res = adminService.getOnlineUsers(0, 10);
-        assertEquals(0, res.getTotalElements());
+        assertThat(res.getTotalElements()).isZero();
     }
 
     @Test
@@ -109,10 +117,9 @@ class AdminServiceTest {
         when(userRepository.findSummaryByUsernameIn(anyList())).thenReturn(List.of(summary));
 
         PageResponse<UserSummaryResponse> res = adminService.getOnlineUsers(0, 10);
-        assertEquals(1, res.getTotalElements());
-        assertTrue(summary.isOnline());
+        assertThat(res.getTotalElements()).isEqualTo(1L);
+        assertThat(summary.isOnline()).isTrue();
     }
-
 
     @Test
     void testSearchUsersForAdmin_WithAllFilters_Success() {
@@ -125,29 +132,29 @@ class AdminServiceTest {
                 .build();
         UserResponse response = UserResponse.builder().username("testuser").build();
         Page<UserEntity> page = new PageImpl<>(List.of(activeUser));
-        when(userRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(page);
+        when(userRepository.findAll(ArgumentMatchers.<Specification<UserEntity>>any(), any(Pageable.class))).thenReturn(page);
         when(userMapper.toUserResponse(activeUser)).thenReturn(response);
 
         PageResponse<UserResponse> res = adminService.searchUsersForAdmin(
                 request, 0, 10, "username:asc");
 
-        assertNotNull(res);
-        assertEquals(1, res.getTotalElements());
-        assertEquals("testuser", res.getContent().get(0).getUsername());
+        assertThat(res).isNotNull();
+        assertThat(res.getTotalElements()).isEqualTo(1L);
+        assertThat(res.getContent().get(0).getUsername()).isEqualTo("testuser");
     }
 
     @Test
     void testSearchUsersForAdmin_WithoutFilters_Success() {
         UserResponse response = UserResponse.builder().username("testuser").build();
         Page<UserEntity> page = new PageImpl<>(List.of(activeUser));
-        when(userRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(page);
+        when(userRepository.findAll(ArgumentMatchers.<Specification<UserEntity>>any(), any(Pageable.class))).thenReturn(page);
         when(userMapper.toUserResponse(activeUser)).thenReturn(response);
 
         PageResponse<UserResponse> res = adminService.searchUsersForAdmin(
                 null, 0, 10);
 
-        assertNotNull(res);
-        assertEquals(1, res.getTotalElements());
+        assertThat(res).isNotNull();
+        assertThat(res.getTotalElements()).isEqualTo(1L);
     }
 
     @Test
@@ -155,14 +162,14 @@ class AdminServiceTest {
         when(userRepository.findWithAuthoritiesByUsername("testuser")).thenReturn(Optional.of(activeUser));
         when(userMapper.toUserDetailResponse(activeUser)).thenReturn(new UserDetailResponse());
 
-        assertNotNull(adminService.getUserByUsername("testuser"));
+        assertThat(adminService.getUserByUsername("testuser")).isNotNull();
     }
 
     @Test
     void testGetUserByUsername_Inactive() {
         activeUser.setUserStatus(UserStatus.INACTIVE);
         when(userRepository.findWithAuthoritiesByUsername("testuser")).thenReturn(Optional.of(activeUser));
-        assertThrows(ResourceNotFoundException.class, () -> adminService.getUserByUsername("testuser"));
+        assertThatThrownBy(() -> adminService.getUserByUsername("testuser")).isInstanceOf(ResourceNotFoundException.class);
     }
 
     @Test
@@ -181,7 +188,7 @@ class AdminServiceTest {
         when(userRepository.save(any(UserEntity.class))).thenReturn(new UserEntity());
         when(userMapper.toUserResponse(any())).thenReturn(new UserResponse());
 
-        assertNotNull(adminService.adminCreateUser(req));
+        assertThat(adminService.adminCreateUser(req)).isNotNull();
     }
 
     @Test
@@ -189,7 +196,7 @@ class AdminServiceTest {
         AdminCreateUserRequest req = new AdminCreateUserRequest();
         req.setUsername("newuser");
         when(userRepository.existsByUsername("newuser")).thenReturn(true);
-        assertThrows(ResourceConflictException.class, () -> adminService.adminCreateUser(req));
+        assertThatThrownBy(() -> adminService.adminCreateUser(req)).isInstanceOf(ResourceConflictException.class);
     }
 
     @Test
@@ -199,7 +206,7 @@ class AdminServiceTest {
         req.setEmail("new@example.com");
         when(userRepository.existsByUsername("newuser")).thenReturn(false);
         when(userRepository.existsByEmail("new@example.com")).thenReturn(true);
-        assertThrows(ResourceConflictException.class, () -> adminService.adminCreateUser(req));
+        assertThatThrownBy(() -> adminService.adminCreateUser(req)).isInstanceOf(ResourceConflictException.class);
     }
 
     @Test
@@ -208,8 +215,8 @@ class AdminServiceTest {
         when(userRepository.save(activeUser)).thenReturn(activeUser);
 
         adminService.lockUser("testuser");
-        assertEquals(UserStatus.LOCKED, activeUser.getUserStatus());
-        assertFalse(activeUser.isOnline());
+        assertThat(activeUser.getUserStatus()).isEqualTo(UserStatus.LOCKED);
+        assertThat(activeUser.isOnline()).isFalse();
     }
 
     @Test
@@ -219,7 +226,7 @@ class AdminServiceTest {
         when(userRepository.save(activeUser)).thenReturn(activeUser);
 
         adminService.unlockUser("testuser");
-        assertEquals(UserStatus.ACTIVE, activeUser.getUserStatus());
+        assertThat(activeUser.getUserStatus()).isEqualTo(UserStatus.ACTIVE);
     }
 
     @Test
@@ -271,7 +278,7 @@ class AdminServiceTest {
         when(userRepository.findWithAuthoritiesByUsername("testuser")).thenReturn(Optional.of(activeUser));
         when(userRepository.existsByEmail("new@example.com")).thenReturn(true);
 
-        assertThrows(ResourceConflictException.class, () -> adminService.adminUpdateUser("testuser", req));
+        assertThatThrownBy(() -> adminService.adminUpdateUser("testuser", req)).isInstanceOf(ResourceConflictException.class);
     }
 
     @Test
@@ -281,7 +288,7 @@ class AdminServiceTest {
 
         adminService.adminDeleteUser("testuser", "admin");
 
-        assertEquals(UserStatus.INACTIVE, activeUser.getUserStatus());
+        assertThat(activeUser.getUserStatus()).isEqualTo(UserStatus.INACTIVE);
         verify(userRepository).save(activeUser);
         verify(userRepository, never()).delete(activeUser);
     }
@@ -302,7 +309,7 @@ class AdminServiceTest {
         when(addressRepository.findAddressResponsesByUsername("testuser")).thenReturn(List.of(new AddressResponse()));
 
         List<AddressResponse> res = adminService.adminGetAllAddresses("testuser");
-        assertEquals(1, res.size());
+        assertThat(res).hasSize(1);
     }
 
     @Test
@@ -310,14 +317,14 @@ class AdminServiceTest {
         when(userRepository.existsByUsername("testuser")).thenReturn(true);
         when(addressRepository.findAddressResponseByIdAndUsername(1L, "testuser")).thenReturn(Optional.of(new AddressResponse()));
 
-        assertNotNull(adminService.adminGetAddressById("testuser", 1L));
+        assertThat(adminService.adminGetAddressById("testuser", 1L)).isNotNull();
     }
 
     @Test
     void testAdminGetAddressById_NotOwned() {
         when(userRepository.existsByUsername("testuser")).thenReturn(true);
         when(addressRepository.findAddressResponseByIdAndUsername(1L, "testuser")).thenReturn(Optional.empty());
-        assertThrows(AccessForbiddenException.class, () -> adminService.adminGetAddressById("testuser", 1L));
+        assertThatThrownBy(() -> adminService.adminGetAddressById("testuser", 1L)).isInstanceOf(AccessForbiddenException.class);
     }
 
     @Test
@@ -337,7 +344,7 @@ class AdminServiceTest {
     void testAdminUpdateAddress_NotOwned() {
         when(addressRepository.findByIdAndUser_Username(1L, "testuser")).thenReturn(Optional.empty());
         AddressRequest req = new AddressRequest();
-        assertThrows(ResourceNotFoundException.class, () -> adminService.adminUpdateAddress("testuser", 1L, req));
+        assertThatThrownBy(() -> adminService.adminUpdateAddress("testuser", 1L, req)).isInstanceOf(ResourceNotFoundException.class);
     }
 
     @Test
@@ -354,37 +361,39 @@ class AdminServiceTest {
     @Test
     void testGetUserByUsername_NotFound() {
         when(userRepository.findWithAuthoritiesByUsername("testuser")).thenReturn(Optional.empty());
-        assertThrows(ResourceNotFoundException.class, () -> adminService.getUserByUsername("testuser"));
+        assertThatThrownBy(() -> adminService.getUserByUsername("testuser")).isInstanceOf(ResourceNotFoundException.class);
     }
 
     @Test
     void testLockUser_NotFound() {
         when(userRepository.findByUsername("testuser")).thenReturn(Optional.empty());
-        assertThrows(ResourceNotFoundException.class, () -> adminService.lockUser("testuser"));
+        assertThatThrownBy(() -> adminService.lockUser("testuser")).isInstanceOf(ResourceNotFoundException.class);
     }
 
     @Test
     void testUnlockUser_NotFound() {
         when(userRepository.findByUsername("testuser")).thenReturn(Optional.empty());
-        assertThrows(ResourceNotFoundException.class, () -> adminService.unlockUser("testuser"));
+        assertThatThrownBy(() -> adminService.unlockUser("testuser")).isInstanceOf(ResourceNotFoundException.class);
     }
 
     @Test
     void testDeleteAvatar_NotFound() {
         when(userRepository.findAvatarProjectionByUsername("testuser")).thenReturn(Optional.empty());
-        assertThrows(ResourceNotFoundException.class, () -> adminService.deleteAvatar("testuser"));
+        assertThatThrownBy(() -> adminService.deleteAvatar("testuser")).isInstanceOf(ResourceNotFoundException.class);
     }
 
     @Test
     void testAdminUpdateUser_NotFound() {
         when(userRepository.findWithAuthoritiesByUsername("testuser")).thenReturn(Optional.empty());
-        assertThrows(ResourceNotFoundException.class,
-                () -> adminService.adminUpdateUser("testuser", new AdminUpdateUserRequest()));
+        assertThatThrownBy(
+                () -> adminService.adminUpdateUser("testuser", new AdminUpdateUserRequest()))
+                .isInstanceOf(ResourceNotFoundException.class);
     }
 
     @Test
     void testAdminDeleteUser_NotFound() {
         when(userRepository.findByUsername("testuser")).thenReturn(Optional.empty());
-        assertThrows(ResourceNotFoundException.class, () -> adminService.adminDeleteUser("testuser", "admin"));
+        assertThatThrownBy(() -> adminService.adminDeleteUser("testuser", "admin"))
+                .isInstanceOf(ResourceNotFoundException.class);
     }
 }

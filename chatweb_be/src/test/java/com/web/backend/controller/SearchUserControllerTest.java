@@ -17,12 +17,13 @@ import org.springframework.boot.autoconfigure.security.oauth2.resource.servlet.O
 import org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration;
 import org.springframework.boot.autoconfigure.security.servlet.SecurityFilterAutoConfiguration;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
 import org.springframework.context.support.ResourceBundleMessageSource;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
@@ -35,6 +36,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
+@ActiveProfiles("test")
 @WebMvcTest(controllers = SearchUserController.class, excludeAutoConfiguration = {
                 SecurityAutoConfiguration.class,
                 SecurityFilterAutoConfiguration.class,
@@ -49,22 +51,22 @@ class SearchUserControllerTest {
         @Autowired
         private MockMvc mockMvc;
 
-        @MockBean
+        @MockitoBean
         private SearchUserService searchUserService;
 
-        @MockBean
+        @MockitoBean
         private JwtService jwtService;
 
-        @MockBean
+        @MockitoBean
         private UserServiceDetail userServiceDetail;
 
-        @MockBean
+        @MockitoBean
         private RedisTemplate<String, Object> redisTemplate;
 
-        @MockBean
+        @MockitoBean
         private SimpMessagingTemplate simpMessagingTemplate;
 
-        @MockBean
+        @MockitoBean
         private com.web.backend.service.WebSocketRoutingService webSocketRoutingService;
 
         @BeforeEach

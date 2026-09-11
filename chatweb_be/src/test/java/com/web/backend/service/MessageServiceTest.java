@@ -1,11 +1,27 @@
 package com.web.backend.service;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
+import java.time.Instant;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -15,26 +31,33 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.support.ResourceBundleMessageSource;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
-import org.springframework.data.redis.core.ListOperations;
 import org.springframework.data.redis.core.HashOperations;
+import org.springframework.data.redis.core.ListOperations;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.data.redis.core.ZSetOperations;
-import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.kafka.support.SendResult;
 
+import com.web.backend.common.MessageStatus;
 import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.request.EditMessageRequest;
 import com.web.backend.controller.request.MarkReadRequest;
 import com.web.backend.controller.request.ReactionRequest;
 import com.web.backend.controller.request.RevokeMessageRequest;
+import com.web.backend.controller.response.ChatMessageResponse;
+import com.web.backend.controller.response.CursorResponse;
+import com.web.backend.controller.response.MessageSystemResponse;
+import com.web.backend.controller.response.ReadReceiptResponse;
+import com.web.backend.controller.response.UnreadCountsResponse;
 import com.web.backend.exception.custom.AccessForbiddenException;
 import com.web.backend.exception.custom.InvalidDataException;
 import com.web.backend.exception.custom.ResourceNotFoundException;
 import com.web.backend.exception.custom.SystemOverloadException;
 import com.web.backend.kafka.avro.ChatMessageAvro;
+import com.web.backend.kafka.payload.UpdateMessagePayload;
 import com.web.backend.mapper.MessageMapper;
 import com.web.backend.model.mongodb.ChatMessage;
 import com.web.backend.model.mongodb.ReadReceipt;
@@ -45,22 +68,7 @@ import com.web.backend.repository.SystemMessageRepository;
 import com.web.backend.repository.projection.UnreadCountProjection;
 import com.web.backend.service.impl.MessageServiceImpl;
 
-import java.time.Instant;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.HashMap;
-import org.springframework.data.domain.Pageable;
-import com.web.backend.common.MessageStatus;
-import com.web.backend.controller.response.ChatMessageResponse;
-import com.web.backend.controller.response.CursorResponse;
-import com.web.backend.controller.response.MessageSystemResponse;
-import com.web.backend.controller.response.ReadReceiptResponse;
-import com.web.backend.controller.response.UnreadCountsResponse;
-import com.web.backend.kafka.payload.UpdateMessagePayload;
-
 @ExtendWith(MockitoExtension.class)
-@org.mockito.junit.jupiter.MockitoSettings(strictness = org.mockito.quality.Strictness.LENIENT)
 class MessageServiceTest {
 
     @Mock
@@ -124,17 +132,18 @@ class MessageServiceTest {
 
     @Test
     void testReactToMessage_NotFriends() {
-        com.web.backend.controller.request.ReactionRequest request = new com.web.backend.controller.request.ReactionRequest();
+        ReactionRequest request = new ReactionRequest();
         request.setRecipient("recipient");
 
         when(friendService.isFriend("sender", "recipient")).thenReturn(false);
 
-        assertThrows(AccessForbiddenException.class, () -> messageService.reactToMessage("sender", request));
+        assertThatThrownBy(() -> messageService.reactToMessage("sender", request))
+                .isInstanceOf(AccessForbiddenException.class);
     }
 
     @Test
     void testReactToMessage_Success() {
-        com.web.backend.controller.request.ReactionRequest request = new com.web.backend.controller.request.ReactionRequest();
+        ReactionRequest request = new ReactionRequest();
         request.setRecipient("recipient");
         request.setMessageId("msg123");
         request.setReactionType(com.web.backend.common.ReactionType.HEART);
@@ -163,7 +172,7 @@ class MessageServiceTest {
 
     @Test
     void testReactToMessage_Forbidden_DifferentConversation() {
-        com.web.backend.controller.request.ReactionRequest request = new com.web.backend.controller.request.ReactionRequest();
+        ReactionRequest request = new ReactionRequest();
         request.setRecipient("recipient");
         request.setMessageId("msg123");
         request.setReactionType(com.web.backend.common.ReactionType.HEART);
@@ -177,12 +186,13 @@ class MessageServiceTest {
         message.setConversationId("other1_other2");
         when(messageRepository.findById("msg123")).thenReturn(Optional.of(message));
 
-        assertThrows(AccessForbiddenException.class, () -> messageService.reactToMessage("sender", request));
+        assertThatThrownBy(() -> messageService.reactToMessage("sender", request))
+                .isInstanceOf(AccessForbiddenException.class);
     }
 
     @Test
     void testReactToMessage_AlreadyDeleted() {
-        com.web.backend.controller.request.ReactionRequest request = new com.web.backend.controller.request.ReactionRequest();
+        ReactionRequest request = new ReactionRequest();
         request.setRecipient("recipient");
         request.setMessageId("msg123");
         request.setReactionType(com.web.backend.common.ReactionType.HEART);
@@ -197,7 +207,8 @@ class MessageServiceTest {
         message.setDeleted(true);
         when(messageRepository.findById("msg123")).thenReturn(Optional.of(message));
 
-        assertThrows(InvalidDataException.class, () -> messageService.reactToMessage("sender", request));
+        assertThatThrownBy(() -> messageService.reactToMessage("sender", request))
+                .isInstanceOf(InvalidDataException.class);
     }
 
     // ==========================================
@@ -227,7 +238,6 @@ class MessageServiceTest {
         verify(eventPublisher).publishEvent(any(UpdateMessagePayload.class));
     }
 
-
     @Test
     void testEditMessage_NotFoundInDb_ThrowsResourceNotFoundException() {
         EditMessageRequest request = new EditMessageRequest();
@@ -245,7 +255,8 @@ class MessageServiceTest {
         when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
         when(mongoTemplate.findAndModify(any(), any(), any(), eq(ChatMessage.class))).thenReturn(null);
 
-        assertThrows(ResourceNotFoundException.class, () -> messageService.editMessage("sender", request));
+        assertThatThrownBy(() -> messageService.editMessage("sender", request))
+                .isInstanceOf(ResourceNotFoundException.class);
     }
 
     @Test
@@ -262,12 +273,12 @@ class MessageServiceTest {
         message.setConversationId("recipient_sender");
         message.setMessageType(com.web.backend.common.MessageType.CHAT);
 
-        when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
         when(mongoTemplate.findAndModify(any(), any(), any(), eq(ChatMessage.class))).thenReturn(null);
         when(redisTemplate.opsForHash()).thenReturn(hashOperations);
         when(hashOperations.get("chat:recent:hash:recipient_sender", "msg1")).thenReturn(message);
 
-        assertThrows(SystemOverloadException.class, () -> messageService.editMessage("sender", request));
+        assertThatThrownBy(() -> messageService.editMessage("sender", request))
+                .isInstanceOf(SystemOverloadException.class);
     }
 
     @Test
@@ -284,7 +295,8 @@ class MessageServiceTest {
 
         when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
 
-        assertThrows(AccessForbiddenException.class, () -> messageService.editMessage("sender", request));
+        assertThatThrownBy(() -> messageService.editMessage("sender", request))
+                .isInstanceOf(AccessForbiddenException.class);
     }
 
     @Test
@@ -303,7 +315,8 @@ class MessageServiceTest {
 
         when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
 
-        assertThrows(InvalidDataException.class, () -> messageService.editMessage("sender", request));
+        assertThatThrownBy(() -> messageService.editMessage("sender", request))
+                .isInstanceOf(InvalidDataException.class);
     }
 
     @Test
@@ -323,7 +336,8 @@ class MessageServiceTest {
 
         when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
 
-        assertThrows(InvalidDataException.class, () -> messageService.editMessage("sender", request));
+        assertThatThrownBy(() -> messageService.editMessage("sender", request))
+                .isInstanceOf(InvalidDataException.class);
     }
 
     @Test
@@ -369,7 +383,8 @@ class MessageServiceTest {
 
         when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
 
-        assertThrows(InvalidDataException.class, () -> messageService.revokeMessage("sender", request));
+        assertThatThrownBy(() -> messageService.revokeMessage("sender", request))
+                .isInstanceOf(InvalidDataException.class);
     }
 
     @Test
@@ -406,7 +421,7 @@ class MessageServiceTest {
         when(messageMapper.toResponse(message)).thenReturn(response);
 
         ChatMessageResponse result = messageService.getMessageById("msg1", "sender");
-        assertNotNull(result);
+        assertThat(result).isNotNull();
     }
 
     @Test
@@ -418,7 +433,8 @@ class MessageServiceTest {
 
         when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
 
-        assertThrows(AccessForbiddenException.class, () -> messageService.getMessageById("msg1", "sender"));
+        assertThatThrownBy(() -> messageService.getMessageById("msg1", "sender"))
+                .isInstanceOf(AccessForbiddenException.class);
     }
 
     @Test
@@ -430,7 +446,8 @@ class MessageServiceTest {
 
         when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
 
-        assertThrows(AccessForbiddenException.class, () -> messageService.getMessageById("msg1", "an"));
+        assertThatThrownBy(() -> messageService.getMessageById("msg1", "an"))
+                .isInstanceOf(AccessForbiddenException.class);
     }
 
     // ==========================================
@@ -471,7 +488,7 @@ class MessageServiceTest {
         when(hashOperations.entries("unread_counts:recipient")).thenReturn(cachedCounts);
 
         UnreadCountsResponse response = messageService.getUnreadMessageCounts("recipient");
-        assertEquals(5L, response.getUnreadCounts().get("senderA"));
+        assertThat(response.getUnreadCounts().get("senderA")).isEqualTo(5L);
         verify(messageRepository, never()).countUnreadMessagesBySender(anyString());
     }
 
@@ -487,7 +504,7 @@ class MessageServiceTest {
         when(messageRepository.countUnreadMessagesBySender("recipient")).thenReturn(List.of(proj));
 
         UnreadCountsResponse response = messageService.getUnreadMessageCounts("recipient");
-        assertEquals(3L, response.getUnreadCounts().get("senderB"));
+        assertThat(response.getUnreadCounts().get("senderB")).isEqualTo(3L);
         verify(hashOperations).putAll(eq("unread_counts:recipient"), anyMap());
     }
 
@@ -503,8 +520,8 @@ class MessageServiceTest {
 
         CursorResponse<MessageSystemResponse> result = messageService.findSystemMessageWithCursor(null, 10);
 
-        assertFalse(result.isHasMore());
-        assertEquals(1, result.getContent().size());
+        assertThat(result.isHasMore()).isFalse();
+        assertThat(result.getContent()).hasSize(1);
     }
 
     @Test
@@ -528,10 +545,10 @@ class MessageServiceTest {
         when(redisTemplate.opsForHash()).thenReturn(hashOperations);
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
 
-        java.util.Set<Object> mockSet = java.util.Collections.singleton((Object) redisMsg.getId());
+        java.util.Set<Object> mockSet = Collections.singleton((Object) redisMsg.getId());
         when(zSetOperations.reverseRange(anyString(), anyLong(), anyLong())).thenReturn(mockSet);
         when(hashOperations.multiGet(anyString(), anyCollection()))
-                .thenReturn(java.util.Collections.singletonList(redisMsg));
+                .thenReturn(Collections.singletonList(redisMsg));
 
         when(messageMapper.toResponse(any())).thenAnswer(inv -> {
             ChatMessage msg = inv.getArgument(0);
@@ -546,7 +563,7 @@ class MessageServiceTest {
         CursorResponse<ChatMessageResponse> result = messageService.findPrivateMessageWithCursor("user2", "user1", null,
                 10);
 
-        assertEquals(2, result.getContent().size());
+        assertThat(result.getContent()).hasSize(2);
     }
 
     @Test
@@ -567,7 +584,6 @@ class MessageServiceTest {
                 .thenReturn(List.of(dbMsg1, dbMsg2));
 
         when(redisTemplate.opsForZSet()).thenReturn(zSetOperations);
-        when(redisTemplate.opsForHash()).thenReturn(hashOperations);
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         when(zSetOperations.reverseRange(anyString(), anyLong(), anyLong())).thenReturn(Collections.emptySet());
 
@@ -584,10 +600,10 @@ class MessageServiceTest {
         // Request pageSize = 1 with 2 messages available in DB -> hasMore should be true and trimmed to 1
         CursorResponse<ChatMessageResponse> result = messageService.findPrivateMessageWithCursor("user2", "user1", null, 1);
 
-        assertTrue(result.isHasMore());
-        assertEquals(1, result.getContent().size());
-        assertEquals("msg1", result.getContent().get(0).getId());
-        assertNotNull(result.getNextCursor());
+        assertThat(result.isHasMore()).isTrue();
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getContent().get(0).getId()).isEqualTo("msg1");
+        assertThat(result.getNextCursor()).isNotNull();
     }
 
     @Test
@@ -631,14 +647,14 @@ class MessageServiceTest {
         CursorResponse<ChatMessageResponse> result = messageService.findPrivateMessageWithCursor("user1", "user2", null,
                 10);
 
-        assertEquals(2, result.getContent().size());
-        assertEquals(MessageStatus.SENT, result.getContent().get(0).getStatus()); // newMsg
-        assertEquals(MessageStatus.READ, result.getContent().get(1).getStatus()); // oldMsg
+        assertThat(result.getContent()).hasSize(2);
+        assertThat(result.getContent().get(0).getStatus()).isEqualTo(MessageStatus.SENT); // newMsg
+        assertThat(result.getContent().get(1).getStatus()).isEqualTo(MessageStatus.READ); // oldMsg
     }
 
     @Test
     void testReactToMessage_RemoveReaction() {
-        com.web.backend.controller.request.ReactionRequest request = new com.web.backend.controller.request.ReactionRequest();
+        ReactionRequest request = new ReactionRequest();
         request.setRecipient("recipient");
         request.setMessageId("msg1");
         request.setReactionType(null); // Removes reaction
@@ -668,8 +684,9 @@ class MessageServiceTest {
         dbMsg.setTimestamp(Instant.now().minusSeconds(86400));
 
         List<ChatMessage> mockResult = new java.util.ArrayList<>();
-        for (int i = 0; i < 11; i++)
+        for (int i = 0; i < 11; i++) {
             mockResult.add(dbMsg); // 11 elements means hasMore = true
+        }
 
         when(messageRepository.findByConversationIdAndTimestampBefore(anyString(), any(), any()))
                 .thenReturn(mockResult);
@@ -678,8 +695,8 @@ class MessageServiceTest {
         CursorResponse<ChatMessageResponse> result = messageService.findPrivateMessageWithCursor("user2", "user1",
                 Instant.now().toString(), 10);
 
-        assertTrue(result.isHasMore());
-        assertEquals(10, result.getContent().size()); // should have removed the 11th
+        assertThat(result.isHasMore()).isTrue();
+        assertThat(result.getContent()).hasSize(10); // should have removed the 11th
     }
 
     @Test
@@ -694,7 +711,8 @@ class MessageServiceTest {
 
         when(messageRepository.findById("msg1")).thenReturn(Optional.of(dbMsg));
 
-        assertThrows(AccessForbiddenException.class, () -> messageService.revokeMessage("sender", request));
+        assertThatThrownBy(() -> messageService.revokeMessage("sender", request))
+                .isInstanceOf(AccessForbiddenException.class);
     }
 
     @Test
@@ -706,8 +724,8 @@ class MessageServiceTest {
 
         CursorResponse<MessageSystemResponse> result = messageService
                 .findSystemMessageWithCursor(Instant.now().toString(), 10);
-        assertNotNull(result);
-        assertEquals(1, result.getContent().size());
+        assertThat(result).isNotNull();
+        assertThat(result.getContent()).hasSize(1);
     }
 
     @Test
@@ -715,20 +733,18 @@ class MessageServiceTest {
         when(redisTemplate.opsForZSet()).thenReturn(zSetOperations);
         when(zSetOperations.reverseRange(anyString(), anyLong(), anyLong())).thenReturn(null);
 
-        when(messageMapper.toResponse(any())).thenReturn(ChatMessageResponse.builder().build());
-
         CursorResponse<ChatMessageResponse> result = messageService.findPrivateMessageWithCursor("user2", "user1", null,
                 10);
-        assertNotNull(result);
+        assertThat(result).isNotNull();
     }
 
     @Test
     void testSearchMessages_EmptyKeyword() {
         CursorResponse<ChatMessageResponse> result = messageService.searchMessages("user1", "user2", "   ", null, 20);
-        assertNotNull(result);
-        assertTrue(result.getContent().isEmpty());
-        assertFalse(result.isHasMore());
-        assertNull(result.getNextCursor());
+        assertThat(result).isNotNull();
+        assertThat(result.getContent()).isEmpty();
+        assertThat(result.isHasMore()).isFalse();
+        assertThat(result.getNextCursor()).isNull();
         verifyNoInteractions(mongoTemplate);
     }
 
@@ -745,10 +761,10 @@ class MessageServiceTest {
         when(messageMapper.toResponse(any())).thenReturn(ChatMessageResponse.builder().id("msg1").content("Hello there").build());
 
         CursorResponse<ChatMessageResponse> result = messageService.searchMessages("user1", "user2", "Hello", null, 20);
-        assertNotNull(result);
-        assertEquals(1, result.getContent().size());
-        assertEquals("msg1", result.getContent().get(0).getId());
-        assertFalse(result.isHasMore());
+        assertThat(result).isNotNull();
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getContent().get(0).getId()).isEqualTo("msg1");
+        assertThat(result.isHasMore()).isFalse();
     }
 
     @Test
@@ -764,8 +780,8 @@ class MessageServiceTest {
         when(messageMapper.toResponse(any())).thenReturn(ChatMessageResponse.builder().id("msg2").content("Testing cursor").build());
 
         CursorResponse<ChatMessageResponse> result = messageService.searchMessages("user1", "user2", "cursor", Instant.now().toString(), 20);
-        assertNotNull(result);
-        assertEquals(1, result.getContent().size());
-        assertEquals("msg2", result.getContent().get(0).getId());
+        assertThat(result).isNotNull();
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getContent().get(0).getId()).isEqualTo("msg2");
     }
 }
