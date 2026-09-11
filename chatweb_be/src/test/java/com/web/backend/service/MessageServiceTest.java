@@ -550,6 +550,47 @@ class MessageServiceTest {
     }
 
     @Test
+    void testFindPrivateMessageWithCursor_HasMoreMessages_TrimsExtraMessage() {
+        ChatMessage dbMsg1 = new ChatMessage();
+        dbMsg1.setId("msg1");
+        dbMsg1.setSender("user1");
+        dbMsg1.setRecipient("user2");
+        dbMsg1.setTimestamp(Instant.now().minusSeconds(100));
+
+        ChatMessage dbMsg2 = new ChatMessage();
+        dbMsg2.setId("msg2");
+        dbMsg2.setSender("user1");
+        dbMsg2.setRecipient("user2");
+        dbMsg2.setTimestamp(Instant.now().minusSeconds(200));
+
+        when(messageRepository.findByConversationId(eq("user1_user2"), any(Pageable.class)))
+                .thenReturn(List.of(dbMsg1, dbMsg2));
+
+        when(redisTemplate.opsForZSet()).thenReturn(zSetOperations);
+        when(redisTemplate.opsForHash()).thenReturn(hashOperations);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(zSetOperations.reverseRange(anyString(), anyLong(), anyLong())).thenReturn(Collections.emptySet());
+
+        when(messageMapper.toResponse(any())).thenAnswer(inv -> {
+            ChatMessage msg = inv.getArgument(0);
+            return ChatMessageResponse.builder()
+                    .id(msg.getId())
+                    .sender(msg.getSender())
+                    .recipient(msg.getRecipient())
+                    .timestamp(msg.getTimestamp())
+                    .build();
+        });
+
+        // Request pageSize = 1 with 2 messages available in DB -> hasMore should be true and trimmed to 1
+        CursorResponse<ChatMessageResponse> result = messageService.findPrivateMessageWithCursor("user2", "user1", null, 1);
+
+        assertTrue(result.isHasMore());
+        assertEquals(1, result.getContent().size());
+        assertEquals("msg1", result.getContent().get(0).getId());
+        assertNotNull(result.getNextCursor());
+    }
+
+    @Test
     void testFindPrivateMessageWithCursor_CalculatesReadStatusFromWatermark() {
         Instant now = Instant.now();
         Instant user2ReadTime = now.minusSeconds(300);
