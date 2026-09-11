@@ -2,44 +2,64 @@ name: Frontend CI
 
 on:
   pull_request:
-    branches: [ main ]
-    paths:
-      - 'chatweb_fe/**'
-      - '.github/workflows/frontend-ci.yml'
+    branches: [main]
   push:
-    branches: [ develop ]
-    paths:
-      - 'chatweb_fe/**'
-      - '.github/workflows/frontend-ci.yml'
+    branches: [develop]
 
 jobs:
+  # Bước 1: Kiểm tra xem có file frontend nào thay đổi không
+  check-changes:
+    name: Check Frontend Changes
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            frontend:
+              - 'chatweb_fe/**'
+              - '.github/workflows/frontend-ci.yml'
+
   frontend-verify:
     name: Frontend Lint & Build
+    needs: check-changes
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
     steps:
+      - name: Skip Frontend CI
+        if: needs.check-changes.outputs.frontend != 'true'
+        run: echo "Không có thay đổi trong Frontend. Bỏ qua kiểm tra Frontend."
+
       - name: Checkout Code
+        if: needs.check-changes.outputs.frontend == 'true'
         uses: actions/checkout@v4
 
       - name: Setup Node.js
+        if: needs.check-changes.outputs.frontend == 'true'
         uses: actions/setup-node@v4.2.0
         with:
           node-version: 20
-          cache: 'npm'
-          cache-dependency-path: 'chatweb_fe/package-lock.json'
+          cache: "npm"
+          cache-dependency-path: "chatweb_fe/package-lock.json"
 
       - name: Install Dependencies
+        if: needs.check-changes.outputs.frontend == 'true'
         run: |
           cd chatweb_fe
           npm ci
 
       - name: Lint Code with Oxlint
+        if: needs.check-changes.outputs.frontend == 'true'
         run: |
           cd chatweb_fe
           npm run lint
 
       - name: Build with Vite
+        if: needs.check-changes.outputs.frontend == 'true'
         run: |
           cd chatweb_fe
           npm run build

@@ -3,28 +3,44 @@ name: Backend CI
 on:
   pull_request:
     branches: [main]
-    paths:
-      - "chatweb_be/**"
-      - ".github/workflows/backend-ci.yml"
   push:
     branches: [develop]
-    paths:
-      - "chatweb_be/**"
-      - ".github/workflows/backend-ci.yml"
 
 jobs:
+  check-changes:
+    name: Check Backend Changes
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'chatweb_be/**'
+              - '.github/workflows/backend-ci.yml'
+
   test-and-verify:
     name: Backend Test & Verification
+    needs: check-changes
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
     steps:
+      - name: Skip Backend CI
+        if: needs.check-changes.outputs.backend != 'true'
+        run: echo "Không có thay đổi trong Backend. Bỏ qua kiểm tra Backend."
+
       - name: Checkout Code
+        if: needs.check-changes.outputs.backend == 'true'
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Set up JDK 21
+        if: needs.check-changes.outputs.backend == 'true'
         uses: actions/setup-java@v5
         with:
           java-version: "21"
@@ -32,25 +48,29 @@ jobs:
           cache: maven
 
       - name: Grant execute permission for mvnw
+        if: needs.check-changes.outputs.backend == 'true'
         run: chmod +x chatweb_be/mvnw
 
       - name: Compile Backend
+        if: needs.check-changes.outputs.backend == 'true'
         run: |
           cd chatweb_be
           ./mvnw clean compile
 
       - name: Run Unit Tests
+        if: needs.check-changes.outputs.backend == 'true'
         run: |
           cd chatweb_be
           ./mvnw test
 
       - name: Publish Test Report
+        if: needs.check-changes.outputs.backend == 'true' && always()
         uses: mikepenz/action-junit-report@v4
-        if: always()
         with:
           report_paths: "chatweb_be/target/surefire-reports/*.xml"
 
       - name: Cache SonarCloud packages
+        if: needs.check-changes.outputs.backend == 'true'
         uses: actions/cache@v4
         with:
           path: ~/.sonar/cache
@@ -58,6 +78,7 @@ jobs:
           restore-keys: ${{ runner.os }}-sonar
 
       - name: SonarCloud Code Analysis
+        if: needs.check-changes.outputs.backend == 'true'
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
