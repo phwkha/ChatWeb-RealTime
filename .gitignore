@@ -15,6 +15,3 @@ ssl/
 *.crt
 *.p12
 *.csr
-
-# --- test ---
-test-chat.html
