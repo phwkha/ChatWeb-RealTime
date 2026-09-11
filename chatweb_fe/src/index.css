@@ -1,3 +1,9 @@
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap');
+
+:root {
+  --cw-font: 'Sora', 'Segoe UI', sans-serif;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -14,7 +20,7 @@ body {
 }
 
 body {
-  font-family: Inter, Aptos, "Segoe UI", Helvetica, Arial, sans-serif;
+  font-family: var(--cw-font);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }

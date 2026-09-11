@@ -17,7 +17,7 @@
 body:has(.admin-shell), body:has(.admin-denied) { margin: 0; background: var(--admin-canvas); }
 .admin-shell, .admin-shell * { box-sizing: border-box; }
 .admin-shell button, .admin-shell input, .admin-shell select, .admin-shell textarea { font: inherit; }
-.admin-shell { display: grid; min-height: 100vh; grid-template-columns: 268px minmax(0, 1fr); background: var(--admin-canvas); color: var(--admin-text); font-family: Inter, Aptos, "Segoe UI", sans-serif; }
+.admin-shell { display: grid; min-height: 100vh; grid-template-columns: 268px minmax(0, 1fr); background: var(--admin-canvas); color: var(--admin-text); font-family: var(--cw-font); }
 
 .admin-sidebar { position: sticky; top: 0; z-index: 40; display: flex; height: 100vh; padding: 24px 17px 18px; flex-direction: column; overflow-y: auto; background: radial-gradient(circle at 30% 0, #183256 0, transparent 28%), var(--admin-navy); color: #dce7f8; }
 .admin-brand { display: flex; padding: 0 7px 22px; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,.08); text-decoration: none; }

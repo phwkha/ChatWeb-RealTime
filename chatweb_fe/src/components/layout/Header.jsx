@@ -6,8 +6,8 @@ import Brand from '../Brand.jsx'
 
 const NAV_ITEMS = [
   { label: 'Tính năng', href: '/#features' },
-  { label: 'Trải nghiệm', href: '/#experience' },
-  { label: 'Bảo mật', href: '/#security' },
+  { label: 'Trải nghiệm', href: '/experience' },
+  { label: 'Bảo mật', href: '/security' },
 ]
 
 function getInitials(user) {
@@ -89,11 +89,9 @@ function Header() {
           aria-label="Điều hướng chính"
         >
           <div className="main-nav__links">
-            {NAV_ITEMS.map((item) => (
-              <a key={item.href} href={item.href} onClick={closeMenu}>
-                {item.label}
-              </a>
-            ))}
+            {NAV_ITEMS.map((item) => item.href.startsWith('/#')
+              ? <a key={item.href} href={item.href} onClick={closeMenu}>{item.label}</a>
+              : <Link key={item.href} to={item.href} onClick={closeMenu}>{item.label}</Link>)}
           </div>
           <div className="main-nav__actions">
             {isInitializing && <span className="header-user-skeleton" aria-label="Đang kiểm tra đăng nhập" />}
