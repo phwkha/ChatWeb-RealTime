@@ -1,7 +1,6 @@
 package com.web.backend.jwt;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.web.backend.common.TokenType;
 import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.response.ApiResponse;
 import com.web.backend.model.postgres.UserEntity;
@@ -121,7 +120,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private boolean authenticateUser(String jwt, HttpServletRequest request, HttpServletResponse response,
             FilterChain filterChain) throws ServletException, IOException {
-        String username = jwtService.extractUsername(jwt, TokenType.ACCESS_TOKEN);
+        String username = jwtService.extractUsername(jwt);
         if (username == null) {
             return true;
         }
@@ -148,7 +147,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             return true;
         }
 
-        Integer tokenVersionInJwt = jwtService.extractClaim(jwt, TokenType.ACCESS_TOKEN,
+        Integer tokenVersionInJwt = jwtService.extractClaim(jwt,
                 claims -> claims.get(TOKEN_VERSION_CLAIM_STRING, Integer.class));
 
         Integer currentVersion = userEntity.getTokenVersion();

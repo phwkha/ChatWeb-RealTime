@@ -30,7 +30,6 @@ import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.request.CreateUserRequest;
 import com.web.backend.controller.request.LoginRequest;
 import com.web.backend.controller.request.VerifyOtpRequest;
-import com.web.backend.model.redis.RegisterData;
 import com.web.backend.controller.response.LoginResponse;
 import com.web.backend.controller.response.TokenResponse;
 import com.web.backend.controller.response.UserResponse;
@@ -44,6 +43,8 @@ import com.web.backend.kafka.producer.EmailProducer;
 import com.web.backend.mapper.UserMapper;
 import com.web.backend.model.postgres.RoleEntity;
 import com.web.backend.model.postgres.UserEntity;
+import com.web.backend.model.redis.RefreshTokenData;
+import com.web.backend.model.redis.RegisterData;
 import com.web.backend.repository.RoleRepository;
 import com.web.backend.repository.UserRepository;
 import com.web.backend.service.AuthenticationService;
@@ -87,7 +88,6 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     private static final String USERNAME_FILTER_KEY = "filter:usernames";
 
     private static final String LOGGED_OUT_STRING = "logged_out";
-    private static final String ROTATED_STRING = "rotated";
 
     private static final String USER_STRING = "USER";
 
@@ -100,7 +100,6 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     private static final String DELIMITER_COLON_STRING = ":";
     private static final String EMPTY_STRING = "";
     private static final String ONE_STRING = "1";
-    private static final String TOKEN_VERSION_CLAIM_STRING = "v";
 
     private static final String ERROR_AUTH_INVALID_OTP_ATTEMPTS_STRING = "error.auth.invalid_otp_attempts";
     private static final String ERROR_AUTH_EMAIL_USED_STRING = "error.auth.email_used";
@@ -110,7 +109,6 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     private static final String ERROR_AUTH_INVALID_CREDENTIALS_STRING = "error.auth.invalid_credentials";
     private static final String ERROR_USER_NOT_FOUND_STRING = "error.user.not_found";
     private static final String ERROR_AUTH_MISSING_REFRESH_STRING = "error.auth.missing_refresh";
-    private static final String ERROR_AUTH_REFRESH_REVOKED_STRING = "error.auth.refresh_revoked";
     private static final String ERROR_AUTH_REFRESH_EXPIRED_STRING = "error.auth.refresh_expired";
     private static final String ERROR_AUTH_EMAIL_NOT_FOUND_STRING = "error.auth.email_not_found";
     private static final String ERROR_AUTH_OTP_EXPIRED_OR_EMAIL_MISSING_STRING = "error.auth.otp_expired_or_email_missing";
@@ -198,7 +196,6 @@ public class AuthenticationServiceImpl implements AuthenticationService {
 
         String refreshToken = jwtService.generateRefreshToken(
                 loginRequest.getUsername(),
-                authorities,
                 tokenVersion);
 
         UserResponse userResponse = userMapper.toUserResponse(userPrincipal);
@@ -212,13 +209,15 @@ public class AuthenticationServiceImpl implements AuthenticationService {
 
     @Override
     public void logout(String token, TokenType tokenType) {
-        long remainingTime = jwtService.getRemainingTime(token, tokenType);
-
-        if (remainingTime > 0) {
-            String key = BLACKLIST_STRING + token;
-            redisTemplate.opsForValue().set(key, LOGGED_OUT_STRING, remainingTime, TimeUnit.MILLISECONDS);
+        if (tokenType == TokenType.ACCESS_TOKEN) {
+            long remainingTime = jwtService.getRemainingTime(token);
+            if (remainingTime > 0) {
+                String key = BLACKLIST_STRING + token;
+                redisTemplate.opsForValue().set(key, LOGGED_OUT_STRING, remainingTime, TimeUnit.MILLISECONDS);
+            }
+        } else if (tokenType == TokenType.REFRESH_TOKEN) {
+            jwtService.revokeRefreshToken(token);
         }
-        log.debug("Access token added to blacklist with TTL: {} ms", remainingTime);
     }
 
     @Override
@@ -234,6 +233,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         if (userCache != null) {
             userCache.evict(Objects.requireNonNull(username));
         }
+
         log.info("User '{}' logged out from all devices (token version incremented)", username);
     }
 
@@ -242,45 +242,37 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         if (refreshToken == null || refreshToken.isEmpty()) {
             throw new InvalidDataException(Translator.tolocale(ERROR_AUTH_MISSING_REFRESH_STRING));
         }
-        String username = jwtService.extractUsername(refreshToken, TokenType.REFRESH_TOKEN);
+        RefreshTokenData tokenData = jwtService.validateRefreshToken(refreshToken);
+        String username = tokenData.getUsername();
+
         UserEntity user = userRepository.findWithAuthoritiesByUsername(username)
                 .orElseThrow(() -> new ResourceNotFoundException(Translator.tolocale(ERROR_USER_NOT_FOUND_STRING)));
 
-        String blacklistKey = BLACKLIST_STRING + refreshToken;
-        if (Boolean.TRUE.equals(redisTemplate.hasKey(blacklistKey))) {
-            user.setTokenVersion(user.getTokenVersion() == null ? 0 : user.getTokenVersion() + 1);
-            userRepository.save(user);
-            Cache userCache = cacheManager.getCache(USER_DETAILS_STRING);
-            if (userCache != null && user.getUsername() != null) {
-                userCache.evict(Objects.requireNonNull(user.getUsername()));
-            }
-            throw new AccessForbiddenException(Translator.tolocale(ERROR_AUTH_REFRESH_REVOKED_STRING));
-        }
-
-        Integer tokenVersionInJwt = jwtService.extractClaim(refreshToken, TokenType.REFRESH_TOKEN,
-                claims -> claims.get(TOKEN_VERSION_CLAIM_STRING, Integer.class));
         Integer currentVersion = user.getTokenVersion() == null ? 0 : user.getTokenVersion();
-
-        if (tokenVersionInJwt == null || !tokenVersionInJwt.equals(currentVersion)) {
+        if (!Objects.equals(tokenData.getTokenVersion(), currentVersion)) {
+            jwtService.revokeRefreshToken(refreshToken);
+            log.warn("Refresh token version mismatch for user '{}' [tokenVersion={}, currentVersion={}]",
+                    username, tokenData.getTokenVersion(), currentVersion);
             throw new AccessForbiddenException(Translator.tolocale(ERROR_AUTH_REFRESH_EXPIRED_STRING));
         }
 
-        List<String> authorities = new ArrayList<>();
-        user.getAuthorities().forEach(authority -> authorities.add(authority.getAuthority()));
         if (user.getUserStatus() == UserStatus.INACTIVE || user.getUserStatus() == UserStatus.LOCKED) {
+            jwtService.revokeRefreshToken(refreshToken);
             throw new AccessForbiddenException(Translator.tolocale(ERROR_AUTH_ACCOUNT_LOCKED_DELETED_STRING));
         }
 
+        jwtService.revokeRefreshToken(refreshToken);
+
+        List<String> authorities = new ArrayList<>();
+        user.getAuthorities().forEach(authority -> authorities.add(authority.getAuthority()));
+
         String newAccessToken = jwtService.generateAccessToken(user.getUsername(), authorities, currentVersion);
-        String newRefreshToken = jwtService.generateRefreshToken(user.getUsername(), authorities, currentVersion);
+        String newRefreshToken = jwtService.generateRefreshToken(user.getUsername(), currentVersion);
 
-        long remainingTime = jwtService.getRemainingTime(refreshToken, TokenType.REFRESH_TOKEN);
-        if (remainingTime > 0) {
-            redisTemplate.opsForValue().set(blacklistKey, ROTATED_STRING, remainingTime, TimeUnit.MILLISECONDS);
-        }
-
-        log.info("User '{}' refreshed access token", username);
-        return TokenResponse.builder().accessToken(newAccessToken).refreshToken(newRefreshToken).build();
+        return TokenResponse.builder()
+                .accessToken(newAccessToken)
+                .refreshToken(newRefreshToken)
+                .build();
     }
 
     @Override

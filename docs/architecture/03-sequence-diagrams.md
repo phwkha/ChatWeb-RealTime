@@ -107,18 +107,36 @@ sequenceDiagram
     end
 
     AuthSvc->>AuthSvc: Đối chiếu mật khẩu BCrypt
-    AuthSvc->>JWT: Sinh Access Token (claim v = user.token_version, exp = 60m)
-    AuthSvc->>JWT: Sinh Refresh Token (exp = 7 ngày)
+    AuthSvc->>JWT: Sinh Access Token (claim v = user.token_version, exp = 15m)
+    AuthSvc->>JWT: Sinh Opaque Refresh Token (UUID)
+    JWT->>Redis: Lưu RefreshTokenData vào rt:{uuid} (TTL = 7 ngày)
     
     AuthSvc-->>AuthCtrl: Trả về Token Pair
-    AuthCtrl-->>User: Set-Cookie: jwt_token_cookie (HttpOnly, SameSite=Strict)
+    AuthCtrl-->>User: Set-Cookie: accessToken (Path=/), refreshToken (Path=/api/auth)
+
+    note over User, DB: Khi client thực hiện Refresh Token (Token Rotation)
+    User->>AuthCtrl: POST /api/auth/refresh-token (Cookie: refreshToken)
+    AuthCtrl->>AuthSvc: refreshToken(refreshToken)
+    AuthSvc->>Redis: GET rt:{token} (Lấy RefreshTokenData)
+    AuthSvc->>DB: Đối chiếu tokenData.tokenVersion == user.tokenVersion
+    AuthSvc->>Redis: DEL rt:{token} (Xóa token cũ ngay trước khi cấp mới)
+    AuthSvc->>JWT: Sinh Access Token mới + Opaque Refresh Token mới
+    JWT->>Redis: SET rt:{newToken} -> RefreshTokenData (TTL 7 ngày)
+    AuthCtrl-->>User: Trả về Access Token mới và cập nhật Cookies
+
+    note over User, DB: Khi người dùng chọn "Đăng xuất" (Phiên hiện tại)
+    User->>AuthCtrl: POST /api/auth/logout (Cookie: accessToken, refreshToken)
+    AuthCtrl->>AuthSvc: logout(accessToken, refreshToken)
+    AuthSvc->>Redis: DEL rt:{refreshToken} (Hủy Refresh Token tức thì)
+    AuthSvc->>Redis: SET blacklist:{accessToken} (với TTL còn lại của JWT)
+    AuthCtrl-->>User: Xóa cookies (Max-Age=0)
 
     note over User, DB: Khi người dùng chọn "Đăng xuất khỏi tất cả thiết bị"
     User->>AuthCtrl: POST /api/auth/logout-all-devices
     AuthCtrl->>AuthSvc: logoutAllDevices(username)
     AuthSvc->>DB: UPDATE users SET token_version = token_version + 1 WHERE id = ?
-    AuthSvc->>Redis: Đưa Access Token hiện tại vào blacklist:{token}
-    AuthSvc-->>User: 200 OK (Toàn bộ token cũ mang version cũ lập tức bị vô hiệu hóa)
+    AuthSvc->>Redis: Evict cache "user_details" & đưa Access Token hiện tại vào blacklist
+    AuthCtrl-->>User: 200 OK (Toàn bộ token mang version cũ lập tức bị vô hiệu hóa)
 ```
 
 ---

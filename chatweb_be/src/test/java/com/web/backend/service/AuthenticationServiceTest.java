@@ -34,6 +34,7 @@ import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.request.CreateUserRequest;
 import com.web.backend.controller.request.LoginRequest;
 import com.web.backend.controller.request.VerifyOtpRequest;
+import com.web.backend.model.redis.RefreshTokenData;
 import com.web.backend.model.redis.RegisterData;
 import com.web.backend.exception.custom.InvalidOtpException;
 import com.web.backend.controller.response.LoginResponse;
@@ -128,7 +129,7 @@ class AuthenticationServiceTest {
         when(authentication.getPrincipal()).thenReturn(mockUser);
 
         when(jwtService.generateAccessToken(anyString(), any(), anyInt())).thenReturn("mockAccessToken");
-        when(jwtService.generateRefreshToken(anyString(), any(), anyInt())).thenReturn("mockRefreshToken");
+        when(jwtService.generateRefreshToken(anyString(), any())).thenReturn("mockRefreshToken");
 
         UserResponse mockUserResponse = UserResponse.builder().username("testuser").build();
         when(userMapper.toUserResponse(mockUser)).thenReturn(mockUserResponse);
@@ -238,18 +239,17 @@ class AuthenticationServiceTest {
     void testRefreshToken_Success() {
         // Arrange
         String oldRefreshToken = "oldRefresh";
-        when(jwtService.extractUsername(oldRefreshToken, TokenType.REFRESH_TOKEN)).thenReturn("testuser");
+        RefreshTokenData tokenData = RefreshTokenData.builder()
+                .username("testuser")
+                .tokenVersion(1)
+                .createdAt(java.time.Instant.now())
+                .build();
+        when(jwtService.validateRefreshToken(oldRefreshToken)).thenReturn(tokenData);
         when(userRepository.findWithAuthoritiesByUsername("testuser")).thenReturn(Optional.of(mockUser));
-        when(redisTemplate.hasKey("blacklist:" + oldRefreshToken)).thenReturn(false);
-
-        // Mock extractClaim for token version
-        when(jwtService.extractClaim(eq(oldRefreshToken), eq(TokenType.REFRESH_TOKEN), any())).thenReturn(1);
 
         mockUser.setUserStatus(UserStatus.ACTIVE);
         when(jwtService.generateAccessToken(eq("testuser"), any(), eq(1))).thenReturn("newAccess");
-        when(jwtService.generateRefreshToken(eq("testuser"), any(), eq(1))).thenReturn("newRefresh");
-        when(jwtService.getRemainingTime(oldRefreshToken, TokenType.REFRESH_TOKEN)).thenReturn(1000L);
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(jwtService.generateRefreshToken(eq("testuser"), eq(1))).thenReturn("newRefresh");
 
         // Act
         TokenResponse response = authenticationService.refreshToken(oldRefreshToken);
@@ -258,7 +258,7 @@ class AuthenticationServiceTest {
         assertNotNull(response);
         assertEquals("newAccess", response.getAccessToken());
         assertEquals("newRefresh", response.getRefreshToken());
-        verify(valueOperations).set(eq("blacklist:oldRefresh"), eq("rotated"), eq(1000L), any());
+        verify(jwtService).revokeRefreshToken(oldRefreshToken);
     }
 
     @Test
@@ -268,36 +268,49 @@ class AuthenticationServiceTest {
     }
 
     @Test
-    void testRefreshToken_Blacklisted_ThrowsAccessForbiddenException() {
+    void testRefreshToken_InvalidOrExpiredToken_ThrowsAccessForbiddenException() {
         // Arrange
         String badToken = "badToken";
-        when(jwtService.extractUsername(badToken, TokenType.REFRESH_TOKEN)).thenReturn("testuser");
-        when(userRepository.findWithAuthoritiesByUsername("testuser")).thenReturn(Optional.of(mockUser));
-        when(redisTemplate.hasKey("blacklist:" + badToken)).thenReturn(true);
-        when(cacheManager.getCache("user_details")).thenReturn(userCache);
+        when(jwtService.validateRefreshToken(badToken))
+                .thenThrow(new AccessForbiddenException("Expired or invalid"));
 
         // Act & Assert
         assertThrows(AccessForbiddenException.class, () -> authenticationService.refreshToken(badToken));
-
-        // Verify account token version incremented and cache evicted
-        assertEquals(2, mockUser.getTokenVersion());
-        verify(userRepository).save(mockUser);
-        verify(userCache).evict("testuser");
     }
 
     @Test
     void testRefreshToken_InvalidVersion_ThrowsAccessForbiddenException() {
         // Arrange
         String oldRefreshToken = "oldRefresh";
-        when(jwtService.extractUsername(oldRefreshToken, TokenType.REFRESH_TOKEN)).thenReturn("testuser");
+        RefreshTokenData tokenData = RefreshTokenData.builder()
+                .username("testuser")
+                .tokenVersion(0)
+                .createdAt(java.time.Instant.now())
+                .build();
+        when(jwtService.validateRefreshToken(oldRefreshToken)).thenReturn(tokenData);
         when(userRepository.findWithAuthoritiesByUsername("testuser")).thenReturn(Optional.of(mockUser));
-        when(redisTemplate.hasKey("blacklist:" + oldRefreshToken)).thenReturn(false);
-
-        // Mock extractClaim: JWT has version 0, but DB has version 1 (from setUp)
-        when(jwtService.extractClaim(eq(oldRefreshToken), eq(TokenType.REFRESH_TOKEN), any())).thenReturn(0);
 
         // Act & Assert
         assertThrows(AccessForbiddenException.class, () -> authenticationService.refreshToken(oldRefreshToken));
+        verify(jwtService).revokeRefreshToken(oldRefreshToken);
+    }
+
+    @Test
+    void testRefreshToken_UserLocked_ThrowsAccessForbiddenException() {
+        // Arrange
+        String oldRefreshToken = "oldRefresh";
+        RefreshTokenData tokenData = RefreshTokenData.builder()
+                .username("testuser")
+                .tokenVersion(1)
+                .createdAt(java.time.Instant.now())
+                .build();
+        mockUser.setUserStatus(UserStatus.LOCKED);
+        when(jwtService.validateRefreshToken(oldRefreshToken)).thenReturn(tokenData);
+        when(userRepository.findWithAuthoritiesByUsername("testuser")).thenReturn(Optional.of(mockUser));
+
+        // Act & Assert
+        assertThrows(AccessForbiddenException.class, () -> authenticationService.refreshToken(oldRefreshToken));
+        verify(jwtService).revokeRefreshToken(oldRefreshToken);
     }
 
     // ==========================================
@@ -308,7 +321,7 @@ class AuthenticationServiceTest {
     void testLogout_Success_WithRemainingTime() {
         // Arrange
         String mockToken = "mockToken";
-        when(jwtService.getRemainingTime(mockToken, TokenType.ACCESS_TOKEN)).thenReturn(5000L);
+        when(jwtService.getRemainingTime(mockToken)).thenReturn(5000L);
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
 
         // Act
@@ -323,14 +336,25 @@ class AuthenticationServiceTest {
     void testLogout_Success_NoRemainingTime() {
         // Arrange
         String mockToken = "mockToken";
-        when(jwtService.getRemainingTime(mockToken, TokenType.ACCESS_TOKEN)).thenReturn(0L);
+        when(jwtService.getRemainingTime(mockToken)).thenReturn(0L);
 
         // Act
         authenticationService.logout(mockToken, TokenType.ACCESS_TOKEN);
 
         // Assert
-        // redisTemplate.opsForValue() shouldn't be called
         verify(redisTemplate, never()).opsForValue();
+    }
+
+    @Test
+    void testLogout_RefreshToken_Success() {
+        // Arrange
+        String mockToken = "mockRefreshToken";
+
+        // Act
+        authenticationService.logout(mockToken, TokenType.REFRESH_TOKEN);
+
+        // Assert
+        verify(jwtService).revokeRefreshToken(mockToken);
     }
 
     @Test

@@ -46,10 +46,10 @@ Quản lý vòng đời tài khoản và token bảo mật.
 | `POST` | `/api/auth/register` | Nhận thông tin đăng ký, tạo dữ liệu tạm trong Redis và gửi mã OTP qua email. |
 | `POST` | `/api/auth/verify-account` | Xác minh mã OTP trong 5 phút để kích hoạt tài khoản chính thức vào PostgreSQL. |
 | `POST` | `/api/auth/resend-otp` | Gửi lại mã OTP kích hoạt tài khoản. |
-| `POST` | `/api/auth/login` | Đăng nhập bằng username/password, cấp phát JWT Cookies (`jwt_token_cookie`). |
-| `POST` | `/api/auth/refresh-token` | Sử dụng Refresh Token trong Cookie để cấp mới Access Token. |
-| `POST` | `/api/auth/logout` | Đăng xuất phiên hiện tại, đưa Access Token vào Redis Blacklist. |
-| `POST` | `/api/auth/logout-all-devices` | Tăng `token_version` trong PostgreSQL để vô hiệu hóa toàn bộ session cũ. |
+| `POST` | `/api/auth/login` | Đăng nhập bằng username/password, cấp phát cặp Cookie `accessToken` (Path `/`) và Opaque `refreshToken` (UUID trong Redis, Path `/api/auth`). |
+| `POST` | `/api/auth/refresh-token` | Sử dụng Refresh Token trong Cookie để cấp mới Access Token theo cơ chế Token Rotation và đối chiếu `token_version`. |
+| `POST` | `/api/auth/logout` | Đăng xuất phiên hiện tại: xóa Refresh Token khỏi Redis và đưa Access Token vào Redis Blacklist. |
+| `POST` | `/api/auth/logout-all-devices` | Tăng `token_version` trong PostgreSQL ($O(1)$) để vô hiệu hóa toàn bộ session cũ trên mọi thiết bị. |
 | `POST` | `/api/auth/forgot-password` | Yêu cầu gửi mã OTP đặt lại mật khẩu qua email. |
 | `POST` | `/api/auth/reset-password` | Đặt lại mật khẩu mới bằng mã OTP xác thực. |
 | `POST` | `/api/auth/resend-forgot-password` | Gửi lại mã OTP quên mật khẩu. |

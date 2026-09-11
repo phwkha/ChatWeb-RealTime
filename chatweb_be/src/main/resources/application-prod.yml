@@ -77,8 +77,7 @@ springdoc:
 
 jwt:
   secret-key-access: ${JWT_SECRET_ACCESS}
-  secret-key-refresh: ${JWT_SECRET_REFRESH}
-  expiry-minutes: 60
+  expiry-minutes: 15
   expiry-day: 7
 
 cloudinary:

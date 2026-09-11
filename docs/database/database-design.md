@@ -179,6 +179,7 @@ Redis Stack đóng vai trò là bộ nhớ trung tâm kết nối các node back
 | `chat:recent:hash:{convId}` | **Hash** | 24 giờ | Cache nội dung tin nhắn mới nhất để hiển thị nhanh danh sách chat list. |
 | `chat:recent:zset:{convId}` | **Sorted Set (ZSet)** | 24 giờ | Lưu danh sách message ID gần nhất với score = timestamp. |
 | `blacklist:{token}` | **String** | Bằng TTL của JWT | Danh sách Access Token bị thu hồi (đăng xuất sớm). |
+| `rt:{token}` | **Object (RefreshTokenData)** | 7 ngày | Lưu trữ Opaque Refresh Token (UUID), username và `tokenVersion` phục vụ Token Rotation & Logout-all. |
 | `register:{email}` | **Object (Java Serialized)** | 5 phút | Dữ liệu đăng ký tạm thời (`RegisterData`) kèm mã OTP xác thực email. |
 | `filter:usernames` | **Cuckoo Filter (CF)** | Bền vững | Kiểm tra nhanh username đã tồn tại hay chưa bằng lệnh Redis `CF.EXISTS` trước khi query PostgreSQL. |
 | `filter:emails` | **Cuckoo Filter (CF)** | Bền vững | Kiểm tra nhanh email đã đăng ký hay chưa bằng lệnh Redis `CF.EXISTS`. |

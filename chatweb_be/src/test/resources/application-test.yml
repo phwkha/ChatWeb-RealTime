@@ -58,7 +58,6 @@ jwt:
   expiry-minutes: 5
   expiry-day: 1
   secret-key-access: dummy-secret-key-that-is-at-least-32-bytes-long-for-hmac
-  secret-key-refresh: dummy-secret-key-that-is-at-least-32-bytes-long-for-hmac
 
 openapi:
   service:
