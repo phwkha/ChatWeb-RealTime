@@ -6,7 +6,6 @@ import java.security.Principal;
 
 import com.web.backend.jwt.JwtHandshakeInterceptor;
 import com.web.backend.model.postgres.UserEntity;
-import com.web.backend.common.TokenType;
 import com.web.backend.service.JwtService;
 import com.web.backend.service.UserServiceDetail;
 
@@ -204,7 +203,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
             throw new MessagingException(Objects.requireNonNull(Translator.tolocale(ERR_WS_BLACKLISTED)));
         }
 
-        String username = jwtService.extractUsername(token, TokenType.ACCESS_TOKEN);
+        String username = jwtService.extractUsername(token);
         if (username != null) {
             UserDetails userDetails = userServiceDetail.loadUserByUsername(username);
 
@@ -220,7 +219,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     }
 
     private void checkTokenVersion(String token, UserEntity userEntity, String username) {
-        Integer tokenVersionInJwt = jwtService.extractClaim(token, TokenType.ACCESS_TOKEN,
+        Integer tokenVersionInJwt = jwtService.extractClaim(token,
                 claims -> claims.get("v", Integer.class));
         Integer currentVersion = userEntity.getTokenVersion();
         if (currentVersion == null) {

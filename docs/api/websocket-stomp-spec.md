@@ -12,7 +12,7 @@ Hệ thống cung cấp điểm kết nối WebSocket chuẩn hỗ trợ fallbac
   - Phát triển cục bộ: `ws://localhost:8080/ws` (hoặc qua SockJS: `http://localhost:8080/ws`)
   - Nginx Reverse Proxy: `wss://<domain>/ws`
 - **Cơ chế xác thực (Authentication)**:
-  1. **Ưu tiên 1 (Cookie)**: Tự động trích xuất từ Cookie `jwt_token_cookie` đi kèm trong request bắt tay HTTP Upgrade.
+  1. **Ưu tiên 1 (Cookie)**: Tự động trích xuất từ Cookie `accessToken` (được bọc vào session attribute `jwt_token_cookie`) đi kèm trong request bắt tay HTTP Upgrade.
   2. **Ưu tiên 2 (STOMP Header)**: Truyền qua header `Authorization` khi gửi frame STOMP `CONNECT`:
      ```stomp
      CONNECT

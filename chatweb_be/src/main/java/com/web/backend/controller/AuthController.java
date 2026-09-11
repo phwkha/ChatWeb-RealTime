@@ -42,7 +42,7 @@ public class AuthController {
         private static final String PATH_STRING = "/";
         private static final String EMPTY_STRING = "";
 
-        private static final String API_AUTH_REFRESH_TOKEN_STRING = "/api/auth/refresh-token";
+        private static final String API_AUTH_PATH_STRING = "/api/auth";
 
         private static final String AUTHORIZATION_STRING = "Authorization";
         private static final String BEARER_STRING = "Bearer ";
@@ -77,7 +77,7 @@ public class AuthController {
                 ResponseCookie accessCookie = buildCookie(ACCESSTOKEN, loginResponse.getAccessToken(), PATH_STRING,
                                 15 * 60L);
                 ResponseCookie refreshCookie = buildCookie(REFRESHTOKEN, loginResponse.getRefreshToken(),
-                                API_AUTH_REFRESH_TOKEN_STRING, 7 * 24 * 60 * 60L);
+                                API_AUTH_PATH_STRING, 7 * 24 * 60 * 60L);
 
                 return ResponseEntity.ok()
                                 .header(HttpHeaders.SET_COOKIE, accessCookie.toString())
@@ -136,7 +136,7 @@ public class AuthController {
                                 PATH_STRING,
                                 15 * 60L);
                 ResponseCookie newrefreshCookie = buildCookie(REFRESHTOKEN, newTokenResponse.getRefreshToken(),
-                                API_AUTH_REFRESH_TOKEN_STRING, 7 * 24 * 60 * 60L);
+                                API_AUTH_PATH_STRING, 7 * 24 * 60 * 60L);
 
                 return ResponseEntity.ok()
                                 .header(HttpHeaders.SET_COOKIE, newAccessCookie.toString())
@@ -186,7 +186,7 @@ public class AuthController {
                 clearTokens(request);
 
                 ResponseCookie deleteAccess = buildCookie(ACCESSTOKEN, EMPTY_STRING, PATH_STRING, 0);
-                ResponseCookie deleteRefresh = buildCookie(REFRESHTOKEN, EMPTY_STRING, API_AUTH_REFRESH_TOKEN_STRING,
+                ResponseCookie deleteRefresh = buildCookie(REFRESHTOKEN, EMPTY_STRING, API_AUTH_PATH_STRING,
                                 0);
 
                 return ResponseEntity.ok()
@@ -207,7 +207,7 @@ public class AuthController {
                 clearTokens(request);
 
                 ResponseCookie deleteAccess = buildCookie(ACCESSTOKEN, EMPTY_STRING, PATH_STRING, 0);
-                ResponseCookie deleteRefresh = buildCookie(REFRESHTOKEN, EMPTY_STRING, API_AUTH_REFRESH_TOKEN_STRING,
+                ResponseCookie deleteRefresh = buildCookie(REFRESHTOKEN, EMPTY_STRING, API_AUTH_PATH_STRING,
                                 0);
 
                 return ResponseEntity.ok()
