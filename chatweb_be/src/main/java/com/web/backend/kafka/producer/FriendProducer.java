@@ -25,7 +25,7 @@ public class FriendProducer {
 
     private static final String TOPIC_MUST_NOT_BE_NULL_STRING = "Topic must not be null";
 
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     @Async
     public void sendFriendNoti(FriendPayload payload) {
         if (payload == null) {
