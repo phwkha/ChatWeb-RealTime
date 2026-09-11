@@ -457,6 +457,14 @@
   font-weight: 600;
 }
 
+.terms-check--error {
+  color: #d85454;
+}
+
+.terms-check--error input {
+  accent-color: #d85454;
+}
+
 .password-strength {
   display: flex;
   gap: 4px;

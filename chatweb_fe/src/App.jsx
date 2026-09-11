@@ -3,6 +3,8 @@ import { useAuth } from './context/auth-context.js'
 import AuthProvider from './context/AuthProvider.jsx'
 import { LanguageProvider } from './context/LanguageProvider.jsx'
 import LandingPage from './pages/LandingPage.jsx'
+import ExperiencePage from './pages/ExperiencePage.jsx'
+import SecurityPage from './pages/SecurityPage.jsx'
 import ChatPage from './pages/ChatPage.jsx'
 import LoginPage from './pages/auth/LoginPage.jsx'
 import OAuthCallbackPage from './pages/auth/OAuthCallbackPage.jsx'
@@ -50,6 +52,8 @@ function App() {
         <Routes>
           <Route path="/" element={<Navigate to="/home" replace />} />
           <Route path="/home" element={<LandingPage />} />
+          <Route path="/experience" element={<ExperiencePage />} />
+          <Route path="/security" element={<SecurityPage />} />
           <Route path="/chat" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
