@@ -2,7 +2,7 @@ export const CHAT_TRANSLATIONS = {
   vi: {
     appName: 'ChatWeb', search: 'Tìm kiếm', searchPeople: 'Tìm bạn mới...', searchConversations: 'Tìm cuộc trò chuyện...', conversations: 'Cuộc trò chuyện',
     friends: 'Bạn bè', friendsPageBody: 'Tìm kiếm, quản lý bạn bè và lời mời kết bạn.', requests: 'Lời mời', world: 'Thông báo thế giới', worldShort: 'Thế giới',
-    all: 'Tất cả', online: 'Đang hoạt động', offline: 'Ngoại tuyến', typing: 'đang nhập...',
+    all: 'Tất cả', online: 'Đang hoạt động', offline: 'Ngoại tuyến', typing: 'đang nhập...', rateLimitActive: 'Tạm khóa gửi tin',
     messagePlaceholder: 'Nhập tin nhắn...', send: 'Gửi', addFriend: 'Kết bạn', requested: 'Đã gửi lời mời',
     accept: 'Chấp nhận', noResults: 'Không tìm thấy người phù hợp', noConversationResults: 'Không tìm thấy cuộc trò chuyện phù hợp.', searchHint: 'Tìm theo tên hoặc username',
     displayName: 'Tên hiển thị', username: 'Tên người dùng', welcomeTitle: 'Chào mừng trở lại',
@@ -43,7 +43,7 @@ export const CHAT_TRANSLATIONS = {
   en: {
     appName: 'ChatWeb', search: 'Search', searchPeople: 'Find new people...', searchConversations: 'Search conversations...', conversations: 'Conversations',
     friends: 'Friends', friendsPageBody: 'Find and manage friends and friend requests.', requests: 'Requests', world: 'World announcements', worldShort: 'World',
-    all: 'All', online: 'Active now', offline: 'Offline', typing: 'is typing...',
+    all: 'All', online: 'Active now', offline: 'Offline', typing: 'is typing...', rateLimitActive: 'Messaging temporarily locked',
     messagePlaceholder: 'Write a message...', send: 'Send', addFriend: 'Add friend', requested: 'Request sent',
     accept: 'Accept', noResults: 'No matching people found', noConversationResults: 'No matching conversations found.', searchHint: 'Search by name or username',
     displayName: 'Display name', username: 'Username', welcomeTitle: 'Welcome back',

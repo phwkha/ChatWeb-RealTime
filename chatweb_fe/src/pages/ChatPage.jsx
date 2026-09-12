@@ -14,6 +14,7 @@ const FRIEND_EVENT_TYPES = new Set([
 ])
 const RECEIPT_PREFIX = '__CHATWEB_RECEIPT__:'
 const REACTION_PREFIX = '__CHATWEB_REACTION__:'
+const TYPING_PREFIX = '__CHATWEB_TYPING__:'
 const STATUS_RANK = { SENDING: 0, SENT: 1, DELIVERED: 2, READ: 3 }
 const REACTION_OPTIONS = [
   { type: 'LIKE', emoji: '👍' },
@@ -28,6 +29,7 @@ const BLOCKED_MESSAGES_STORAGE_KEY = 'chatweb-blocked-message-intervals'
 const EDIT_HISTORY_STORAGE_KEY = 'chatweb-message-edit-history'
 const MAX_MEDIA_SIZE_BYTES = 20 * 1024 * 1024
 const MESSAGE_PAGE_SIZE = 30
+const MESSAGE_HISTORY_FALLBACK_SIZE = 1000
 const MESSAGE_SEARCH_PAGE_SIZE = 30
 
 function getMediaContentType(file) {
@@ -151,6 +153,16 @@ function parseRealtimeReaction(content) {
   }
 }
 
+function parseRealtimeTyping(content) {
+  if (!String(content || '').startsWith(TYPING_PREFIX)) return null
+  try {
+    const typing = JSON.parse(String(content).slice(TYPING_PREFIX.length))
+    return typeof typing?.active === 'boolean' ? typing : null
+  } catch {
+    return null
+  }
+}
+
 function summarizeReactions(reactions) {
   const counts = new Map()
   Object.values(reactions || {}).forEach((type) => counts.set(type, (counts.get(type) || 0) + 1))
@@ -258,6 +270,7 @@ function ChatPage() {
   const [uploadingMedia, setUploadingMedia] = useState(false)
   const [worldDraft, setWorldDraft] = useState('')
   const [typingUsers, setTypingUsers] = useState({})
+  const [rateLimitRemainingByUser, setRateLimitRemainingByUser] = useState({})
   const [toast, setToast] = useState(null)
   const [reactionPickerMessageId, setReactionPickerMessageId] = useState(null)
   const [reactionSubmittingId, setReactionSubmittingId] = useState(null)
@@ -289,9 +302,15 @@ function ChatPage() {
   const messagesEndRef = useRef(null)
   const messageStreamRef = useRef(null)
   const preserveScrollHeightRef = useRef(null)
+  const loadingOlderMessagesRef = useRef(false)
+  const pendingOutgoingMessagesRef = useRef([])
+  const rateLimitHandledRecipientsRef = useRef(new Set())
+  const rateLimitResetTimersRef = useRef(new Map())
   const mediaInputRef = useRef(null)
   const messageInputRef = useRef(null)
   const typingTimeoutsRef = useRef(new Map())
+  const typingPublishTimersRef = useRef(new Map())
+  const typingLastSentRef = useRef(new Map())
   const readAckTimersRef = useRef(new Map())
   const socketSenderRef = useRef(null)
   const friendSyncTimersRef = useRef([])
@@ -327,6 +346,8 @@ function ChatPage() {
     .slice(0, 8), [blockedNames, currentUsernameKey, friendNames, incomingRequestNames, sentNames, suggestions])
   const activeMessages = selectedUser ? (messagesByUser[selectedUser.username] || []) : []
   const selectedUsername = selectedUser?.username || ''
+  const selectedUserIsTyping = Boolean(typingUsers[selectedUsername])
+  const rateLimitRemaining = rateLimitRemainingByUser[selectedUsername] || 0
   const latestWorldMessage = worldMessages.length ? worldMessages[worldMessages.length - 1] : null
   const selectedConversationKey = conversationPreferenceKey(user?.username, selectedUser?.username)
   const selectedConversationBlocked = isIncomingMessageBlocked(blockedMessageIntervals, user?.username, selectedUser?.username)
@@ -393,6 +414,18 @@ function ChatPage() {
     return () => window.clearTimeout(timeout)
   }, [toast])
 
+  useEffect(() => {
+    if (!Object.values(rateLimitRemainingByUser).some((remaining) => remaining > 0)) return undefined
+    const timer = window.setInterval(() => {
+      setRateLimitRemainingByUser((current) => Object.fromEntries(
+        Object.entries(current)
+          .map(([username, remaining]) => [username, Math.max(0, remaining - 1)])
+          .filter(([, remaining]) => remaining > 0),
+      ))
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [rateLimitRemainingByUser])
+
   const loadConnections = useCallback(async () => {
     const [friendsResult, requestsResult, sentResult, blockedResult] = await Promise.allSettled([
       apiRequest('/api/friends?size=100'),
@@ -456,9 +489,18 @@ function ChatPage() {
     if (!person || !user) return
     if (!silent) setLoadingConversation(true)
     try {
-      const query = new URLSearchParams({ user2: person.username, size: String(MESSAGE_PAGE_SIZE) })
-      if (cursor) query.set('cursor', cursor)
-      const response = await apiRequest(`/api/messages/private?${query}`)
+      const fetchConversationPage = async (size) => {
+        const query = new URLSearchParams({ user2: person.username, size: String(size) })
+        if (cursor) query.set('cursor', cursor)
+        return apiRequest(`/api/messages/private?${query}`)
+      }
+      let response
+      try {
+        response = await fetchConversationPage(MESSAGE_PAGE_SIZE)
+      } catch (error) {
+        if (Number(error?.status || error?.code) !== 500) throw error
+        response = await fetchConversationPage(MESSAGE_HISTORY_FALLBACK_SIZE)
+      }
       const visibleHistory = (response?.data?.content || []).filter((message) => (
         !wasMessageSentWhileBlocked(message, blockedMessageIntervals, user.username, person.username)
       ))
@@ -482,21 +524,27 @@ function ChatPage() {
     }
   }, [blockedMessageIntervals, showToast, t, user])
 
-  const loadOlderConversation = async () => {
+  const loadOlderConversation = useCallback(async () => {
     const person = selectedRef.current
     const page = conversationPages[person?.username]
-    if (!person || !page?.hasMore || !page.nextCursor || loadingOlderMessages) return
+    if (!person || !page?.hasMore || !page.nextCursor || loadingOlderMessagesRef.current) return
     preserveScrollHeightRef.current = messageStreamRef.current
       ? { height: messageStreamRef.current.scrollHeight, top: messageStreamRef.current.scrollTop }
       : null
+    loadingOlderMessagesRef.current = true
     setLoadingOlderMessages(true)
     try {
       const loadedCount = await loadConversation(person, true, page.nextCursor)
       if (loadedCount <= 0) preserveScrollHeightRef.current = null
     } finally {
+      loadingOlderMessagesRef.current = false
       setLoadingOlderMessages(false)
     }
-  }
+  }, [conversationPages, loadConversation])
+
+  const handleMessageStreamScroll = useCallback((event) => {
+    if (event.currentTarget.scrollTop <= 80) void loadOlderConversation()
+  }, [loadOlderConversation])
 
   const searchConversationMessages = useCallback(async (keyword, signal = undefined, cursor = null, append = false) => {
     const person = selectedRef.current
@@ -565,6 +613,16 @@ function ChatPage() {
     })
   }, [])
 
+  const sendTypingStatus = useCallback((recipient, active) => {
+    if (!recipient || !socketSenderRef.current) return false
+    return socketSenderRef.current({
+      recipient,
+      content: `${TYPING_PREFIX}${JSON.stringify({ active })}`,
+      contentType: 'TEXT',
+      messageType: 'TYPING',
+    })
+  }, [])
+
   const isActivelyViewingConversation = useCallback((username) => (
     activeSectionRef.current === 'chat'
     && selectedRef.current?.username === username
@@ -593,6 +651,41 @@ function ChatPage() {
       contentType: 'TEXT',
       messageType: 'TYPING',
     })
+  }, [])
+
+  const trackOutgoingMessage = useCallback((recipient, localId) => {
+    const cutoff = Date.now() - 15000
+    pendingOutgoingMessagesRef.current = [
+      ...pendingOutgoingMessagesRef.current.filter((item) => item.createdAt > cutoff),
+      { recipient, localId, createdAt: Date.now() },
+    ]
+  }, [])
+
+  const removeRateLimitedMessage = useCallback((error) => {
+    const failedRequest = error?.request || error?.data?.request
+    const cutoff = Date.now() - 15000
+    const pending = pendingOutgoingMessagesRef.current
+      .filter((item) => item.createdAt > cutoff)
+    const failedRecipient = failedRequest?.recipient || pending[pending.length - 1]?.recipient
+    if (!failedRecipient || rateLimitHandledRecipientsRef.current.has(failedRecipient)) {
+      pendingOutgoingMessagesRef.current = pending
+      return
+    }
+    const failedLocalId = failedRequest?.localId
+      || pending[pending.length - 1]?.localId
+    rateLimitHandledRecipientsRef.current.add(failedRecipient)
+    setRateLimitRemainingByUser((current) => ({ ...current, [failedRecipient]: 60 }))
+    window.clearTimeout(rateLimitResetTimersRef.current.get(failedRecipient))
+    rateLimitResetTimersRef.current.set(failedRecipient, window.setTimeout(() => {
+      rateLimitHandledRecipientsRef.current.delete(failedRecipient)
+      rateLimitResetTimersRef.current.delete(failedRecipient)
+    }, 60000))
+    pendingOutgoingMessagesRef.current = pending.filter((item) => item.recipient !== failedRecipient)
+    if (!failedLocalId || !failedRecipient) return
+    setMessagesByUser((current) => ({
+      ...current,
+      [failedRecipient]: (current[failedRecipient] || []).filter((message) => message.localId !== failedLocalId),
+    }))
   }, [])
 
   const handleIncomingMessage = useCallback(async (message) => {
@@ -626,11 +719,12 @@ function ChatPage() {
         return
       }
       if (message.sender !== user.username) {
-        setTypingUsers((current) => ({ ...current, [message.sender]: true }))
+        const typing = parseRealtimeTyping(message.content)
+        setTypingUsers((current) => ({ ...current, [message.sender]: typing?.active !== false }))
         window.clearTimeout(typingTimeoutsRef.current.get(message.sender))
         const timeout = window.setTimeout(() => {
           setTypingUsers((current) => ({ ...current, [message.sender]: false }))
-        }, 1800)
+        }, typing?.active === false ? 0 : 3500)
         typingTimeoutsRef.current.set(message.sender, timeout)
       }
       return
@@ -728,6 +822,12 @@ function ChatPage() {
 
   const handleSocketError = useCallback((error) => {
     const failedRequest = error?.request || error?.data?.request
+    const errorCode = String(error?.errorCode || error?.code || error?.status || '').toUpperCase()
+    if (errorCode === 'RATE_LIMITED' || errorCode === '429') {
+      removeRateLimitedMessage(error)
+      showToast(getErrorMessage(error, t('socketError')), 'error')
+      return
+    }
     if (failedRequest?.localId && failedRequest?.recipient) {
       setMessagesByUser((current) => ({
         ...current,
@@ -739,7 +839,7 @@ function ChatPage() {
       }))
     }
     showToast(getErrorMessage(error, t('socketError')), 'error')
-  }, [showToast, t])
+  }, [removeRateLimitedMessage, showToast, t])
 
   const handleSocketConnected = useCallback(() => {
     if (selectedRef.current && activeSectionRef.current === 'chat') {
@@ -811,6 +911,9 @@ function ChatPage() {
     friendSyncTimersRef.current.forEach((timer) => window.clearTimeout(timer))
     readAckTimersRef.current.forEach((timer) => window.clearTimeout(timer))
     typingTimeoutsRef.current.forEach((timer) => window.clearTimeout(timer))
+    typingPublishTimersRef.current.forEach((timer) => window.clearTimeout(timer))
+    typingLastSentRef.current.clear()
+    rateLimitResetTimersRef.current.forEach((timer) => window.clearTimeout(timer))
   }, [])
 
   useEffect(() => {
@@ -821,8 +924,15 @@ function ChatPage() {
       preserveScrollHeightRef.current = null
       return
     }
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-  }, [activeMessages.length, selectedUser?.username])
+    const stream = messageStreamRef.current
+    if (stream) {
+      stream.scrollTo({ top: stream.scrollHeight, behavior: 'smooth' })
+    }
+    if (messageStreamRef.current?.scrollHeight <= messageStreamRef.current?.clientHeight
+      && conversationPages[selectedUser?.username]?.hasMore) {
+      void loadOlderConversation()
+    }
+  }, [activeMessages.length, conversationPages, loadOlderConversation, selectedUser?.username, selectedUserIsTyping])
 
   useEffect(() => {
     const query = searchQuery.trim()
@@ -994,7 +1104,11 @@ function ChatPage() {
   const submitMessage = async (event) => {
     event.preventDefault()
     const content = messageDraft.trim()
-    if (!content || !selectedUser || !user) return
+    if (!content || !selectedUser || !user || rateLimitRemaining > 0) return
+    window.clearTimeout(typingPublishTimersRef.current.get(selectedUser.username))
+    typingPublishTimersRef.current.delete(selectedUser.username)
+    typingLastSentRef.current.delete(selectedUser.username)
+    sendTypingStatus(selectedUser.username, false)
     const localId = crypto.randomUUID()
     const optimisticMessage = {
       localId, sender: user.username, recipient: selectedUser.username, content,
@@ -1008,6 +1122,7 @@ function ChatPage() {
     const sent = sendPrivateMessage({
       recipient: selectedUser.username, content, contentType: 'TEXT', messageType: 'CHAT', localId,
     })
+    if (sent) trackOutgoingMessage(selectedUser.username, localId)
     if (!sent) {
       setMessagesByUser((current) => ({
         ...current,
@@ -1049,6 +1164,7 @@ function ChatPage() {
       fileSize: message.fileSize || null,
       localId: retryLocalId,
     })
+    if (sent) trackOutgoingMessage(selectedUser.username, retryLocalId)
     setMessagesByUser((current) => ({
       ...current,
       [selectedUser.username]: (current[selectedUser.username] || []).map((item) => (
@@ -1063,7 +1179,7 @@ function ChatPage() {
   const handleMediaSelection = async (event) => {
     const file = event.target.files?.[0]
     event.target.value = ''
-    if (!file || !selectedUser || !user) return
+    if (!file || !selectedUser || !user || rateLimitRemaining > 0) return
 
     const contentType = getMediaContentType(file)
     if (!contentType) {
@@ -1120,6 +1236,7 @@ function ChatPage() {
         fileSize: file.size,
         localId,
       })
+      if (sent) trackOutgoingMessage(targetUser.username, localId)
       setMessagesByUser((current) => ({
         ...current,
         [targetUser.username]: (current[targetUser.username] || []).map((message) => (
@@ -1137,7 +1254,28 @@ function ChatPage() {
   }
 
   const handleDraftChange = (event) => {
-    setMessageDraft(event.target.value)
+    if (rateLimitRemaining > 0) return
+    const nextDraft = event.target.value
+    setMessageDraft(nextDraft)
+    if (!selectedUser) return
+    const recipient = selectedUser.username
+    window.clearTimeout(typingPublishTimersRef.current.get(recipient))
+    if (!nextDraft.trim()) {
+      typingPublishTimersRef.current.delete(recipient)
+      typingLastSentRef.current.delete(recipient)
+      sendTypingStatus(recipient, false)
+      return
+    }
+    const now = Date.now()
+    const lastSent = typingLastSentRef.current.get(recipient) || 0
+    if (now - lastSent >= 2000) {
+      sendTypingStatus(recipient, true)
+      typingLastSentRef.current.set(recipient, now)
+    }
+    const timeout = window.setTimeout(() => {
+      typingPublishTimersRef.current.delete(recipient)
+    }, 2200)
+    typingPublishTimersRef.current.set(recipient, timeout)
   }
 
   const insertMessageEmoji = (emoji) => {
@@ -1460,7 +1598,7 @@ function ChatPage() {
                 setSelectedUser(null)
               }}><ChatIcon name="arrowLeft" /></button>
               <Avatar person={selectedUser} size="medium" showStatus />
-              <span><strong>{displayName(selectedUser)}</strong><small className={isPersonOnline(selectedUser) ? 'is-online' : ''}>{typingUsers[selectedUser.username] ? t('typing') : (isPersonOnline(selectedUser) ? t('online') : t('offline'))}</small></span>
+              <span><strong>{displayName(selectedUser)}</strong><small className={isPersonOnline(selectedUser) ? 'is-online' : ''}>{isPersonOnline(selectedUser) ? t('online') : t('offline')}</small></span>
               <div className={`connection-pill connection-pill--${connectionState}`}><i />{t(connectionState === 'connected' ? 'connected' : connectionState === 'disconnected' ? 'disconnected' : 'reconnecting')}</div>
               <div className="conversation-actions" ref={conversationMenuRef}>
                 <button className="conversation-actions__trigger" type="button" aria-label={t('conversationOptions')} aria-expanded={conversationMenuOpen} onClick={() => {
@@ -1490,7 +1628,7 @@ function ChatPage() {
                 )}
               </div>
             </header>
-            <div className="message-stream" ref={messageStreamRef}>
+            <div className="message-stream" ref={messageStreamRef} onScroll={handleMessageStreamScroll}>
               {loadingConversation && <div className="message-loading"><i /><i /><i /></div>}
               {!loadingConversation && conversationPages[selectedUser.username]?.hasMore && (
                 <button className="load-older" type="button" disabled={loadingOlderMessages} onClick={loadOlderConversation}>
@@ -1629,6 +1767,15 @@ function ChatPage() {
                   </div>
                 )
               })}
+              {typingUsers[selectedUser.username] && (
+                <div className="typing-indicator">
+                  <Avatar person={selectedUser} size="tiny" />
+                  <span className="typing-indicator__bubble">
+                    <i /><i /><i />
+                    <small>{t('typing')}</small>
+                  </span>
+                </div>
+              )}
               <div ref={messagesEndRef} />
               {messageContextMenu && (
                 <div
@@ -1672,18 +1819,24 @@ function ChatPage() {
               )}
             </div>
             <form className="message-composer-bar" onSubmit={submitMessage}>
+              {rateLimitRemaining > 0 && (
+                <div className="message-composer-lock" role="status">
+                  <strong>{t('rateLimitActive')}</strong>
+                  <span>{rateLimitRemaining}s</span>
+                </div>
+              )}
               <input ref={mediaInputRef} className="media-input" type="file" accept="image/*,video/*" onChange={handleMediaSelection} />
               <button
                 className={`attachment-button${uploadingMedia ? ' is-uploading' : ''}`}
                 type="button"
                 aria-label={uploadingMedia ? t('uploadingMedia') : t('uploadMedia')}
                 title={uploadingMedia ? t('uploadingMedia') : t('uploadMedia')}
-                disabled={uploadingMedia || connectionState !== 'connected'}
+                disabled={uploadingMedia || connectionState !== 'connected' || rateLimitRemaining > 0}
                 onClick={() => mediaInputRef.current?.click()}
               ><ChatIcon name="image" /></button>
-              <input ref={messageInputRef} value={messageDraft} onChange={handleDraftChange} placeholder={t('messagePlaceholder')} aria-label={t('messagePlaceholder')} />
+              <input ref={messageInputRef} value={messageDraft} onChange={handleDraftChange} placeholder={rateLimitRemaining > 0 ? t('rateLimitActive') : t('messagePlaceholder')} aria-label={t('messagePlaceholder')} disabled={rateLimitRemaining > 0} />
               <span className="composer-emoji-anchor">
-                <button type="button" aria-label="Chọn emoji" aria-expanded={emojiPickerOpen} onClick={() => setEmojiPickerOpen((open) => !open)}><ChatIcon name="smile" /></button>
+                <button type="button" aria-label="Chọn emoji" aria-expanded={emojiPickerOpen} disabled={rateLimitRemaining > 0} onClick={() => setEmojiPickerOpen((open) => !open)}><ChatIcon name="smile" /></button>
                 {emojiPickerOpen && (
                   <div className="composer-emoji-picker" role="menu" aria-label="Chọn emoji">
                     {MESSAGE_EMOJI_OPTIONS.map((emoji) => (
@@ -1692,7 +1845,7 @@ function ChatPage() {
                   </div>
                 )}
               </span>
-              <button className="composer-send" type="submit" aria-label={t('send')} disabled={!messageDraft.trim() || connectionState !== 'connected'}><ChatIcon name="send" size={18} /></button>
+              <button className="composer-send" type="submit" aria-label={t('send')} disabled={!messageDraft.trim() || connectionState !== 'connected' || rateLimitRemaining > 0}><ChatIcon name="send" size={18} /></button>
             </form>
           </>
         ) : (
