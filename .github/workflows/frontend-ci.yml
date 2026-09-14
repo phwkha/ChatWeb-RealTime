@@ -7,7 +7,6 @@ on:
     branches: [develop]
 
 jobs:
-  # Bước 1: Kiểm tra xem có file frontend nào thay đổi không
   check-changes:
     name: Check Frontend Changes
     runs-on: ubuntu-latest

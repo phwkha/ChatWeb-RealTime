@@ -213,11 +213,23 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./ssl/ca/rootCA.crt:/etc/nginx/ssl/rootCA.crt:ro
-      - ./test-chat.html:/usr/share/nginx/html/test-chat.html:ro
     networks:
       - default
     depends_on:
       - cw_backend
+      - cw_frontend
+
+  # --- REACT FRONTEND ---
+  cw_frontend:
+    image: ${DOCKER_USERNAME:-phwkha}/chatweb-frontend:latest
+    build:
+      context: ./chatweb_fe
+      dockerfile: Dockerfile
+    container_name: chatweb_frontend
+    expose:
+      - "8080"
+    networks:
+      - default
 
   # --- SPRING BOOT BACKEND ---
   cw_backend:
