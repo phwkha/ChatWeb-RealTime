@@ -545,7 +545,7 @@ class MessageServiceTest {
         when(redisTemplate.opsForHash()).thenReturn(hashOperations);
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
 
-        java.util.Set<Object> mockSet = Collections.singleton((Object) redisMsg.getId());
+        java.util.Set<Object> mockSet = Collections.singleton(redisMsg.getId());
         when(zSetOperations.reverseRange(anyString(), anyLong(), anyLong())).thenReturn(mockSet);
         when(hashOperations.multiGet(anyString(), anyCollection()))
                 .thenReturn(Collections.singletonList(redisMsg));

@@ -26,7 +26,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class SystemMessageRepositoryTest {
 
     @Container
-    static MongoDBContainer mongoDBContainer = new MongoDBContainer("mongo:6.0").withExposedPorts(27017);
+    static MongoDBContainer mongoDBContainer = new MongoDBContainer("mongo:6.0");
 
     @DynamicPropertySource
     static void setProperties(DynamicPropertyRegistry registry) {

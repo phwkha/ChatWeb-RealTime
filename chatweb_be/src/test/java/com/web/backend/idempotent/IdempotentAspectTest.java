@@ -1,7 +1,6 @@
 package com.web.backend.idempotent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.web.backend.controller.response.ApiResponse;
 import com.web.backend.exception.custom.DuplicateRequestException;
 import com.web.backend.exception.custom.InvalidDataException;
 import jakarta.servlet.http.HttpServletRequest;
