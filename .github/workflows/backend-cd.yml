@@ -27,10 +27,22 @@ jobs:
       - name: Grant execute permission for mvnw
         run: chmod +x chatweb_be/mvnw
 
+      - name: Generate Version Tag
+        id: version
+        run: |
+          # Tạo tag phiên bản tăng dần theo số lần chạy workflow (ví dụ: v1, v2...)
+          VERSION="v${{ github.run_number }}"
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
+          echo "Building Docker image with tags: latest, $VERSION, sha-$SHORT_SHA"
+
       - name: Build & Push to Docker Hub with Jib
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
         run: |
           cd chatweb_be
-          ./mvnw compile jib:build
+          ./mvnw compile jib:build \
+            -Djib.to.tags=latest,${{ steps.version.outputs.short_sha }} \
+            -Djib.to.image=${{ secrets.DOCKER_USERNAME }}/chatweb-backend:${{ steps.version.outputs.version }}

@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.*;
 
 @Tag(name = "Search Controller")
 @RestController
-@RequestMapping("/api/search")
+@RequestMapping("/api/search/users")
 @RequiredArgsConstructor
 public class SearchUserController {
 
@@ -31,7 +31,7 @@ public class SearchUserController {
 
     @Operation(summary = "Search users by keyword", description = "Search users by username, email, first name or last name")
     @RateLimit(key = "search_users", limit = 30, period = 60, type = LimitType.USER)
-    @GetMapping("/users")
+    @GetMapping
     public ResponseEntity<ApiResponse<PageResponse<UserSummaryResponse>>> searchUsers(
             Authentication authentication,
             @RequestParam(defaultValue = "") String keyword,
@@ -55,7 +55,7 @@ public class SearchUserController {
 
     @Operation(summary = "Advance search query by specifications", description = "Return list of users")
     @RateLimit(key = "search_users_filter", limit = 20, period = 60, type = LimitType.USER)
-    @GetMapping(path = "/users/filter")
+    @GetMapping("/filter")
     public ResponseEntity<ApiResponse<PageResponse<UserSummaryResponse>>> advanceSearchWithSpecifications(
             Pageable pageable,
             @RequestParam(required = false) String[] user,

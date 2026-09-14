@@ -1,6 +1,15 @@
 spring:
   main:
     allow-circular-references: true
+  cache:
+    type: none
+  data:
+    mongodb:
+      auto-index-creation: false
+      uri: mongodb://localhost:27017/test
+    redis:
+      host: localhost
+      port: 6379
   datasource:
     url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
     driverClassName: org.h2.Driver
@@ -23,6 +32,10 @@ spring:
     username: dummy
     expiration-minutes: 5
   kafka:
+    admin:
+      auto-create: false
+    listener:
+      auto-startup: false
     topic:
       friend:
         friend-topic: dummy
@@ -33,7 +46,10 @@ spring:
         save: dummy
         messages-group-id: dummy
         system-messages-group-id: dummy
-
+        messages-save-group-id: "test-messages-save-group"
+      update-message:
+        update: "test-update-message"
+        group-id: "test-update-message-group"
       email:
         email-topic: dummy
         group-id: dummy
@@ -46,6 +62,8 @@ cloudinary:
   api-secret: dummy
 
 app:
+  cors:
+    allowed-origins: "http://localhost:3000"
   upload:
     avatar:
       max-size: 1048576
@@ -57,7 +75,7 @@ app:
 jwt:
   expiry-minutes: 5
   expiry-day: 1
-  secret-key-access: dummy-secret-key-that-is-at-least-32-bytes-long-for-hmac
+  secret-key-access: ZHVtbXktc2VjcmV0LWtleS10aGF0LWlzLWF0LWxlYXN0LTMyLWJ5dGVzLWxvbmctZm9yLWhtYWM=
 
 openapi:
   service:

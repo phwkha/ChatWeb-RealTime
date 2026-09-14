@@ -1,5 +1,24 @@
 package com.web.backend.kafka.consumer;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import java.time.Instant;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentMatchers;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.support.ResourceBundleMessageSource;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.web.backend.common.UpdateMessageType;
 import com.web.backend.config.localresolverconfig.Translator;
@@ -10,23 +29,8 @@ import com.web.backend.kafka.payload.UpdateMessagePayload;
 import com.web.backend.mapper.MessageMapper;
 import com.web.backend.model.mongodb.ChatMessage;
 import com.web.backend.service.WebSocketRoutingService;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.context.support.ResourceBundleMessageSource;
-
-import java.time.Instant;
-
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-@org.mockito.junit.jupiter.MockitoSettings(strictness = org.mockito.quality.Strictness.LENIENT)
 class UpdateMessageConsumerTest {
 
     @Mock
@@ -69,9 +73,9 @@ class UpdateMessageConsumerTest {
         updateMessageConsumer.handleMessageUpdates(payload);
 
         verify(webSocketRoutingService).routeMessage(eq("sender1"), eq("/queue/notifications"),
-                any(NotificationResponse.class));
+                ArgumentMatchers.<NotificationResponse<?>>any());
         verify(webSocketRoutingService).routeMessage(eq("recipient1"), eq("/queue/notifications"),
-                any(NotificationResponse.class));
+                ArgumentMatchers.<NotificationResponse<?>>any());
     }
 
     @Test
@@ -96,9 +100,9 @@ class UpdateMessageConsumerTest {
         updateMessageConsumer.handleMessageUpdates(payload);
 
         verify(webSocketRoutingService).routeMessage(eq("sender1"), eq("/queue/notifications"),
-                any(NotificationResponse.class));
+                ArgumentMatchers.<NotificationResponse<?>>any());
         verify(webSocketRoutingService).routeMessage(eq("recipient1"), eq("/queue/notifications"),
-                any(NotificationResponse.class));
+                ArgumentMatchers.<NotificationResponse<?>>any());
     }
 
     @Test
@@ -122,9 +126,9 @@ class UpdateMessageConsumerTest {
         updateMessageConsumer.handleMessageUpdates(payload);
 
         verify(webSocketRoutingService).routeMessage(eq("sender1"), eq("/queue/notifications"),
-                any(NotificationResponse.class));
+                ArgumentMatchers.<NotificationResponse<?>>any());
         verify(webSocketRoutingService).routeMessage(eq("recipient1"), eq("/queue/notifications"),
-                any(NotificationResponse.class));
+                ArgumentMatchers.<NotificationResponse<?>>any());
     }
 
     @Test
@@ -145,9 +149,8 @@ class UpdateMessageConsumerTest {
         updateMessageConsumer.handleMessageUpdates(payload);
 
         verify(webSocketRoutingService).routeMessage(eq("sender1"), eq("/queue/notifications"),
-                any(NotificationResponse.class));
+                ArgumentMatchers.<NotificationResponse<?>>any());
         verify(webSocketRoutingService).routeMessage(eq("recipient1"), eq("/queue/notifications"),
-                any(NotificationResponse.class));
+                ArgumentMatchers.<NotificationResponse<?>>any());
     }
-
 }

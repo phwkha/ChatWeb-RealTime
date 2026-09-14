@@ -14,19 +14,20 @@ import com.web.backend.service.UserServiceDetail;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration;
+import org.springframework.boot.autoconfigure.security.oauth2.client.OAuth2ClientAutoConfiguration;
 import org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientWebSecurityAutoConfiguration;
 import org.springframework.boot.autoconfigure.security.oauth2.resource.servlet.OAuth2ResourceServerAutoConfiguration;
 import org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration;
 import org.springframework.boot.autoconfigure.security.servlet.SecurityFilterAutoConfiguration;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
 import org.springframework.context.support.ResourceBundleMessageSource;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import jakarta.servlet.http.Cookie;
 
@@ -48,6 +49,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
+@ActiveProfiles("test")
 @WebMvcTest(controllers = AuthController.class, excludeAutoConfiguration = {
                 SecurityAutoConfiguration.class,
                 SecurityFilterAutoConfiguration.class,
@@ -67,25 +69,25 @@ class AuthControllerTest {
         @Autowired
         private ObjectMapper objectMapper;
 
-        @MockBean
+        @MockitoBean
         private AuthenticationService authenticationService;
 
-        @MockBean
+        @MockitoBean
         private RateLimitingService rateLimitingService;
 
-        @MockBean
+        @MockitoBean
         private JwtService jwtService;
 
-        @MockBean
+        @MockitoBean
         private UserServiceDetail userServiceDetail;
 
-        @MockBean
+        @MockitoBean
         private RedisTemplate<String, Object> redisTemplate;
 
-        @MockBean
+        @MockitoBean
         private SimpMessagingTemplate simpMessagingTemplate;
 
-        @MockBean
+        @MockitoBean
         private com.web.backend.service.WebSocketRoutingService webSocketRoutingService;
 
         private UsernamePasswordAuthenticationToken mockAuth;

@@ -1,9 +1,20 @@
 package com.web.backend.service;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -18,6 +29,8 @@ import org.springframework.context.support.ResourceBundleMessageSource;
 import org.springframework.data.redis.core.HashOperations;
 import org.springframework.data.redis.core.ListOperations;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.kafka.support.SendResult;
 
@@ -40,11 +53,9 @@ import com.web.backend.model.mongodb.SystemMessage;
 import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.repository.SystemMessageRepository;
 import com.web.backend.repository.UserRepository;
-import com.web.backend.service.RateLimitingService;
 import com.web.backend.service.impl.ChatServiceImpl;
 
 @ExtendWith(MockitoExtension.class)
-@org.mockito.junit.jupiter.MockitoSettings(strictness = org.mockito.quality.Strictness.LENIENT)
 class ChatServiceTest {
 
     @Mock
@@ -55,6 +66,8 @@ class ChatServiceTest {
     private FriendService friendService;
     @Mock
     private RedisTemplate<String, Object> redisTemplate;
+    @Mock
+    private StringRedisTemplate stringRedisTemplate;
     @Mock
     private MessageMapper messageMapper;
     @Mock
@@ -70,6 +83,8 @@ class ChatServiceTest {
     private HashOperations<String, Object, Object> hashOperations;
     @Mock
     private ZSetOperations<String, Object> zSetOperations;
+    @Mock
+    private ValueOperations<String, String> valueOperations;
 
     @InjectMocks
     private ChatServiceImpl chatService;
@@ -89,6 +104,7 @@ class ChatServiceTest {
         lenient().when(redisTemplate.opsForHash()).thenReturn(hashOperations);
         lenient().when(redisTemplate.opsForZSet()).thenReturn(zSetOperations);
         lenient().when(redisTemplate.opsForList()).thenReturn(listOperations);
+        lenient().when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         lenient().when(messageMapper.toAvro(any())).thenAnswer(inv -> {
             ChatMessage entity = inv.getArgument(0);
             ChatMessageAvro payload = new ChatMessageAvro();
@@ -115,7 +131,8 @@ class ChatServiceTest {
         request.setContent("Hello!");
         request.setMessageType(MessageType.CHAT);
 
-        assertThrows(ResourceNotFoundException.class, () -> chatService.sendPrivateMessage("sender", request));
+        assertThatThrownBy(() -> chatService.sendPrivateMessage("sender", request))
+                .isInstanceOf(ResourceNotFoundException.class);
     }
 
     @Test
@@ -124,7 +141,8 @@ class ChatServiceTest {
         request.setRecipient("sender");
         request.setContent("Hello myself!");
 
-        assertThrows(InvalidDataException.class, () -> chatService.sendPrivateMessage("sender", request));
+        assertThatThrownBy(() -> chatService.sendPrivateMessage("sender", request))
+                .isInstanceOf(InvalidDataException.class);
     }
 
     @Test
@@ -135,7 +153,8 @@ class ChatServiceTest {
         request.setFileUrl(null);
         request.setMessageType(MessageType.CHAT);
 
-        assertThrows(InvalidDataException.class, () -> chatService.sendPrivateMessage("sender", request));
+        assertThatThrownBy(() -> chatService.sendPrivateMessage("sender", request))
+                .isInstanceOf(InvalidDataException.class);
     }
 
     @Test
@@ -147,7 +166,8 @@ class ChatServiceTest {
         request.setContent("Hello!");
         request.setMessageType(MessageType.CHAT);
 
-        assertThrows(AccessForbiddenException.class, () -> chatService.sendPrivateMessage("sender", request));
+        assertThatThrownBy(() -> chatService.sendPrivateMessage("sender", request))
+                .isInstanceOf(AccessForbiddenException.class);
     }
 
     @Test
@@ -159,7 +179,8 @@ class ChatServiceTest {
         request.setContent("Hello!");
         request.setMessageType(MessageType.CHAT);
 
-        assertThrows(AccessForbiddenException.class, () -> chatService.sendPrivateMessage("sender", request));
+        assertThatThrownBy(() -> chatService.sendPrivateMessage("sender", request))
+                .isInstanceOf(AccessForbiddenException.class);
     }
 
     @Test
@@ -172,7 +193,8 @@ class ChatServiceTest {
         request.setContent("Hello!");
         request.setMessageType(MessageType.CHAT);
 
-        assertThrows(AccessForbiddenException.class, () -> chatService.sendPrivateMessage("sender", request));
+        assertThatThrownBy(() -> chatService.sendPrivateMessage("sender", request))
+                .isInstanceOf(AccessForbiddenException.class);
     }
 
     @Test
@@ -189,17 +211,67 @@ class ChatServiceTest {
         chatMessage.setMessageType(MessageType.CHAT);
         when(messageMapper.toEntity(request)).thenReturn(chatMessage);
 
-        CompletableFuture<SendResult<String, ChatMessageAvro>> future = CompletableFuture
-                .completedFuture(mock(SendResult.class, RETURNS_DEEP_STUBS));
+        @SuppressWarnings("unchecked")
+        SendResult<String, ChatMessageAvro> sendResult = mock(SendResult.class, RETURNS_DEEP_STUBS);
+        CompletableFuture<SendResult<String, ChatMessageAvro>> future = CompletableFuture.completedFuture(sendResult);
         when(chatProducer.sendChatMessage(any())).thenReturn(future);
 
         chatService.sendPrivateMessage("sender", request);
 
         verify(chatProducer).sendChatMessage(any(ChatMessageAvro.class));
-        assertFalse(chatMessage.isEdited());
-        assertFalse(chatMessage.isDeleted());
-        assertFalse(chatMessage.isReacted());
-        assertNull(chatMessage.getReactions());
+        assertThat(chatMessage.isEdited()).isFalse();
+        assertThat(chatMessage.isDeleted()).isFalse();
+        assertThat(chatMessage.isReacted()).isFalse();
+        assertThat(chatMessage.getReactions()).isNull();
+    }
+
+    @Test
+    void testSendPrivateMessage_WithLocalId_NewMessage_ProcessedSuccessfully() {
+        when(userRepository.findUserStatusByUsername("recipient")).thenReturn(Optional.of(UserStatus.ACTIVE));
+        when(friendService.isFriend("sender", "recipient")).thenReturn(true);
+        when(valueOperations.setIfAbsent(eq("ws:dedup:sender:loc-new-123"), eq("1"), any(Duration.class)))
+                .thenReturn(Boolean.TRUE);
+
+        ChatMessageRequest request = new ChatMessageRequest();
+        request.setRecipient("recipient");
+        request.setContent("New deduplicated message");
+        request.setMessageType(MessageType.CHAT);
+        request.setLocalId("loc-new-123");
+
+        ChatMessage chatMessage = new ChatMessage();
+        chatMessage.setMessageType(MessageType.CHAT);
+        when(messageMapper.toEntity(request)).thenReturn(chatMessage);
+
+        @SuppressWarnings("unchecked")
+        SendResult<String, ChatMessageAvro> sendResult = mock(SendResult.class, RETURNS_DEEP_STUBS);
+        CompletableFuture<SendResult<String, ChatMessageAvro>> future = CompletableFuture.completedFuture(sendResult);
+        when(chatProducer.sendChatMessage(any())).thenReturn(future);
+
+        chatService.sendPrivateMessage("sender", request);
+
+        verify(valueOperations).setIfAbsent(eq("ws:dedup:sender:loc-new-123"), eq("1"), any(Duration.class));
+        verify(chatProducer).sendChatMessage(any(ChatMessageAvro.class));
+        assertThat(chatMessage.isEdited()).isFalse();
+        assertThat(chatMessage.isDeleted()).isFalse();
+    }
+
+    @Test
+    void testSendPrivateMessage_WithLocalId_DuplicateMessage_Suppressed() {
+        when(valueOperations.setIfAbsent(eq("ws:dedup:sender:loc-dup-456"), eq("1"), any(Duration.class)))
+                .thenReturn(Boolean.FALSE);
+
+        ChatMessageRequest request = new ChatMessageRequest();
+        request.setRecipient("recipient");
+        request.setContent("Duplicate message");
+        request.setMessageType(MessageType.CHAT);
+        request.setLocalId("loc-dup-456");
+
+        chatService.sendPrivateMessage("sender", request);
+
+        verify(valueOperations).setIfAbsent(eq("ws:dedup:sender:loc-dup-456"), eq("1"), any(Duration.class));
+        verify(userRepository, never()).findUserStatusByUsername(anyString());
+        verify(friendService, never()).isFriend(anyString(), anyString());
+        verify(chatProducer, never()).sendChatMessage(any());
     }
 
     @Test
@@ -210,8 +282,9 @@ class ChatServiceTest {
 
         when(systemMessageRepository.save(any(SystemMessage.class))).thenReturn(new SystemMessage());
 
-        CompletableFuture<SendResult<String, Object>> future = CompletableFuture
-                .completedFuture(mock(SendResult.class, RETURNS_DEEP_STUBS));
+        @SuppressWarnings("unchecked")
+        SendResult<String, Object> sendResult = mock(SendResult.class, RETURNS_DEEP_STUBS);
+        CompletableFuture<SendResult<String, Object>> future = CompletableFuture.completedFuture(sendResult);
         when(chatProducer.sendSystemMessage(any())).thenReturn(future);
 
         chatService.sendSystemMessage("admin", request);
@@ -269,7 +342,8 @@ class ChatServiceTest {
 
         when(systemMessageRepository.save(any(SystemMessage.class))).thenThrow(new RuntimeException("MongoDB down"));
 
-        assertThrows(SystemOverloadException.class, () -> chatService.sendSystemMessage("admin", request));
+        assertThatThrownBy(() -> chatService.sendSystemMessage("admin", request))
+                .isInstanceOf(SystemOverloadException.class);
         verify(webSocketErrorHandler, never()).handleChatError(any(), any(), any());
         verify(chatProducer, never()).sendSystemMessage(any());
     }
@@ -292,15 +366,16 @@ class ChatServiceTest {
         chatMessage.setMessageType(MessageType.CHAT);
         when(messageMapper.toEntity(request)).thenReturn(chatMessage);
 
-        CompletableFuture<SendResult<String, ChatMessageAvro>> future = CompletableFuture
-                .completedFuture(mock(SendResult.class, RETURNS_DEEP_STUBS));
+        @SuppressWarnings("unchecked")
+        SendResult<String, ChatMessageAvro> sendResult = mock(SendResult.class, RETURNS_DEEP_STUBS);
+        CompletableFuture<SendResult<String, ChatMessageAvro>> future = CompletableFuture.completedFuture(sendResult);
         when(chatProducer.sendChatMessage(any())).thenReturn(future);
 
         chatService.sendPrivateMessage("sender", request);
 
-        assertEquals("", chatMessage.getContent());
-        assertEquals(com.web.backend.common.ContentType.TEXT, chatMessage.getContentType());
-        assertNotNull(chatMessage.getTimestamp());
+        assertThat(chatMessage.getContent()).isEmpty();
+        assertThat(chatMessage.getContentType()).isEqualTo(com.web.backend.common.ContentType.TEXT);
+        assertThat(chatMessage.getTimestamp()).isNotNull();
     }
 
     @Test
@@ -312,7 +387,8 @@ class ChatServiceTest {
         request.setContent("Hello!");
         request.setMessageType(MessageType.CHAT);
 
-        assertThrows(TooManyRequestsException.class, () -> chatService.sendPrivateMessage("sender", request));
+        assertThatThrownBy(() -> chatService.sendPrivateMessage("sender", request))
+                .isInstanceOf(TooManyRequestsException.class);
     }
 
     @Test
@@ -322,6 +398,7 @@ class ChatServiceTest {
         request.setContent("Hello!");
         request.setMessageType(null);
 
-        assertThrows(InvalidDataException.class, () -> chatService.sendPrivateMessage("sender", request));
+        assertThatThrownBy(() -> chatService.sendPrivateMessage("sender", request))
+                .isInstanceOf(InvalidDataException.class);
     }
 }

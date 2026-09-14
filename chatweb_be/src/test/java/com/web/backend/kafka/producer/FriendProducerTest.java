@@ -7,7 +7,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import java.lang.reflect.Field;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
@@ -17,16 +16,14 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.mockito.junit.jupiter.MockitoSettings;
-import org.mockito.quality.Strictness;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import com.web.backend.common.NotificationsType;
 import com.web.backend.kafka.payload.FriendPayload;
 
 @ExtendWith(MockitoExtension.class)
-@MockitoSettings(strictness = Strictness.LENIENT)
 class FriendProducerTest {
 
     @Mock
@@ -36,18 +33,17 @@ class FriendProducerTest {
     private FriendProducer friendProducer;
 
     @BeforeEach
-    void setUp() throws Exception {
-        Field topicField = FriendProducer.class.getDeclaredField("friendTopic");
-        topicField.setAccessible(true);
-        topicField.set(friendProducer, "test-friend-topic");
-
-        CompletableFuture<SendResult<String, Object>> future = CompletableFuture
-                .completedFuture(mock(SendResult.class, org.mockito.Mockito.RETURNS_DEEP_STUBS));
-        when(kafkaTemplate.send(any(), any())).thenReturn(future);
+    void setUp() {
+        ReflectionTestUtils.setField(friendProducer, "friendTopic", "test-friend-topic");
     }
 
     @Test
     void testSendFriendNoti_Success() {
+        @SuppressWarnings("unchecked")
+        SendResult<String, Object> sendResult = mock(SendResult.class, org.mockito.Mockito.RETURNS_DEEP_STUBS);
+        CompletableFuture<SendResult<String, Object>> future = CompletableFuture.completedFuture(sendResult);
+        when(kafkaTemplate.send(any(), any())).thenReturn(future);
+
         FriendPayload payload = FriendPayload.builder()
                 .senderUsername("user1")
                 .senderDisplayName("User 1")

@@ -1,14 +1,16 @@
 package com.web.backend.service;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentMatchers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -49,49 +51,49 @@ class SearchUserServiceTest {
     @Test
     void testSearchUsers() {
         Page<UserEntity> page = new PageImpl<>(List.of(activeUser));
-        when(userRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(page);
+        when(userRepository.findAll(ArgumentMatchers.<Specification<UserEntity>>any(), any(Pageable.class))).thenReturn(page);
         when(userMapper.toUserSummaryResponse(activeUser)).thenReturn(UserSummaryResponse.builder().username("testuser").build());
 
         PageResponse<UserSummaryResponse> res = searchUserService.searchUsers("current_user", "test", 0, 10, "asc");
-        assertEquals(1, res.getTotalElements());
+        assertThat(res.getTotalElements()).isEqualTo(1L);
     }
 
     @Test
     void testSearchUsers_Anonymous() {
         Page<UserEntity> page = new PageImpl<>(List.of(activeUser));
-        when(userRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(page);
+        when(userRepository.findAll(ArgumentMatchers.<Specification<UserEntity>>any(), any(Pageable.class))).thenReturn(page);
         when(userMapper.toUserSummaryResponse(activeUser)).thenReturn(UserSummaryResponse.builder().username("testuser").build());
 
         PageResponse<UserSummaryResponse> res = searchUserService.searchUsers(null, "test", 0, 10, "asc");
-        assertEquals(1, res.getTotalElements());
+        assertThat(res.getTotalElements()).isEqualTo(1L);
     }
 
     @Test
     void testAdvanceSearchWithSpecifications_NoFilters() {
         Page<UserEntity> page = new PageImpl<>(List.of(activeUser));
-        when(userRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(page);
+        when(userRepository.findAll(ArgumentMatchers.<Specification<UserEntity>>any(), any(Pageable.class))).thenReturn(page);
         when(userMapper.toUserSummaryResponse(activeUser)).thenReturn(mock(UserSummaryResponse.class));
 
         PageResponse<UserSummaryResponse> res = searchUserService.advanceSearchWithSpecifications(PageRequest.of(0, 10),
                 null, null);
-        assertEquals(1, res.getTotalElements());
+        assertThat(res.getTotalElements()).isEqualTo(1L);
     }
 
     @Test
     void testAdvanceSearchWithSpecifications_EmptyArrays() {
         Page<UserEntity> page = new PageImpl<>(List.of(activeUser));
-        when(userRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(page);
+        when(userRepository.findAll(ArgumentMatchers.<Specification<UserEntity>>any(), any(Pageable.class))).thenReturn(page);
         when(userMapper.toUserSummaryResponse(activeUser)).thenReturn(mock(UserSummaryResponse.class));
 
         PageResponse<UserSummaryResponse> res = searchUserService.advanceSearchWithSpecifications(PageRequest.of(0, 10),
                 new String[] {}, new String[] {});
-        assertEquals(1, res.getTotalElements());
+        assertThat(res.getTotalElements()).isEqualTo(1L);
     }
 
     @Test
     void testAdvanceSearchWithSpecifications_WithFilters() {
         Page<UserEntity> page = new PageImpl<>(List.of(activeUser));
-        when(userRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(page);
+        when(userRepository.findAll(ArgumentMatchers.<Specification<UserEntity>>any(), any(Pageable.class))).thenReturn(page);
         when(userMapper.toUserSummaryResponse(activeUser)).thenReturn(mock(UserSummaryResponse.class));
 
         String[] userFilters = { "username:test", "age>18" };
@@ -99,6 +101,6 @@ class SearchUserServiceTest {
 
         PageResponse<UserSummaryResponse> res = searchUserService.advanceSearchWithSpecifications(PageRequest.of(0, 10),
                 userFilters, addressFilters);
-        assertEquals(1, res.getTotalElements());
+        assertThat(res.getTotalElements()).isEqualTo(1L);
     }
 }

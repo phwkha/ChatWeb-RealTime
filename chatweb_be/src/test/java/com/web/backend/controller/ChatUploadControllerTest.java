@@ -9,19 +9,20 @@ import com.web.backend.service.UserServiceDetail;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration;
+import org.springframework.boot.autoconfigure.security.oauth2.client.OAuth2ClientAutoConfiguration;
 import org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientWebSecurityAutoConfiguration;
 import org.springframework.boot.autoconfigure.security.oauth2.resource.servlet.OAuth2ResourceServerAutoConfiguration;
 import org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration;
 import org.springframework.boot.autoconfigure.security.servlet.SecurityFilterAutoConfiguration;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
 import org.springframework.context.support.ResourceBundleMessageSource;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -31,6 +32,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+@ActiveProfiles("test")
 @WebMvcTest(controllers = ChatUploadController.class, excludeAutoConfiguration = {
         SecurityAutoConfiguration.class,
         SecurityFilterAutoConfiguration.class,
@@ -45,22 +47,22 @@ class ChatUploadControllerTest {
     @Autowired
     private MockMvc mockMvc;
 
-    @MockBean
+    @MockitoBean
     private StorageService storageService;
 
-    @MockBean
+    @MockitoBean
     private JwtService jwtService;
 
-    @MockBean
+    @MockitoBean
     private UserServiceDetail userServiceDetail;
 
-    @MockBean
+    @MockitoBean
     private RedisTemplate<String, Object> redisTemplate;
 
-    @MockBean
+    @MockitoBean
     private org.springframework.messaging.simp.SimpMessagingTemplate simpMessagingTemplate;
 
-    @MockBean
+    @MockitoBean
     private com.web.backend.service.WebSocketRoutingService webSocketRoutingService;
 
     @BeforeEach
@@ -78,7 +80,8 @@ class ChatUploadControllerTest {
         when(storageService.upLoadImage(any(MultipartFile.class))).thenReturn("image_url");
 
         mockMvc.perform(multipart("/api/chat/image")
-                .file(file))
+                .file(file)
+                .header("X-Idempotency-Key", "test-idempotency-key"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data").value("image_url"));
@@ -91,7 +94,8 @@ class ChatUploadControllerTest {
         when(storageService.uploadVideo(any(MultipartFile.class))).thenReturn("video_url");
 
         mockMvc.perform(multipart("/api/chat/video")
-                .file(file))
+                .file(file)
+                .header("X-Idempotency-Key", "test-idempotency-key"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data").value("video_url"));
