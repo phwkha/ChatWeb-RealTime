@@ -369,6 +369,60 @@ class MessageServiceTest {
     }
 
     @Test
+    void testRevokeMessage_AlreadyReadStatus_DoesNotDecrementUnreadCount() {
+        RevokeMessageRequest request = new RevokeMessageRequest();
+        request.setMessageId("msg1");
+        request.setRecipient("recipient");
+
+        ChatMessage message = new ChatMessage();
+        message.setId("msg1");
+        message.setConversationId("recipient_sender");
+        message.setSender("sender");
+        message.setRecipient("recipient");
+        message.setContent("Hello");
+        message.setStatus(MessageStatus.READ);
+        message.setMessageType(com.web.backend.common.MessageType.CHAT);
+
+        when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
+        when(mongoTemplate.findAndModify(any(), any(), any(), eq(ChatMessage.class))).thenReturn(message);
+
+        messageService.revokeMessage("sender", request);
+
+        verify(hashOperations, never()).increment(anyString(), anyString(), anyLong());
+        verify(eventPublisher).publishEvent(any(UpdateMessagePayload.class));
+    }
+
+    @Test
+    void testRevokeMessage_AlreadyReadViaWatermark_DoesNotDecrementUnreadCount() {
+        RevokeMessageRequest request = new RevokeMessageRequest();
+        request.setMessageId("msg1");
+        request.setRecipient("recipient");
+
+        Instant msgTime = Instant.parse("2026-09-17T10:00:00Z");
+        Instant readTime = Instant.parse("2026-09-17T10:05:00Z");
+
+        ChatMessage message = new ChatMessage();
+        message.setId("msg1");
+        message.setConversationId("recipient_sender");
+        message.setSender("sender");
+        message.setRecipient("recipient");
+        message.setContent("Hello");
+        message.setTimestamp(msgTime);
+        message.setStatus(MessageStatus.SENT); // Still SENT in stale cache
+        message.setMessageType(com.web.backend.common.MessageType.CHAT);
+
+        when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get("read_receipt:recipient_sender:recipient")).thenReturn(readTime.toString());
+        when(mongoTemplate.findAndModify(any(), any(), any(), eq(ChatMessage.class))).thenReturn(message);
+
+        messageService.revokeMessage("sender", request);
+
+        verify(hashOperations, never()).increment(anyString(), anyString(), anyLong());
+        verify(eventPublisher).publishEvent(any(UpdateMessagePayload.class));
+    }
+
+    @Test
     void testRevokeMessage_NonChatMessage_ThrowsInvalidDataException() {
         RevokeMessageRequest request = new RevokeMessageRequest();
         request.setMessageId("msg1");
@@ -466,8 +520,8 @@ class MessageServiceTest {
 
     @Test
     void testMarkMessagesAsRead_Success() {
+        when(friendService.isFriend("recipient", "sender")).thenReturn(true);
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(redisTemplate.opsForHash()).thenReturn(hashOperations);
 
         MarkReadRequest request = new MarkReadRequest();
         request.setSender("sender");
@@ -475,9 +529,24 @@ class MessageServiceTest {
         messageService.markMessagesAsRead("recipient", request);
 
         verify(valueOperations).set(eq("read_receipt:recipient_sender:recipient"), anyString(), any());
-        verify(hashOperations).delete("unread_counts:recipient", "sender");
+        verify(redisTemplate).execute(
+                any(),
+                eq(java.util.Collections.singletonList("unread_counts:recipient")),
+                eq("sender"),
+                eq("_empty"));
         verify(mongoTemplate).upsert(any(Query.class), any(Update.class), eq(ReadReceipt.class));
         verify(eventPublisher).publishEvent(any(ReadReceiptResponse.class));
+    }
+
+    @Test
+    void testMarkMessagesAsRead_NotFriends_ThrowsException() {
+        when(friendService.isFriend("recipient", "stranger")).thenReturn(false);
+
+        MarkReadRequest request = new MarkReadRequest();
+        request.setSender("stranger");
+
+        assertThatThrownBy(() -> messageService.markMessagesAsRead("recipient", request))
+                .isInstanceOf(AccessForbiddenException.class);
     }
 
     @Test

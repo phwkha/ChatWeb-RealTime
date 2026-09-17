@@ -44,7 +44,7 @@ class UpdateMessageProducerTest {
         @SuppressWarnings("unchecked")
         SendResult<String, Object> sendResult = mock(SendResult.class, org.mockito.Mockito.RETURNS_DEEP_STUBS);
         CompletableFuture<SendResult<String, Object>> future = CompletableFuture.completedFuture(sendResult);
-        when(kafkaTemplate.send(any(), any())).thenReturn(future);
+        when(kafkaTemplate.send(any(), any(), any())).thenReturn(future);
 
         ReadReceiptResponse data = ReadReceiptResponse.builder()
                 .conversationId("conv1")
@@ -55,14 +55,14 @@ class UpdateMessageProducerTest {
 
         updateMessageProducer.handleReadReceiptEvent(data);
 
-        verify(kafkaTemplate).send(eq("chat-update-topic"), any(UpdateMessagePayload.class));
+        verify(kafkaTemplate).send(eq("chat-update-topic"), eq("conv1"), any(UpdateMessagePayload.class));
     }
 
     @Test
     void testHandleReadReceiptEvent_NullData() {
         updateMessageProducer.handleReadReceiptEvent(null);
 
-        verify(kafkaTemplate, never()).send(any(), any());
+        verify(kafkaTemplate, never()).send(any(), any(), any());
     }
 
     @Test
@@ -70,17 +70,20 @@ class UpdateMessageProducerTest {
         @SuppressWarnings("unchecked")
         SendResult<String, Object> sendResult = mock(SendResult.class, org.mockito.Mockito.RETURNS_DEEP_STUBS);
         CompletableFuture<SendResult<String, Object>> future = CompletableFuture.completedFuture(sendResult);
-        when(kafkaTemplate.send(any(), any())).thenReturn(future);
+        when(kafkaTemplate.send(any(), any(), any())).thenReturn(future);
+
+        ChatMessage chatMessage = new ChatMessage();
+        chatMessage.setConversationId("conv1");
 
         UpdateMessagePayload payload = UpdateMessagePayload.builder()
                 .type(UpdateMessageType.EDIT)
                 .relatedUsername("sender1")
-                .updateEvent(new ChatMessage())
+                .updateEvent(chatMessage)
                 .build();
 
         updateMessageProducer.handleUpdateMessageEvent(payload);
 
-        verify(kafkaTemplate).send(eq("chat-update-topic"), eq(payload));
+        verify(kafkaTemplate).send(eq("chat-update-topic"), eq("conv1"), eq(payload));
     }
 
     @Test

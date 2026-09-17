@@ -24,7 +24,7 @@ public interface MessageRepository extends MongoRepository<ChatMessage, String> 
         boolean existsBySenderOrRecipient(String username);
 
         @Aggregation(pipeline = {
-                        "{ '$match': { 'recipient': ?0, 'status': 'SENT', 'messageType': 'CHAT' } }",
+                        "{ '$match': { 'recipient': ?0, 'status': 'SENT', 'messageType': 'CHAT', 'isDeleted': false  } }",
                         "{ '$group': { '_id': '$sender', 'count': { '$sum': 1 } } }",
                         "{ '$project': { 'sender': '$_id', 'count': 1, '_id': 0 } }"
         })

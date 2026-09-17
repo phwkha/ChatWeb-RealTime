@@ -3,6 +3,7 @@ package com.web.backend.service.impl;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -24,6 +25,8 @@ import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Service;
 
 import com.web.backend.common.MessageStatus;
@@ -101,6 +104,20 @@ public class MessageServiceImpl implements MessageService {
     private static final String UNREAD_COUNTS_STRING = "unread_counts:";
     private static final String READ_RECEIPT_KEY_STRING = "read_receipt:";
 
+    private static final String LUA_MARK_READ_SCRIPT =
+            "if redis.call('EXISTS', KEYS[1]) == 0 then " +
+            "    return -1; " +
+            "end; " +
+            "redis.call('HDEL', KEYS[1], ARGV[1]); " +
+            "local remaining = redis.call('HLEN', KEYS[1]); " +
+            "if remaining == 0 then " +
+            "    redis.call('HSET', KEYS[1], ARGV[2], 0); " +
+            "    redis.call('EXPIRE', KEYS[1], 604800); " +
+            "end; " +
+            "return remaining;";
+
+    private final RedisScript<Long> markReadRedisScript = new DefaultRedisScript<>(LUA_MARK_READ_SCRIPT, Long.class);
+
     private static final String ERROR_MSG_RECIPIENT_NOT_FOUND_STRING = "error.msg.recipient_not_found";
     private static final String ERROR_MSG_NOT_FRIENDS_STRING = "error.msg.not_friends";
     private static final String ERROR_MSG_NOT_FOUND_STRING = "error.msg.not_found";
@@ -141,7 +158,8 @@ public class MessageServiceImpl implements MessageService {
             }
         }
 
-        List<ChatMessage> finalMessages = fetchMessagesFromDatabaseAndMerge(conversationId, cursorStr, pageSize, pageable);
+        List<ChatMessage> finalMessages = fetchMessagesFromDatabaseAndMerge(conversationId, cursorStr, pageSize,
+                pageable);
         return buildCursorResponse(finalMessages, pageSize, conversationId, user1, user2);
     }
 
@@ -254,6 +272,12 @@ public class MessageServiceImpl implements MessageService {
         if (recipientUsername.equals(senderUsername)) {
             return;
         }
+
+        if (!friendService.isFriend(Objects.requireNonNull(recipientUsername),
+                Objects.requireNonNull(senderUsername))) {
+            throw new AccessForbiddenException(Translator.tolocale(ERROR_MSG_NOT_FRIENDS_STRING));
+        }
+
         String convId = generateConversationId(recipientUsername, senderUsername);
         Instant now = Instant.now();
         String receiptId = convId + DELIMITER_COLON_STRING + recipientUsername;
@@ -277,7 +301,8 @@ public class MessageServiceImpl implements MessageService {
             Query msgQuery = new Query(Criteria.where(FIELD_CONVERSATION_ID_STRING).is(convId)
                     .and(FIELD_RECIPIENT_STRING).is(recipientUsername)
                     .and(FIELD_STATUS_STRING).is(MessageStatus.SENT)
-                    .and(FIELD_MESSAGE_TYPE_STRING).is(MessageType.CHAT));
+                    .and(FIELD_MESSAGE_TYPE_STRING).is(MessageType.CHAT)
+                    .and(TIMESTAMP_STRING).lte(now));
             Update msgUpdate = new Update().set(FIELD_STATUS_STRING, MessageStatus.READ);
             mongoTemplate.updateMulti(msgQuery, msgUpdate, ChatMessage.class);
             log.debug("Bulk-updated SENT→READ for conv '{}' recipient '{}'", convId, recipientUsername);
@@ -290,11 +315,13 @@ public class MessageServiceImpl implements MessageService {
             redisTemplate.opsForValue().set(readReceiptKey, now.toString(), Duration.ofDays(7));
 
             String unreadKey = UNREAD_COUNTS_STRING + recipientUsername;
-            redisTemplate.opsForHash().delete(unreadKey, senderUsername);
-            Long remaining = redisTemplate.opsForHash().size(unreadKey);
-            if (remaining != null && remaining == 0) {
-                redisTemplate.opsForHash().put(unreadKey, SENTINEL_EMPTY_STRING, 0L);
-            }
+            redisTemplate.execute(
+                    markReadRedisScript,
+                    Collections.singletonList(unreadKey),
+                    senderUsername,
+                    SENTINEL_EMPTY_STRING
+            );
+            updateMessageStatusInRedisCache(convId, recipientUsername, senderUsername, now);
         } catch (Exception e) {
             log.warn("Failed to update read receipt in Redis for conv '{}'", convId, e);
         }
@@ -333,7 +360,6 @@ public class MessageServiceImpl implements MessageService {
         Update update = new Update();
         update.set(FIELD_CONTENT_STRING, request.getNewContent());
         update.set(FIELD_IS_EDITED_STRING, true);
-
 
         FindAndModifyOptions options = new FindAndModifyOptions().returnNew(true);
         ChatMessage updatedMsg = mongoTemplate.findAndModify(query, update, options, ChatMessage.class);
@@ -393,7 +419,11 @@ public class MessageServiceImpl implements MessageService {
             return;
         }
 
-        if (msg.getStatus() != MessageStatus.READ && msg.getRecipient() != null) {
+        Instant lastReadTime = getLastReadTimestamp(convId, msg.getRecipient());
+        boolean alreadyRead = msg.getStatus() == MessageStatus.READ
+                || (lastReadTime != null && msg.getTimestamp() != null && !msg.getTimestamp().isAfter(lastReadTime));
+
+        if (!alreadyRead && msg.getRecipient() != null) {
             String unreadKey = UNREAD_COUNTS_STRING + msg.getRecipient();
             try {
                 Boolean hasKey = redisTemplate.hasKey(unreadKey);
@@ -657,5 +687,40 @@ public class MessageServiceImpl implements MessageService {
             return "";
         }
         return input.replaceAll("[\\\\^$.|?*+(){}\\[\\]]", "\\\\$0");
+    }
+
+    private void updateMessageStatusInRedisCache(String convId, String recipient, String sender,
+            Instant readTimestamp) {
+        try {
+            String hashKey = CHAT_RECENT_HASH_STRING + convId;
+            String zsetKey = CHAT_RECENT_ZSET_STRING + convId;
+
+            Set<Object> messageIds = redisTemplate.opsForZSet().range(zsetKey, 0, -1);
+            if (messageIds == null || messageIds.isEmpty()) {
+                return;
+            }
+
+            List<Object> cachedObjects = redisTemplate.opsForHash().multiGet(hashKey, messageIds);
+            Map<String, Object> updatedMap = new HashMap<>();
+
+            for (Object obj : cachedObjects) {
+                if (obj instanceof ChatMessage msg) {
+                    if (recipient.equals(msg.getRecipient())
+                            && sender.equals(msg.getSender())
+                            && msg.getStatus() == MessageStatus.SENT
+                            && (msg.getTimestamp() == null || !msg.getTimestamp().isAfter(readTimestamp))) {
+                        msg.setStatus(MessageStatus.READ);
+                        updatedMap.put(msg.getId(), msg);
+                    }
+                }
+            }
+
+            if (!updatedMap.isEmpty()) {
+                redisTemplate.opsForHash().putAll(hashKey, updatedMap);
+                log.debug("Synchronized READ status for {} cached messages in conv '{}'", updatedMap.size(), convId);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to update message statuses in Redis for conv '{}'", convId, e);
+        }
     }
 }
