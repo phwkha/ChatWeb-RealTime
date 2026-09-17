@@ -9,7 +9,6 @@ import com.web.backend.service.UserServiceDetail;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
-import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
@@ -45,8 +44,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private static final String UTF_8_STRING = "UTF-8";
 
     private static final String APPLICATION_JSON_STRING = "application/json";
-
-    private static final String ACCESSTOKEN_STRING = "accessToken";
 
     private static final String ERROR_WS_BLACKLISTED_STRING = "error.ws.blacklisted";
 
@@ -163,21 +160,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         return true;
     }
 
-    /**
-     * Hàm hỗ trợ lấy Token từ Cookie (ưu tiên) hoặc Header Authorization
-     */
     private String getTokenFromRequest(HttpServletRequest request) {
-        if (request.getCookies() != null) {
-            for (Cookie cookie : request.getCookies()) {
-                if (ACCESSTOKEN_STRING.equals(cookie.getName())) {
-                    return cookie.getValue();
-                }
-            }
-        }
-
         String authHeader = request.getHeader(AUTHORIZATION_STRING);
         if (authHeader != null && authHeader.startsWith(BEARER_STRING)) {
-            return authHeader.substring(7);
+            return authHeader.substring(BEARER_STRING.length()).trim();
         }
 
         return null;

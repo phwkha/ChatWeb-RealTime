@@ -5,7 +5,7 @@ import { useAuth } from '../context/auth-context.js'
 import { useLanguage } from '../context/language-context.js'
 import { useChatSocket } from '../hooks/useChatSocket.js'
 import { useNotificationSound } from '../hooks/useNotificationSound.js'
-import { apiRequest, getErrorMessage } from '../services/apiClient.js'
+import { apiRequest, getErrorMessage, generateUUID } from '../services/apiClient.js'
 import '../styles/chat.css'
 
 const FRIEND_EVENT_TYPES = new Set([
@@ -1253,7 +1253,7 @@ function ChatPage() {
     typingPublishTimersRef.current.delete(selectedUser.username)
     typingLastSentRef.current.delete(selectedUser.username)
     sendTypingStatus(selectedUser.username, false)
-    const localId = crypto.randomUUID()
+    const localId = generateUUID()
     const optimisticMessage = {
       localId, sender: user.username, recipient: selectedUser.username, content,
       contentType: 'TEXT', messageType: 'CHAT', timestamp: new Date().toISOString(), status: 'SENDING',
@@ -1289,7 +1289,7 @@ function ChatPage() {
   const retryFailedMessage = (message) => {
     if (!message?.localId || !selectedUser || connectionState !== 'connected') return
     const previousLocalId = message.localId
-    const retryLocalId = crypto.randomUUID()
+    const retryLocalId = generateUUID()
     setMessagesByUser((current) => ({
       ...current,
       [selectedUser.username]: (current[selectedUser.username] || []).map((item) => (
@@ -1351,7 +1351,7 @@ function ChatPage() {
       const fileUrl = typeof response?.data === 'string' ? response.data : ''
       if (!fileUrl) throw new Error(t('uploadFailed'))
 
-      const localId = crypto.randomUUID()
+      const localId = generateUUID()
       const mediaMessage = {
         localId,
         sender: user.username,

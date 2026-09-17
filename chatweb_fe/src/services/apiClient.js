@@ -96,13 +96,39 @@ function networkError() {
 
 let refreshPromise = null
 
+export function generateUUID() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    return ([1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g, (c) =>
+      (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16)
+    )
+  }
+
+  let d = new Date().getTime()
+  let d2 = (typeof performance !== 'undefined' && performance.now && performance.now() * 1000) || 0
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    let r = Math.random() * 16
+    if (d > 0) {
+      r = (d + r) % 16 | 0
+      d = Math.floor(d / 16)
+    } else {
+      r = (d2 + r) % 16 | 0
+      d2 = Math.floor(d2 / 16)
+    }
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16)
+  })
+}
+
 function withIdempotencyKey(options = {}) {
   const method = (options.method || 'GET').toUpperCase()
   if (SAFE_METHODS.has(method)) return options
 
   const headers = new Headers(options.headers || {})
   if (!headers.has(IDEMPOTENCY_HEADER)) {
-    headers.set(IDEMPOTENCY_HEADER, crypto.randomUUID())
+    headers.set(IDEMPOTENCY_HEADER, generateUUID())
   }
 
   return { ...options, headers }
@@ -119,6 +145,24 @@ async function parseResponse(response) {
   }
 }
 
+let inMemoryAccessToken = null
+
+export function setAccessToken(token) {
+  inMemoryAccessToken = token || null
+}
+
+export function getAccessToken() {
+  return inMemoryAccessToken
+}
+
+function updateAccessTokenFromResponse(response) {
+  if (!response?.headers) return
+  const authHeader = response.headers.get('Authorization')
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    setAccessToken(authHeader.substring(7).trim())
+  }
+}
+
 async function refreshAccessToken() {
   if (!refreshPromise) {
     const refreshOptions = withIdempotencyKey({
@@ -129,6 +173,7 @@ async function refreshAccessToken() {
     refreshPromise = fetch(`${API_BASE_URL}/api/auth/refresh-token`, {
       ...refreshOptions,
     }).then(async (response) => {
+      updateAccessTokenFromResponse(response)
       const payload = await parseResponse(response)
       if (!response.ok) {
         throw new ApiError(payload?.message || fallbackMessage('expired'), {
@@ -137,6 +182,9 @@ async function refreshAccessToken() {
           data: payload?.data,
           fromServer: Boolean(payload?.message),
         })
+      }
+      if (typeof payload?.data === 'string' && payload.data.length > 20) {
+        setAccessToken(payload.data)
       }
       return payload
     }).catch((error) => {
@@ -154,6 +202,10 @@ async function sendRequest(path, options) {
   const headers = new Headers(options.headers || {})
   headers.set('Accept-Language', getApiLanguage())
 
+  if (inMemoryAccessToken && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${inMemoryAccessToken}`)
+  }
+
   let body = options.body
   if (body && !(body instanceof FormData) && typeof body !== 'string') {
     headers.set('Content-Type', 'application/json')
@@ -161,12 +213,14 @@ async function sendRequest(path, options) {
   }
 
   try {
-    return await fetch(`${API_BASE_URL}${path}`, {
+    const response = await fetch(`${API_BASE_URL}${path}`, {
       ...options,
       body,
       headers,
       credentials: 'include',
     })
+    updateAccessTokenFromResponse(response)
+    return response
   } catch (error) {
     if (error?.name === 'AbortError') throw error
     throw networkError()
@@ -188,6 +242,10 @@ export async function apiRequest(path, options = {}) {
   }
 
   const payload = await parseResponse(response)
+  if (payload?.data && typeof payload.data === 'object' && payload.data.accessToken) {
+    setAccessToken(payload.data.accessToken)
+  }
+
   if (!response.ok) {
     const code = payload?.code || response.status
     throw new ApiError(payload?.message || fallbackMessage(fallbackKeyForCode(code)), {

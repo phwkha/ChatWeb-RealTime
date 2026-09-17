@@ -74,13 +74,11 @@ public class AuthController {
 
                 LoginResponse loginResponse = authenticationService.login(loginRequest);
 
-                ResponseCookie accessCookie = buildCookie(ACCESSTOKEN, loginResponse.getAccessToken(), PATH_STRING,
-                                15 * 60L);
                 ResponseCookie refreshCookie = buildCookie(REFRESHTOKEN, loginResponse.getRefreshToken(),
                                 API_AUTH_PATH_STRING, 7 * 24 * 60 * 60L);
 
                 return ResponseEntity.ok()
-                                .header(HttpHeaders.SET_COOKIE, accessCookie.toString())
+                                .header(HttpHeaders.AUTHORIZATION, BEARER_STRING + loginResponse.getAccessToken())
                                 .header(HttpHeaders.SET_COOKIE, refreshCookie.toString())
                                 .body(ApiResponse.success(HttpStatus.OK.value(),
                                                 Translator.tolocale(SUCCESS_AUTH_LOGIN_STRING),
@@ -132,14 +130,11 @@ public class AuthController {
                 log.debug("Refreshing authentication token");
                 TokenResponse newTokenResponse = authenticationService.refreshToken(refreshToken);
 
-                ResponseCookie newAccessCookie = buildCookie(ACCESSTOKEN, newTokenResponse.getAccessToken(),
-                                PATH_STRING,
-                                15 * 60L);
                 ResponseCookie newrefreshCookie = buildCookie(REFRESHTOKEN, newTokenResponse.getRefreshToken(),
                                 API_AUTH_PATH_STRING, 7 * 24 * 60 * 60L);
 
                 return ResponseEntity.ok()
-                                .header(HttpHeaders.SET_COOKIE, newAccessCookie.toString())
+                                .header(HttpHeaders.AUTHORIZATION, BEARER_STRING + newTokenResponse.getAccessToken())
                                 .header(HttpHeaders.SET_COOKIE, newrefreshCookie.toString())
                                 .body(ApiResponse.success(HttpStatus.OK.value(),
                                                 Translator.tolocale(SUCCESS_AUTH_TOKEN_REFRESHED_STRING),
