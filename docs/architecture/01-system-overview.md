@@ -15,7 +15,7 @@ graph TB
     end
 
     subgraph IngressLayer["🛡️ Tầng Cổng Vào & Tải (Ingress & Load Balancing)"]
-        Nginx["Nginx Reverse Proxy & Load Balancer<br/>- HTTP Port 80 (Docker Host: 8080)<br/>- IP Rate Limiting (auth: 10r/m, global: 30r/s)<br/>- Upstream TLS Verification (Private CA)"]
+        Nginx["Nginx Reverse Proxy & Load Balancer<br/>- HTTP Port 80 (Docker Host: 80)<br/>- IP Rate Limiting (auth: 10r/m, global: 30r/s)<br/>- Upstream TLS Verification (Private CA)"]
     end
 
     subgraph AppLayer["⚙️ Tầng Ứng Dụng (Application Layer)"]
@@ -42,7 +42,7 @@ graph TB
     end
 
     %% Network Connections
-    WebClient -->|"HTTP / WS (Port 8080)"| Nginx
+    WebClient -->|"HTTP / WS (Port 80)"| Nginx
     Nginx -->|"HTTPS / WSS (Port 8443)<br/>Upstream TLS Verified"| Backend
     Backend -->|"Pub / Sub & State"| Redis
     Backend -->|"Relational Data"| Postgres

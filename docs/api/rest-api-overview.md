@@ -6,9 +6,9 @@ Tài liệu này cung cấp cái nhìn toàn diện về hệ thống REST API, 
 
 ## 1. Quy Ước Chung (Global Conventions)
 
-- **Base URL**: `http://localhost:8080` (Cục bộ) hoặc `https://<domain>` (Nginx Proxy).
+- **Base URL**: `http://localhost` (Cục bộ qua Nginx) hoặc `https://<domain>`.
 - **Interactive Documentation**: Swagger UI trực quan có sẵn tại:  
-  👉 `http://localhost:8080/swagger-ui/index.html`
+  👉 `http://localhost/swagger-ui/index.html`
 - **Định dạng dữ liệu**: `application/json; charset=UTF-8`
 - **Đa ngôn ngữ (i18n)**: Thông điệp phản hồi (`message`) tự động thay đổi theo header `Accept-Language: vi-VN` hoặc `en-US`.
 - **Cơ chế lũy đẳng (Idempotency)**: Đối với các thao tác nhạy cảm (tải ảnh/video, chấp nhận kết bạn), Client có thể gửi kèm header `X-Idempotency-Key: <UUID>` để Backend ngăn chặn xử lý trùng lặp trong khoảng thời gian TTL.
