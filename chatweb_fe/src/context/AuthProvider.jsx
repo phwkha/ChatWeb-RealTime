@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { apiRequest } from '../services/apiClient.js'
-import { clearAccessToken } from '../services/tokenStore.js'
 import { AuthContext } from './auth-context.js'
 
 function AuthProvider({ children }) {
@@ -55,7 +54,6 @@ function AuthProvider({ children }) {
     try {
       await apiRequest('/api/auth/logout', { method: 'POST', skipRefresh: true })
     } finally {
-      clearAccessToken()
       setUser(null)
     }
   }, [])
@@ -64,14 +62,12 @@ function AuthProvider({ children }) {
     try {
       return await apiRequest('/api/auth/logout-all-devices', { method: 'POST', skipRefresh: true })
     } finally {
-      clearAccessToken()
       setUser(null)
     }
   }, [])
 
   const deleteAccount = useCallback(async () => {
     const response = await apiRequest('/api/users/me', { method: 'DELETE' })
-    clearAccessToken()
     setUser(null)
     return response
   }, [])

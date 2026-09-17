@@ -1,5 +1,3 @@
-import { clearAccessToken, getAccessToken, setAccessToken } from './tokenStore.js'
-
 export const API_BASE_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
 
 const IDEMPOTENCY_HEADER = 'X-Idempotency-Key'
@@ -133,7 +131,6 @@ async function refreshAccessToken() {
     }).then(async (response) => {
       const payload = await parseResponse(response)
       if (!response.ok) {
-        clearAccessToken()
         throw new ApiError(payload?.message || fallbackMessage('expired'), {
           status: response.status,
           code: payload?.code,
@@ -141,7 +138,6 @@ async function refreshAccessToken() {
           fromServer: Boolean(payload?.message),
         })
       }
-      setAccessToken(typeof payload?.data === 'string' ? payload.data : payload?.data?.accessToken)
       return payload
     }).catch((error) => {
       if (error instanceof ApiError || error?.name === 'AbortError') throw error
@@ -157,9 +153,6 @@ async function refreshAccessToken() {
 async function sendRequest(path, options) {
   const headers = new Headers(options.headers || {})
   headers.set('Accept-Language', getApiLanguage())
-
-  const token = getAccessToken()
-  if (token && !headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`)
 
   let body = options.body
   if (body && !(body instanceof FormData) && typeof body !== 'string') {
