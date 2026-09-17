@@ -4,11 +4,15 @@ import com.web.backend.service.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import java.util.Set;
 import java.time.Duration;
+import java.util.Collections;
+import java.util.Set;
+import java.util.UUID;
 
 @Component
 @RequiredArgsConstructor
@@ -22,12 +26,23 @@ public class SessionCleanupScheduler {
     private static final long TIMEOUT_MS = 3L * 60 * 1000;
 
     private static final String LOCK_KEY = "lock:session_cleanup";
-    private static final String LOCKED_VALUE_STRING = "locked";
+    private static final Duration LOCK_TTL = Duration.ofSeconds(20);
     private static final String WS_ROUTING_SERVERS_KEY_STRING = "ws:routing:servers:";
+
+    private static final String UNLOCK_LUA_SCRIPT = """
+            if redis.call('get', KEYS[1]) == ARGV[1] then
+                return redis.call('del', KEYS[1])
+            else
+                return 0
+            end
+            """;
+
+    private static final RedisScript<Long> UNLOCK_SCRIPT = new DefaultRedisScript<>(UNLOCK_LUA_SCRIPT, Long.class);
 
     @Scheduled(fixedRate = 30 * 1000)
     public void cleanupZombieSessions() {
-        Boolean locked = redisTemplate.opsForValue().setIfAbsent(LOCK_KEY, LOCKED_VALUE_STRING, Duration.ofSeconds(20));
+        String lockToken = UUID.randomUUID().toString();
+        Boolean locked = redisTemplate.opsForValue().setIfAbsent(LOCK_KEY, lockToken, LOCK_TTL);
 
         if (Boolean.TRUE.equals(locked)) {
             try {
@@ -46,8 +61,14 @@ public class SessionCleanupScheduler {
                         log.debug("Cleaned up zombie session for user '{}'", username);
                     }
                 }
+            } catch (Exception e) {
+                log.error("Error during zombie cleanup execution: {}", e.getMessage(), e);
             } finally {
-                redisTemplate.delete(LOCK_KEY);
+                try {
+                    redisTemplate.execute(UNLOCK_SCRIPT, Collections.singletonList(LOCK_KEY), lockToken);
+                } catch (Exception e) {
+                    log.error("Failed to release lock '{}' with token '{}'", LOCK_KEY, lockToken, e);
+                }
             }
         }
     }
