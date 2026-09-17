@@ -4,6 +4,7 @@ import com.web.backend.kafka.avro.ChatMessageAvro;
 import io.confluent.kafka.serializers.KafkaAvroDeserializer;
 import io.confluent.kafka.serializers.KafkaAvroDeserializerConfig;
 import io.confluent.kafka.serializers.KafkaAvroSerializer;
+import org.apache.kafka.clients.consumer.CooperativeStickyAssignor;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
@@ -85,9 +86,12 @@ public class KafkaConfig {
         props.put(ErrorHandlingDeserializer.KEY_DESERIALIZER_CLASS, StringDeserializer.class);
         props.put(ErrorHandlingDeserializer.VALUE_DESERIALIZER_CLASS, KafkaAvroDeserializer.class);
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
-        props.put(ConsumerConfig.MAX_POLL_INTERVAL_MS_CONFIG, 600000);
         props.put("schema.registry.url", schemaRegistryUrl);
         props.put(KafkaAvroDeserializerConfig.SPECIFIC_AVRO_READER_CONFIG, true);
+
+        props.put(ConsumerConfig.PARTITION_ASSIGNMENT_STRATEGY_CONFIG, CooperativeStickyAssignor.class.getName());
+        props.put(ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG, 45000);
+        props.put(ConsumerConfig.HEARTBEAT_INTERVAL_MS_CONFIG, 15000);
         return props;
     }
 
@@ -97,6 +101,7 @@ public class KafkaConfig {
         props.put(ConsumerConfig.FETCH_MIN_BYTES_CONFIG, 1);
         props.put(ConsumerConfig.FETCH_MAX_WAIT_MS_CONFIG, 200);
         props.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, 50);
+        props.put(ConsumerConfig.MAX_POLL_INTERVAL_MS_CONFIG, 60000);
         return new DefaultKafkaConsumerFactory<>(props);
     }
 
@@ -124,6 +129,7 @@ public class KafkaConfig {
         Map<String, Object> props = baseAvroConsumerProps();
         props.put(ConsumerConfig.FETCH_MAX_WAIT_MS_CONFIG, 500);
         props.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, 200);
+        props.put(ConsumerConfig.MAX_POLL_INTERVAL_MS_CONFIG, 300000);
         return new DefaultKafkaConsumerFactory<>(props);
     }
 
@@ -154,8 +160,7 @@ public class KafkaConfig {
         return factory;
     }
 
-    @Bean
-    public ConsumerFactory<String, Object> jsonConsumerFactory() {
+    private Map<String, Object> baseJsonConsumerProps() {
         Map<String, Object> props = new HashMap<>();
         props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ErrorHandlingDeserializer.class);
@@ -164,6 +169,18 @@ public class KafkaConfig {
         props.put(ErrorHandlingDeserializer.VALUE_DESERIALIZER_CLASS, JsonDeserializer.class);
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
         props.put(JsonDeserializer.TRUSTED_PACKAGES, "*");
+
+        props.put(ConsumerConfig.PARTITION_ASSIGNMENT_STRATEGY_CONFIG, CooperativeStickyAssignor.class.getName());
+        props.put(ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG, 45000);
+        props.put(ConsumerConfig.HEARTBEAT_INTERVAL_MS_CONFIG, 15000);
+        return props;
+    }
+
+    @Bean
+    public ConsumerFactory<String, Object> jsonConsumerFactory() {
+        Map<String, Object> props = baseJsonConsumerProps();
+        props.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, 50);
+        props.put(ConsumerConfig.MAX_POLL_INTERVAL_MS_CONFIG, 60000);
         return new DefaultKafkaConsumerFactory<>(props);
     }
 
@@ -176,9 +193,17 @@ public class KafkaConfig {
     }
 
     @Bean
+    public ConsumerFactory<String, Object> emailConsumerFactory() {
+        Map<String, Object> props = baseJsonConsumerProps();
+        props.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, 10);
+        props.put(ConsumerConfig.MAX_POLL_INTERVAL_MS_CONFIG, 300000);
+        return new DefaultKafkaConsumerFactory<>(props);
+    }
+
+    @Bean
     public ConcurrentKafkaListenerContainerFactory<String, Object> emailKafkaListenerContainerFactory() {
         ConcurrentKafkaListenerContainerFactory<String, Object> factory = new ConcurrentKafkaListenerContainerFactory<>();
-        factory.setConsumerFactory(jsonConsumerFactory());
+        factory.setConsumerFactory(emailConsumerFactory());
         factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.MANUAL_IMMEDIATE);
         return factory;
     }
