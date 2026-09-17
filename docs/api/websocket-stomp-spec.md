@@ -9,7 +9,7 @@ Tài liệu này đặc tả toàn bộ giao diện truyền thông thời gian 
 Hệ thống cung cấp điểm kết nối WebSocket chuẩn hỗ trợ fallback SockJS cho các trình duyệt hoặc mạng chặn giao thức WS thuần.
 
 - **WebSocket URL**:
-  - Phát triển cục bộ: `ws://localhost:8080/ws` (hoặc qua SockJS: `http://localhost:8080/ws`)
+  - Phát triển cục bộ: `ws://localhost/ws` (hoặc qua SockJS: `http://localhost/ws`)
   - Nginx Reverse Proxy: `wss://<domain>/ws`
 - **Cơ chế xác thực (Authentication)**:
   1. **Ưu tiên 1 (Cookie)**: Tự động trích xuất từ Cookie `accessToken` (được bọc vào session attribute `jwt_token_cookie`) đi kèm trong request bắt tay HTTP Upgrade.
