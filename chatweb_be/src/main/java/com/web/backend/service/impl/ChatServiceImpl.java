@@ -57,8 +57,6 @@ public class ChatServiceImpl implements ChatService {
 
     private static final String CHAT_RECENT_HASH_STRING = "chat:recent:hash:";
     private static final String CHAT_RECENT_ZSET_STRING = "chat:recent:zset:";
-    private static final String UNREAD_COUNTS_STRING = "unread_counts:";
-    private static final String SENTINEL_EMPTY_STRING = "_empty";
 
     private static final String EMPTY_STRING = "";
     private static final String DELIMITER_UNDERSCORE_STRING = "_";
@@ -208,13 +206,6 @@ public class ChatServiceImpl implements ChatService {
             String zsetKey = CHAT_RECENT_ZSET_STRING + convId;
             redisTemplate.opsForZSet().remove(zsetKey, chatMsg.getId());
             redisTemplate.opsForHash().delete(hashKey, chatMsg.getId());
-            if (chatMsg.getRecipient() != null && chatMsg.getSender() != null) {
-                String unreadKey = UNREAD_COUNTS_STRING + chatMsg.getRecipient();
-                Long count = redisTemplate.opsForHash().increment(unreadKey, chatMsg.getSender(), -1);
-                if (count != null && count <= 0) {
-                    redisTemplate.opsForHash().delete(unreadKey, chatMsg.getSender());
-                }
-            }
         } catch (Exception redisEx) {
             log.error("Failed to rollback Redis cache for message '{}' in conversation '{}'",
                     chatMsg.getId(), convId, redisEx);
@@ -248,15 +239,6 @@ public class ChatServiceImpl implements ChatService {
                     return null;
                 }
             });
-
-            if (chatMsg.getRecipient() != null && chatMsg.getSender() != null) {
-                String key = UNREAD_COUNTS_STRING + chatMsg.getRecipient();
-                Boolean hasKey = redisTemplate.hasKey(key);
-                if (Boolean.TRUE.equals(hasKey)) {
-                    redisTemplate.opsForHash().delete(key, SENTINEL_EMPTY_STRING);
-                    redisTemplate.opsForHash().increment(key, chatMsg.getSender(), 1);
-                }
-            }
 
             Set<Object> keysToRemove = redisTemplate.opsForZSet().range(zsetKey, 0, -51);
             if (keysToRemove != null && !keysToRemove.isEmpty()) {

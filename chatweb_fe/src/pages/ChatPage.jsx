@@ -27,10 +27,28 @@ const MESSAGE_EMOJI_OPTIONS = ['😀', '😂', '😍', '😊', '😎', '😢', '
 const REACTION_EMOJI = Object.fromEntries(REACTION_OPTIONS.map((reaction) => [reaction.type, reaction.emoji]))
 const BLOCKED_MESSAGES_STORAGE_KEY = 'chatweb-blocked-message-intervals'
 const EDIT_HISTORY_STORAGE_KEY = 'chatweb-message-edit-history'
+const WATERMARK_CHANNEL_NAME = 'chatweb_watermark_sync'
 const MAX_MEDIA_SIZE_BYTES = 20 * 1024 * 1024
 const MESSAGE_PAGE_SIZE = 30
 const MESSAGE_HISTORY_FALLBACK_SIZE = 1000
 const MESSAGE_SEARCH_PAGE_SIZE = 30
+
+function broadcastWatermarkRead(reader, sender, readTimestamp) {
+  if (typeof window === 'undefined' || !window.BroadcastChannel) return
+  try {
+    const channel = new BroadcastChannel(WATERMARK_CHANNEL_NAME)
+    channel.postMessage({
+      type: 'WATERMARK_READ',
+      reader,
+      sender,
+      readTimestamp: readTimestamp || new Date().toISOString(),
+      status: 'READ',
+    })
+    channel.close()
+  } catch {
+    // Ignore BroadcastChannel errors in unsupported/restricted environments
+  }
+}
 
 function getMediaContentType(file) {
   if (file?.type?.startsWith('image/')) return 'IMAGE'
@@ -303,6 +321,7 @@ function ChatPage() {
   const messageStreamRef = useRef(null)
   const preserveScrollHeightRef = useRef(null)
   const loadingOlderMessagesRef = useRef(false)
+  const initialLoadScrollRef = useRef(false)
   const pendingOutgoingMessagesRef = useRef([])
   const rateLimitHandledRecipientsRef = useRef(new Set())
   const rateLimitResetTimersRef = useRef(new Map())
@@ -312,6 +331,10 @@ function ChatPage() {
   const typingPublishTimersRef = useRef(new Map())
   const typingLastSentRef = useRef(new Map())
   const readAckTimersRef = useRef(new Map())
+  const pendingMarkReadRef = useRef(new Set())
+  const unreadCountsRef = useRef({})
+  const pendingReceiptsRef = useRef(new Map())
+  const receiptDebounceTimersRef = useRef(new Map())
   const socketSenderRef = useRef(null)
   const friendSyncTimersRef = useRef([])
   const conversationMenuRef = useRef(null)
@@ -487,6 +510,7 @@ function ChatPage() {
 
   const loadConversation = useCallback(async (person, silent = false, cursor = null) => {
     if (!person || !user) return
+    if (!cursor) initialLoadScrollRef.current = true
     if (!silent) setLoadingConversation(true)
     try {
       const fetchConversationPage = async (size) => {
@@ -543,6 +567,7 @@ function ChatPage() {
   }, [conversationPages, loadConversation])
 
   const handleMessageStreamScroll = useCallback((event) => {
+    if (initialLoadScrollRef.current) return
     if (event.currentTarget.scrollTop <= 80) void loadOlderConversation()
   }, [loadOlderConversation])
 
@@ -583,12 +608,34 @@ function ChatPage() {
     }
   }, [blockedMessageIntervals, showToast, t, user])
 
-  const markAsRead = useCallback((sender) => {
+  const flushPendingMarkAsRead = useCallback(() => {
+    if (!pendingMarkReadRef.current.size) return
+    const senders = Array.from(pendingMarkReadRef.current)
+    pendingMarkReadRef.current.clear()
+    senders.forEach((sender) => {
+      window.clearTimeout(readAckTimersRef.current.get(sender))
+      readAckTimersRef.current.delete(sender)
+      void apiRequest('/api/messages/mark-as-read', { method: 'POST', body: { sender } }).catch(() => {})
+    })
+  }, [])
+
+  const markAsRead = useCallback((sender, force = false) => {
     if (!sender) return
+    const currentUnread = Number(unreadCountsRef.current[sender] || 0)
+    if (!force && currentUnread <= 0 && !readAckTimersRef.current.has(sender)) {
+      return
+    }
+
     setUnreadCounts((current) => ({ ...current, [sender]: 0 }))
+    if (user?.username) {
+      broadcastWatermarkRead(user.username, sender, new Date().toISOString())
+    }
+
+    pendingMarkReadRef.current.add(sender)
     window.clearTimeout(readAckTimersRef.current.get(sender))
     const timer = window.setTimeout(async () => {
       readAckTimersRef.current.delete(sender)
+      pendingMarkReadRef.current.delete(sender)
       try {
         await apiRequest('/api/messages/mark-as-read', { method: 'POST', body: { sender } })
       } catch {
@@ -596,15 +643,15 @@ function ChatPage() {
       }
     }, 220)
     readAckTimersRef.current.set(sender, timer)
-  }, [loadUnreadCounts])
+  }, [loadUnreadCounts, user])
 
-  const sendRealtimeReceipt = useCallback((recipient, status, sourceMessage = null) => {
+  const sendRealtimeReceiptImmediate = useCallback((recipient, status, sourceMessage = null, timestamp = null) => {
     if (!recipient || !socketSenderRef.current) return false
     return socketSenderRef.current({
       recipient,
       content: `${RECEIPT_PREFIX}${JSON.stringify({
         status,
-        statusTimestamp: new Date().toISOString(),
+        statusTimestamp: timestamp || new Date().toISOString(),
         messageId: sourceMessage?.id || null,
         localId: sourceMessage?.localId || null,
       })}`,
@@ -612,6 +659,41 @@ function ChatPage() {
       messageType: 'TYPING',
     })
   }, [])
+
+  const flushPendingReceipts = useCallback(() => {
+    pendingReceiptsRef.current.forEach((pending, recipient) => {
+      window.clearTimeout(receiptDebounceTimersRef.current.get(recipient))
+      receiptDebounceTimersRef.current.delete(recipient)
+      sendRealtimeReceiptImmediate(recipient, pending.status, pending.sourceMessage, pending.timestamp)
+    })
+    pendingReceiptsRef.current.clear()
+  }, [sendRealtimeReceiptImmediate])
+
+  const sendRealtimeReceipt = useCallback((recipient, status, sourceMessage = null) => {
+    if (!recipient || !socketSenderRef.current) return false
+    if (status !== 'READ') {
+      return sendRealtimeReceiptImmediate(recipient, status, sourceMessage)
+    }
+
+    pendingReceiptsRef.current.set(recipient, {
+      status,
+      sourceMessage,
+      timestamp: new Date().toISOString(),
+    })
+
+    if (!receiptDebounceTimersRef.current.has(recipient)) {
+      const timer = window.setTimeout(() => {
+        receiptDebounceTimersRef.current.delete(recipient)
+        const pending = pendingReceiptsRef.current.get(recipient)
+        if (pending) {
+          pendingReceiptsRef.current.delete(recipient)
+          sendRealtimeReceiptImmediate(recipient, pending.status, pending.sourceMessage, pending.timestamp)
+        }
+      }, 250)
+      receiptDebounceTimersRef.current.set(recipient, timer)
+    }
+    return true
+  }, [sendRealtimeReceiptImmediate])
 
   const sendTypingStatus = useCallback((recipient, active) => {
     if (!recipient || !socketSenderRef.current) return false
@@ -745,7 +827,7 @@ function ChatPage() {
       playInboxSound()
       const isActivelyReading = isActivelyViewingConversation(peer)
       sendRealtimeReceipt(peer, isActivelyReading ? 'READ' : 'DELIVERED', displayMessage)
-      if (isActivelyReading) markAsRead(peer)
+      if (isActivelyReading) markAsRead(peer, true)
       else setUnreadCounts((current) => ({ ...current, [peer]: (current[peer] || 0) + 1 }))
     }
   }, [blockedMessageIntervals, isActivelyViewingConversation, markAsRead, playInboxSound, sendRealtimeReceipt, updatePeerPresence, user])
@@ -776,13 +858,21 @@ function ChatPage() {
     }
 
     if (notification.type === 'STATUS_MESSAGE' && notification.data && user) {
-      const { reader, readTimestamp, status, statusTimestamp } = notification.data
+      const { reader, sender, readTimestamp, status, statusTimestamp } = notification.data
       const nextStatus = status || 'READ'
       const nextTimestamp = statusTimestamp || readTimestamp
-      setMessagesByUser((current) => ({
-        ...current,
-        [reader]: promoteStatuses(current[reader], user.username, nextStatus, nextTimestamp),
-      }))
+      if (reader === user.username) {
+        const peer = sender
+        if (peer) {
+          setUnreadCounts((current) => ({ ...current, [peer]: 0 }))
+          broadcastWatermarkRead(user.username, peer, nextTimestamp)
+        }
+      } else {
+        setMessagesByUser((current) => ({
+          ...current,
+          [reader]: promoteStatuses(current[reader], user.username, nextStatus, nextTimestamp),
+        }))
+      }
     }
 
     if ((isEditNotification || isRevokeNotification || isReactionNotification) && notification.data && user) {
@@ -906,15 +996,64 @@ function ChatPage() {
     }
   }, [blockedMessageIntervals, isActivelyViewingConversation, markAsRead, sendRealtimeReceipt, unreadCounts, user?.username])
 
-  useEffect(() => () => {
-    window.clearTimeout(searchHighlightTimerRef.current)
-    friendSyncTimersRef.current.forEach((timer) => window.clearTimeout(timer))
-    readAckTimersRef.current.forEach((timer) => window.clearTimeout(timer))
-    typingTimeoutsRef.current.forEach((timer) => window.clearTimeout(timer))
-    typingPublishTimersRef.current.forEach((timer) => window.clearTimeout(timer))
-    typingLastSentRef.current.clear()
-    rateLimitResetTimersRef.current.forEach((timer) => window.clearTimeout(timer))
-  }, [])
+  useEffect(() => {
+    unreadCountsRef.current = unreadCounts
+  }, [unreadCounts])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.BroadcastChannel) return
+    const channel = new BroadcastChannel(WATERMARK_CHANNEL_NAME)
+    channel.onmessage = (event) => {
+      const payload = event?.data
+      if (!payload || payload.type !== 'WATERMARK_READ') return
+      const { reader, sender, readTimestamp, status } = payload
+      if (!reader || !sender || reader !== user?.username) return
+
+      setUnreadCounts((current) => ({ ...current, [sender]: 0 }))
+      const nextStatus = status || 'READ'
+      const nextTimestamp = readTimestamp || new Date().toISOString()
+      setMessagesByUser((current) => ({
+        ...current,
+        [sender]: promoteStatuses(current[sender], user.username, nextStatus, nextTimestamp),
+      }))
+    }
+    return () => {
+      channel.close()
+    }
+  }, [user?.username])
+
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      flushPendingReceipts()
+      flushPendingMarkAsRead()
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    window.addEventListener('pagehide', handleBeforeUnload)
+
+    const searchHighlightTimer = searchHighlightTimerRef.current
+    const friendSyncTimers = friendSyncTimersRef.current
+    const readAckTimers = readAckTimersRef.current
+    const receiptDebounceTimers = receiptDebounceTimersRef.current
+    const typingTimeouts = typingTimeoutsRef.current
+    const typingPublishTimers = typingPublishTimersRef.current
+    const typingLastSent = typingLastSentRef.current
+    const rateLimitResetTimers = rateLimitResetTimersRef.current
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+      window.removeEventListener('pagehide', handleBeforeUnload)
+      flushPendingReceipts()
+      flushPendingMarkAsRead()
+      window.clearTimeout(searchHighlightTimer)
+      friendSyncTimers.forEach((timer) => window.clearTimeout(timer))
+      readAckTimers.forEach((timer) => window.clearTimeout(timer))
+      receiptDebounceTimers.forEach((timer) => window.clearTimeout(timer))
+      typingTimeouts.forEach((timer) => window.clearTimeout(timer))
+      typingPublishTimers.forEach((timer) => window.clearTimeout(timer))
+      typingLastSent.clear()
+      rateLimitResetTimers.forEach((timer) => window.clearTimeout(timer))
+    }
+  }, [flushPendingMarkAsRead, flushPendingReceipts])
 
   useEffect(() => {
     const preserved = preserveScrollHeightRef.current
@@ -924,9 +1063,14 @@ function ChatPage() {
       preserveScrollHeightRef.current = null
       return
     }
+    const isInitialLoad = initialLoadScrollRef.current
     const stream = messageStreamRef.current
     if (stream) {
-      stream.scrollTo({ top: stream.scrollHeight, behavior: 'smooth' })
+      stream.scrollTo({ top: stream.scrollHeight, behavior: isInitialLoad ? 'instant' : 'smooth' })
+    }
+    if (isInitialLoad) {
+      initialLoadScrollRef.current = false
+      return
     }
     if (messageStreamRef.current?.scrollHeight <= messageStreamRef.current?.clientHeight
       && conversationPages[selectedUser?.username]?.hasMore) {
