@@ -18,7 +18,6 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
-import org.springframework.data.mongodb.core.FindAndModifyOptions;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
@@ -26,9 +25,9 @@ import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
+import com.web.backend.common.ActionType;
 import com.web.backend.common.MessageStatus;
 import com.web.backend.common.MessageType;
-import com.web.backend.common.UpdateMessageType;
 import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.request.EditMessageRequest;
 import com.web.backend.controller.request.MarkReadRequest;
@@ -43,7 +42,8 @@ import com.web.backend.exception.custom.AccessForbiddenException;
 import com.web.backend.exception.custom.InvalidDataException;
 import com.web.backend.exception.custom.ResourceNotFoundException;
 import com.web.backend.exception.custom.SystemOverloadException;
-import com.web.backend.kafka.payload.UpdateMessagePayload;
+import com.web.backend.kafka.avro.ChatMessageAvro;
+import com.web.backend.kafka.producer.ChatProducer;
 import com.web.backend.mapper.MessageMapper;
 import com.web.backend.model.mongodb.ChatMessage;
 import com.web.backend.model.mongodb.ReadReceipt;
@@ -71,6 +71,7 @@ public class MessageServiceImpl implements MessageService {
     private final MongoTemplate mongoTemplate;
     private final MessageMapper messageMapper;
     private final ApplicationEventPublisher eventPublisher;
+    private final ChatProducer chatProducer;
 
     private static final String TIMESTAMP_STRING = "timestamp";
     private static final String EMPTY_STRING = "";
@@ -79,16 +80,8 @@ public class MessageServiceImpl implements MessageService {
 
     private static final String FIELD_ID_STRING = "id";
     private static final String FIELD_CONVERSATION_ID_STRING = "conversationId";
-    private static final String FIELD_SENDER_STRING = "sender";
     private static final String FIELD_IS_DELETED_STRING = "isDeleted";
     private static final String FIELD_CONTENT_STRING = "content";
-    private static final String FIELD_IS_EDITED_STRING = "isEdited";
-    private static final String FIELD_FILE_URL_STRING = "fileUrl";
-    private static final String FIELD_FILE_NAME_STRING = "fileName";
-    private static final String FIELD_FILE_SIZE_STRING = "fileSize";
-    private static final String FIELD_REACTIONS_STRING = "reactions";
-    private static final String FIELD_REACTIONS_PREFIX_STRING = "reactions.";
-    private static final String FIELD_IS_REACTED_STRING = "isReacted";
     private static final String FIELD_LAST_READ_TIMESTAMP_STRING = "lastReadTimestamp";
     private static final String FIELD_USERNAME_STRING = "username";
     private static final String FIELD_MESSAGE_TYPE_STRING = "messageType";
@@ -101,7 +94,6 @@ public class MessageServiceImpl implements MessageService {
     private static final String ERROR_MSG_RECIPIENT_NOT_FOUND_STRING = "error.msg.recipient_not_found";
     private static final String ERROR_MSG_NOT_FRIENDS_STRING = "error.msg.not_friends";
     private static final String ERROR_MSG_NOT_FOUND_STRING = "error.msg.not_found";
-    private static final String ERROR_MSG_SYNCING_STRING = "error.msg.syncing";
     private static final String ERROR_MSG_EDIT_FORBIDDEN_STRING = "error.msg.edit_forbidden";
     private static final String ERROR_MSG_DELETE_FORBIDDEN_STRING = "error.msg.delete_forbidden";
     private static final String ERROR_MSG_EDIT_DELETED_STRING = "error.msg.edit_deleted";
@@ -315,32 +307,17 @@ public class MessageServiceImpl implements MessageService {
             throw new InvalidDataException(Translator.tolocale(ERROR_MSG_EDIT_DELETED_STRING));
         }
 
-        Query query = new Query(Criteria.where(FIELD_ID_STRING).is(request.getMessageId())
-                .and(FIELD_CONVERSATION_ID_STRING).is(convId)
-                .and(FIELD_SENDER_STRING).is(senderUsername)
-                .and(FIELD_IS_DELETED_STRING).is(false));
+        msg.setContent(request.getNewContent());
+        msg.setEdited(true);
+        msg.setStatus(resolveCurrentStatus(msg));
 
-        Update update = new Update();
-        update.set(FIELD_CONTENT_STRING, request.getNewContent());
-        update.set(FIELD_IS_EDITED_STRING, true);
+        putMessageIfCached(convId, msg);
 
-        FindAndModifyOptions options = new FindAndModifyOptions().returnNew(true);
-        ChatMessage updatedMsg = mongoTemplate.findAndModify(query, update, options, ChatMessage.class);
+        ChatMessageAvro payload = messageMapper.toAvro(msg);
+        payload.setActionType(ActionType.EDIT.name());
+        chatProducer.sendChatMessage(payload);
 
-        if (updatedMsg == null) {
-            handleMissingMongoMessage(convId, request.getMessageId(), request);
-            return null;
-        }
-
-        putMessageIfCached(convId, updatedMsg);
-
-        eventPublisher.publishEvent(UpdateMessagePayload.builder()
-                .relatedUsername(senderUsername)
-                .type(UpdateMessageType.EDIT)
-                .updateEvent(updatedMsg)
-                .build());
-
-        return mapToEnrichedResponse(updatedMsg);
+        return mapToEnrichedResponse(msg);
     }
 
     @Override
@@ -361,26 +338,13 @@ public class MessageServiceImpl implements MessageService {
             return;
         }
 
-        Query query = new Query(Criteria.where(FIELD_ID_STRING).is(request.getMessageId())
-                .and(FIELD_CONVERSATION_ID_STRING).is(convId)
-                .and(FIELD_SENDER_STRING).is(senderUsername)
-                .and(FIELD_IS_DELETED_STRING).is(false));
-
-        Update update = new Update();
-        update.set(FIELD_CONTENT_STRING, EMPTY_STRING);
-        update.set(FIELD_FILE_URL_STRING, null);
-        update.set(FIELD_FILE_NAME_STRING, null);
-        update.set(FIELD_FILE_SIZE_STRING, null);
-        update.set(FIELD_REACTIONS_STRING, null);
-        update.set(FIELD_IS_DELETED_STRING, true);
-
-        FindAndModifyOptions options = new FindAndModifyOptions().returnNew(true);
-        ChatMessage updatedMsg = mongoTemplate.findAndModify(query, update, options, ChatMessage.class);
-
-        if (updatedMsg == null) {
-            handleMissingMongoMessage(convId, request.getMessageId(), request);
-            return;
-        }
+        msg.setContent(EMPTY_STRING);
+        msg.setFileUrl(null);
+        msg.setFileName(null);
+        msg.setFileSize(null);
+        msg.setReactions(null);
+        msg.setDeleted(true);
+        msg.setStatus(resolveCurrentStatus(msg));
 
         if (msg.getRecipient() != null) {
             try {
@@ -390,13 +354,11 @@ public class MessageServiceImpl implements MessageService {
             }
         }
 
-        putMessageIfCached(convId, updatedMsg);
+        putMessageIfCached(convId, msg);
 
-        eventPublisher.publishEvent(UpdateMessagePayload.builder()
-                .relatedUsername(senderUsername)
-                .type(UpdateMessageType.REVOKE)
-                .updateEvent(updatedMsg)
-                .build());
+        ChatMessageAvro payload = messageMapper.toAvro(msg);
+        payload.setActionType(ActionType.REVOKE.name());
+        chatProducer.sendChatMessage(payload);
     }
 
     @Override
@@ -419,53 +381,28 @@ public class MessageServiceImpl implements MessageService {
             throw new InvalidDataException(Translator.tolocale(ERROR_MSG_EDIT_DELETED_STRING));
         }
 
-        Query query = new Query(Criteria.where(FIELD_ID_STRING).is(request.getMessageId())
-                .and(FIELD_CONVERSATION_ID_STRING).is(convId)
-                .and(FIELD_IS_DELETED_STRING).is(false));
+        Map<String, String> reactions = msg.getReactions();
+        if (reactions == null) {
+            reactions = new HashMap<>();
+            msg.setReactions(reactions);
+        }
 
-        Update update = new Update();
         if (request.getReactionType() != null) {
-            update.set(FIELD_REACTIONS_PREFIX_STRING + senderUsername, request.getReactionType().toString());
-            update.set(FIELD_IS_REACTED_STRING, true);
+            reactions.put(senderUsername, request.getReactionType().toString());
+            msg.setReacted(true);
         } else {
-            update.unset(FIELD_REACTIONS_PREFIX_STRING + senderUsername);
-            Map<String, String> currentReactions = msg.getReactions();
-            if (currentReactions == null || currentReactions.size() <= 1) {
-                update.set(FIELD_IS_REACTED_STRING, false);
-            }
+            reactions.remove(senderUsername);
+            msg.setReacted(!reactions.isEmpty());
         }
+        msg.setStatus(resolveCurrentStatus(msg));
 
-        FindAndModifyOptions options = new FindAndModifyOptions().returnNew(true);
-        ChatMessage updatedMsg = mongoTemplate.findAndModify(query, update, options, ChatMessage.class);
+        putMessageIfCached(convId, msg);
 
-        if (updatedMsg == null) {
-            handleMissingMongoMessage(convId, request.getMessageId(), request);
-            return null;
-        }
+        ChatMessageAvro payload = messageMapper.toAvro(msg);
+        payload.setActionType(ActionType.REACT.name());
+        chatProducer.sendChatMessage(payload);
 
-        putMessageIfCached(convId, updatedMsg);
-
-        eventPublisher.publishEvent(UpdateMessagePayload.builder()
-                .relatedUsername(senderUsername)
-                .type(UpdateMessageType.REACT)
-                .updateEvent(updatedMsg)
-                .build());
-
-        return mapToEnrichedResponse(updatedMsg);
-    }
-
-    private void handleMissingMongoMessage(String convId, String messageId, Object requestData) {
-        String hashKey = CHAT_RECENT_HASH_STRING + convId;
-        Object redisObj = null;
-        try {
-            redisObj = redisTemplate.opsForHash().get(hashKey, messageId);
-        } catch (Exception e) {
-            log.warn("Failed to check Redis cache for message '{}'", messageId, e);
-        }
-        if (redisObj != null) {
-            throw new SystemOverloadException(Translator.tolocale(ERROR_MSG_SYNCING_STRING), requestData);
-        }
-        throw new ResourceNotFoundException(Translator.tolocale(ERROR_MSG_NOT_FOUND_STRING));
+        return mapToEnrichedResponse(msg);
     }
 
     private String generateConversationId(String user1, String user2) {
@@ -634,6 +571,22 @@ public class MessageServiceImpl implements MessageService {
                 .orElseThrow(() -> new ResourceNotFoundException(Translator.tolocale(ERROR_MSG_NOT_FOUND_STRING)));
     }
 
+    private MessageStatus resolveCurrentStatus(ChatMessage message) {
+        if (message == null) {
+            return MessageStatus.SENT;
+        }
+        String convId = message.getConversationId();
+        String recipient = message.getRecipient();
+        if (convId != null && recipient != null) {
+            Instant recipientReadTime = getLastReadTimestamp(convId, recipient);
+            if (recipientReadTime != null && message.getTimestamp() != null
+                    && !message.getTimestamp().isAfter(recipientReadTime)) {
+                return MessageStatus.READ;
+            }
+        }
+        return MessageStatus.SENT;
+    }
+
     private ChatMessageResponse mapToEnrichedResponse(ChatMessage message) {
         if (message == null) {
             return null;
@@ -642,17 +595,7 @@ public class MessageServiceImpl implements MessageService {
         if (response == null) {
             return null;
         }
-        String convId = message.getConversationId();
-        String recipient = message.getRecipient();
-        if (convId != null && recipient != null) {
-            Instant recipientReadTime = getLastReadTimestamp(convId, recipient);
-            if (recipientReadTime != null && message.getTimestamp() != null
-                    && !message.getTimestamp().isAfter(recipientReadTime)) {
-                response.setStatus(MessageStatus.READ);
-            } else if (response.getStatus() == null) {
-                response.setStatus(MessageStatus.SENT);
-            }
-        }
+        response.setStatus(resolveCurrentStatus(message));
         return response;
     }
 

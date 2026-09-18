@@ -20,10 +20,8 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import com.web.backend.common.UpdateMessageType;
 import com.web.backend.controller.response.ReadReceiptResponse;
 import com.web.backend.kafka.payload.UpdateMessagePayload;
-import com.web.backend.model.mongodb.ChatMessage;
 
 @ExtendWith(MockitoExtension.class)
 class UpdateMessageProducerTest {
@@ -63,27 +61,6 @@ class UpdateMessageProducerTest {
         updateMessageProducer.handleReadReceiptEvent(null);
 
         verify(kafkaTemplate, never()).send(any(), any(), any());
-    }
-
-    @Test
-    void testHandleUpdateMessageEvent() {
-        @SuppressWarnings("unchecked")
-        SendResult<String, Object> sendResult = mock(SendResult.class, org.mockito.Mockito.RETURNS_DEEP_STUBS);
-        CompletableFuture<SendResult<String, Object>> future = CompletableFuture.completedFuture(sendResult);
-        when(kafkaTemplate.send(any(), any(), any())).thenReturn(future);
-
-        ChatMessage chatMessage = new ChatMessage();
-        chatMessage.setConversationId("conv1");
-
-        UpdateMessagePayload payload = UpdateMessagePayload.builder()
-                .type(UpdateMessageType.EDIT)
-                .relatedUsername("sender1")
-                .updateEvent(chatMessage)
-                .build();
-
-        updateMessageProducer.handleUpdateMessageEvent(payload);
-
-        verify(kafkaTemplate).send(eq("chat-update-topic"), eq("conv1"), eq(payload));
     }
 
     @Test

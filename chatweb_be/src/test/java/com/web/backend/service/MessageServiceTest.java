@@ -55,9 +55,8 @@ import com.web.backend.controller.response.UnreadCountsResponse;
 import com.web.backend.exception.custom.AccessForbiddenException;
 import com.web.backend.exception.custom.InvalidDataException;
 import com.web.backend.exception.custom.ResourceNotFoundException;
-import com.web.backend.exception.custom.SystemOverloadException;
 import com.web.backend.kafka.avro.ChatMessageAvro;
-import com.web.backend.kafka.payload.UpdateMessagePayload;
+import com.web.backend.kafka.producer.ChatProducer;
 import com.web.backend.mapper.MessageMapper;
 import com.web.backend.model.mongodb.ChatMessage;
 import com.web.backend.model.mongodb.ReadReceipt;
@@ -85,6 +84,8 @@ class MessageServiceTest {
     private MongoTemplate mongoTemplate;
     @Mock
     private MessageMapper messageMapper;
+    @Mock
+    private ChatProducer chatProducer;
 
     @Mock
     private ApplicationEventPublisher eventPublisher;
@@ -127,6 +128,17 @@ class MessageServiceTest {
             return payload;
         });
 
+        lenient().when(messageMapper.toResponse(any(ChatMessage.class))).thenAnswer(inv -> {
+            ChatMessage entity = inv.getArgument(0);
+            if (entity == null) return null;
+            return ChatMessageResponse.builder()
+                    .id(entity.getId())
+                    .sender(entity.getSender())
+                    .recipient(entity.getRecipient())
+                    .content(entity.getContent())
+                    .build();
+        });
+
         lenient().when(friendService.isFriend(anyString(), anyString())).thenReturn(true);
     }
 
@@ -156,18 +168,14 @@ class MessageServiceTest {
         message.setRecipient("recipient");
         message.setConversationId("recipient_sender");
         when(messageRepository.findById("msg123")).thenReturn(Optional.of(message));
-        when(mongoTemplate.findAndModify(any(), any(), any(), eq(ChatMessage.class))).thenReturn(message);
 
         messageService.reactToMessage("sender", request);
-
-        // Verify MongoDB updated
-        verify(mongoTemplate).findAndModify(any(), any(), any(), eq(ChatMessage.class));
 
         // Verify Redis updated
         verify(redisTemplate, atLeastOnce()).opsForHash();
 
         // Verify Kafka event published
-        verify(eventPublisher).publishEvent(any(UpdateMessagePayload.class));
+        verify(chatProducer).sendChatMessage(any(ChatMessageAvro.class));
     }
 
     @Test
@@ -230,12 +238,10 @@ class MessageServiceTest {
         message.setMessageType(com.web.backend.common.MessageType.CHAT);
 
         when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
-        when(mongoTemplate.findAndModify(any(), any(), any(), eq(ChatMessage.class))).thenReturn(message);
 
         messageService.editMessage("sender", request);
 
-        verify(mongoTemplate).findAndModify(any(), any(), any(), eq(ChatMessage.class));
-        verify(eventPublisher).publishEvent(any(UpdateMessagePayload.class));
+        verify(chatProducer).sendChatMessage(any(ChatMessageAvro.class));
     }
 
     @Test
@@ -245,22 +251,14 @@ class MessageServiceTest {
         request.setNewContent("Edited text");
         request.setRecipient("recipient");
 
-        ChatMessage message = new ChatMessage();
-        message.setId("msg1");
-        message.setSender("sender");
-        message.setRecipient("recipient");
-        message.setConversationId("recipient_sender");
-        message.setMessageType(com.web.backend.common.MessageType.CHAT);
-
-        when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
-        when(mongoTemplate.findAndModify(any(), any(), any(), eq(ChatMessage.class))).thenReturn(null);
+        when(messageRepository.findById("msg1")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> messageService.editMessage("sender", request))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 
     @Test
-    void testEditMessage_InRedisButNotInDb_ThrowsSystemOverloadException() {
+    void testEditMessage_InRedis_SucceedsImmediately() {
         EditMessageRequest request = new EditMessageRequest();
         request.setMessageId("msg1");
         request.setNewContent("Edited text");
@@ -273,12 +271,12 @@ class MessageServiceTest {
         message.setConversationId("recipient_sender");
         message.setMessageType(com.web.backend.common.MessageType.CHAT);
 
-        when(mongoTemplate.findAndModify(any(), any(), any(), eq(ChatMessage.class))).thenReturn(null);
         when(redisTemplate.opsForHash()).thenReturn(hashOperations);
         when(hashOperations.get("chat:recent:hash:recipient_sender", "msg1")).thenReturn(message);
 
-        assertThatThrownBy(() -> messageService.editMessage("sender", request))
-                .isInstanceOf(SystemOverloadException.class);
+        ChatMessageResponse response = messageService.editMessage("sender", request);
+        assertThat(response).isNotNull();
+        verify(chatProducer).sendChatMessage(any(ChatMessageAvro.class));
     }
 
     @Test
@@ -357,14 +355,12 @@ class MessageServiceTest {
         message.setMessageType(com.web.backend.common.MessageType.CHAT);
 
         when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
-        when(mongoTemplate.findAndModify(any(), any(), any(), eq(ChatMessage.class))).thenReturn(message);
 
         messageService.revokeMessage("sender", request);
 
-        verify(mongoTemplate).findAndModify(any(), any(), any(), eq(ChatMessage.class));
         verify(redisTemplate).delete("unread_counts:recipient");
         verify(hashOperations, never()).increment(anyString(), anyString(), anyLong());
-        verify(eventPublisher).publishEvent(any(UpdateMessagePayload.class));
+        verify(chatProducer).sendChatMessage(any(ChatMessageAvro.class));
     }
 
     @Test
@@ -383,12 +379,11 @@ class MessageServiceTest {
         message.setMessageType(com.web.backend.common.MessageType.CHAT);
 
         when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
-        when(mongoTemplate.findAndModify(any(), any(), any(), eq(ChatMessage.class))).thenReturn(message);
 
         messageService.revokeMessage("sender", request);
 
         verify(hashOperations, never()).increment(anyString(), anyString(), anyLong());
-        verify(eventPublisher).publishEvent(any(UpdateMessagePayload.class));
+        verify(chatProducer).sendChatMessage(any(ChatMessageAvro.class));
     }
 
     @Test
@@ -409,12 +404,11 @@ class MessageServiceTest {
         message.setMessageType(com.web.backend.common.MessageType.CHAT);
 
         when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
-        when(mongoTemplate.findAndModify(any(), any(), any(), eq(ChatMessage.class))).thenReturn(message);
 
         messageService.revokeMessage("sender", request);
 
         verify(hashOperations, never()).increment(anyString(), anyString(), anyLong());
-        verify(eventPublisher).publishEvent(any(UpdateMessagePayload.class));
+        verify(chatProducer).sendChatMessage(any(ChatMessageAvro.class));
     }
 
     @Test
@@ -727,14 +721,12 @@ class MessageServiceTest {
         message.setRecipient("recipient");
         message.setConversationId("recipient_sender");
         when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
-        when(mongoTemplate.findAndModify(any(), any(), any(), eq(ChatMessage.class))).thenReturn(message);
 
         when(friendService.isFriend("sender", "recipient")).thenReturn(true);
 
         messageService.reactToMessage("sender", request);
 
-        verify(mongoTemplate).findAndModify(any(), any(), any(), eq(ChatMessage.class));
-        verify(eventPublisher).publishEvent(any(UpdateMessagePayload.class));
+        verify(chatProducer).sendChatMessage(any(ChatMessageAvro.class));
     }
 
     @Test

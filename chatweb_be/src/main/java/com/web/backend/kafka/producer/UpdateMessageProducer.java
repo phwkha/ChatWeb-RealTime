@@ -13,7 +13,6 @@ import java.util.Objects;
 import com.web.backend.common.UpdateMessageType;
 import com.web.backend.controller.response.ReadReceiptResponse;
 import com.web.backend.kafka.payload.UpdateMessagePayload;
-import com.web.backend.model.mongodb.ChatMessage;
 
 @Component
 @RequiredArgsConstructor
@@ -41,20 +40,12 @@ public class UpdateMessageProducer {
         sendUpdateMessage(payload);
     }
 
-    @Async
-    @EventListener
-    public void handleUpdateMessageEvent(UpdateMessagePayload payload) {
-        sendUpdateMessage(payload);
-    }
-
     public void sendUpdateMessage(UpdateMessagePayload payload) {
         if (payload == null) {
             return;
         }
         String key = null;
-        if (payload.updateEvent() instanceof ChatMessage msg) {
-            key = msg.getConversationId();
-        } else if (payload.updateEvent() instanceof ReadReceiptResponse receipt) {
+        if (payload.updateEvent() instanceof ReadReceiptResponse receipt) {
             key = receipt.getConversationId();
         } else if (payload.relatedUsername() != null) {
             key = payload.relatedUsername();

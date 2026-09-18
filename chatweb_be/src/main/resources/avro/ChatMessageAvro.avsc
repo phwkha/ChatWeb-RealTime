@@ -103,6 +103,11 @@
         }
       ],
       "default": null
+    },
+    {
+      "name": "actionType",
+      "type": ["null", "string"],
+      "default": null
     }
   ]
 }

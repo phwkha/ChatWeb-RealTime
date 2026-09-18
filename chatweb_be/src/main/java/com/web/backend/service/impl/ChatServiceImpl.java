@@ -13,6 +13,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.SessionCallback;
 import org.springframework.stereotype.Service;
 
+import com.web.backend.common.ActionType;
 import com.web.backend.common.ContentType;
 import com.web.backend.common.MessageStatus;
 import com.web.backend.common.MessageType;
@@ -104,6 +105,7 @@ public class ChatServiceImpl implements ChatService {
             }
             ChatMessageAvro payload = messageMapper.toAvro(chatMsg);
             payload.setLocalId(request.getLocalId());
+            payload.setActionType(ActionType.CREATE.name());
             chatProducer.sendChatMessage(payload).whenComplete((result, ex) -> {
                 if (ex != null) {
                     if (chatMsg.getMessageType() == MessageType.CHAT) {

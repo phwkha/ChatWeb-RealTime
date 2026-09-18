@@ -5,8 +5,8 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 import java.time.Instant;
 
@@ -22,19 +22,14 @@ import org.springframework.context.support.ResourceBundleMessageSource;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.web.backend.common.UpdateMessageType;
 import com.web.backend.config.localresolverconfig.Translator;
-import com.web.backend.controller.response.ChatMessageResponse;
 import com.web.backend.controller.response.NotificationResponse;
 import com.web.backend.controller.response.ReadReceiptResponse;
 import com.web.backend.kafka.payload.UpdateMessagePayload;
-import com.web.backend.mapper.MessageMapper;
-import com.web.backend.model.mongodb.ChatMessage;
 import com.web.backend.service.WebSocketRoutingService;
 
 @ExtendWith(MockitoExtension.class)
 class UpdateMessageConsumerTest {
 
-    @Mock
-    private MessageMapper messageMapper;
     @Mock
     private WebSocketRoutingService webSocketRoutingService;
     @Mock
@@ -51,84 +46,9 @@ class UpdateMessageConsumerTest {
     }
 
     @Test
-    void testHandleMessageUpdates_Edit() throws Exception {
-        ChatMessage chatMessage = new ChatMessage();
-        chatMessage.setId("msg1");
-        chatMessage.setSender("sender1");
-        chatMessage.setRecipient("recipient1");
-        chatMessage.setContent("New Content");
-
-        ChatMessageResponse response = new ChatMessageResponse();
-        response.setId("msg1");
-        response.setContent("New Content");
-
-        when(messageMapper.toResponse(chatMessage)).thenReturn(response);
-
-        UpdateMessagePayload payload = UpdateMessagePayload.builder()
-                .type(UpdateMessageType.EDIT)
-                .relatedUsername("sender1")
-                .updateEvent(chatMessage)
-                .build();
-
-        updateMessageConsumer.handleMessageUpdates(payload);
-
-        verify(webSocketRoutingService).routeMessage(eq("sender1"), eq("/queue/notifications"),
-                ArgumentMatchers.<NotificationResponse<?>>any());
-        verify(webSocketRoutingService).routeMessage(eq("recipient1"), eq("/queue/notifications"),
-                ArgumentMatchers.<NotificationResponse<?>>any());
-    }
-
-    @Test
-    void testHandleMessageUpdates_Revoke() throws Exception {
-        ChatMessage chatMessage = new ChatMessage();
-        chatMessage.setId("msg1");
-        chatMessage.setSender("sender1");
-        chatMessage.setRecipient("recipient1");
-        chatMessage.setDeleted(true);
-
-        ChatMessageResponse response = new ChatMessageResponse();
-        response.setId("msg1");
-
-        when(messageMapper.toResponse(chatMessage)).thenReturn(response);
-
-        UpdateMessagePayload payload = UpdateMessagePayload.builder()
-                .type(UpdateMessageType.REVOKE)
-                .relatedUsername("sender1")
-                .updateEvent(chatMessage)
-                .build();
-
-        updateMessageConsumer.handleMessageUpdates(payload);
-
-        verify(webSocketRoutingService).routeMessage(eq("sender1"), eq("/queue/notifications"),
-                ArgumentMatchers.<NotificationResponse<?>>any());
-        verify(webSocketRoutingService).routeMessage(eq("recipient1"), eq("/queue/notifications"),
-                ArgumentMatchers.<NotificationResponse<?>>any());
-    }
-
-    @Test
-    void testHandleMessageUpdates_React() throws Exception {
-        ChatMessage chatMessage = new ChatMessage();
-        chatMessage.setId("msg1");
-        chatMessage.setSender("sender1");
-        chatMessage.setRecipient("recipient1");
-
-        ChatMessageResponse response = new ChatMessageResponse();
-        response.setId("msg1");
-
-        when(messageMapper.toResponse(chatMessage)).thenReturn(response);
-
-        UpdateMessagePayload payload = UpdateMessagePayload.builder()
-                .type(UpdateMessageType.REACT)
-                .relatedUsername("sender1")
-                .updateEvent(chatMessage)
-                .build();
-
-        updateMessageConsumer.handleMessageUpdates(payload);
-
-        verify(webSocketRoutingService).routeMessage(eq("sender1"), eq("/queue/notifications"),
-                ArgumentMatchers.<NotificationResponse<?>>any());
-        verify(webSocketRoutingService).routeMessage(eq("recipient1"), eq("/queue/notifications"),
-                ArgumentMatchers.<NotificationResponse<?>>any());
+    void testHandleMessageUpdates_NullEvent() {
+        updateMessageConsumer.handleMessageUpdates(null);
+        verify(webSocketRoutingService, never()).routeMessageToSession(any(), any(), any());
     }
 
     @Test
