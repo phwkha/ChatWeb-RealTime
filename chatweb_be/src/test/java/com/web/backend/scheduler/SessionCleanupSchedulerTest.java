@@ -111,4 +111,74 @@ class SessionCleanupSchedulerTest {
 
         verify(redisTemplate).execute(any(RedisScript.class), eq(Collections.singletonList("lock:session_cleanup")), anyString());
     }
+
+    // ==========================================
+    // TESTS FOR PROCESSOFFLINEDEBOUNCEQUEUE()
+    // ==========================================
+
+    @Test
+    void testProcessOfflineDebounceQueue_LockNotAcquired() {
+        when(valueOperations.setIfAbsent(eq("lock:presence_debounce"), anyString(), any(Duration.class)))
+                .thenReturn(false);
+
+        sessionCleanupScheduler.processOfflineDebounceQueue();
+
+        verify(redisTemplate, never()).opsForZSet();
+        verify(redisTemplate, never()).execute(any(RedisScript.class), anyList(), any());
+    }
+
+    @Test
+    void testProcessOfflineDebounceQueue_LockAcquired_NoExpiredUsers() {
+        when(valueOperations.setIfAbsent(eq("lock:presence_debounce"), anyString(), any(Duration.class)))
+                .thenReturn(true);
+        when(redisTemplate.opsForZSet()).thenReturn(zSetOperations);
+        when(zSetOperations.rangeByScore(eq("presence:offline_queue"), eq(0.0), anyDouble()))
+                .thenReturn(Collections.emptySet());
+
+        sessionCleanupScheduler.processOfflineDebounceQueue();
+
+        verify(userService, never()).setUserOnlineStatus(anyString(), anyBoolean());
+        verify(redisTemplate).execute(any(RedisScript.class), eq(Collections.singletonList("lock:presence_debounce")), anyString());
+    }
+
+    @Test
+    void testProcessOfflineDebounceQueue_LockAcquired_UserStillOffline_MarksOffline() {
+        when(valueOperations.setIfAbsent(eq("lock:presence_debounce"), anyString(), any(Duration.class)))
+                .thenReturn(true);
+        when(redisTemplate.opsForZSet()).thenReturn(zSetOperations);
+        when(redisTemplate.opsForHash()).thenReturn(hashOperations);
+
+        Set<Object> expiredUsers = Collections.singleton("user_offline");
+        when(zSetOperations.rangeByScore(eq("presence:offline_queue"), eq(0.0), anyDouble()))
+                .thenReturn(expiredUsers);
+        when(hashOperations.get("online_users_count", "user_offline")).thenReturn(0L);
+
+        sessionCleanupScheduler.processOfflineDebounceQueue();
+
+        verify(zSetOperations).remove("online_users", "user_offline");
+        verify(hashOperations).delete("online_users_count", "user_offline");
+        verify(redisTemplate).delete("ws:routing:servers:user_offline");
+        verify(userService).setUserOnlineStatus("user_offline", false);
+        verify(zSetOperations).remove("presence:offline_queue", "user_offline");
+        verify(redisTemplate).execute(any(RedisScript.class), eq(Collections.singletonList("lock:presence_debounce")), anyString());
+    }
+
+    @Test
+    void testProcessOfflineDebounceQueue_LockAcquired_UserReconnected_DoesNotMarkOffline() {
+        when(valueOperations.setIfAbsent(eq("lock:presence_debounce"), anyString(), any(Duration.class)))
+                .thenReturn(true);
+        when(redisTemplate.opsForZSet()).thenReturn(zSetOperations);
+        when(redisTemplate.opsForHash()).thenReturn(hashOperations);
+
+        Set<Object> expiredUsers = Collections.singleton("user_reconnected");
+        when(zSetOperations.rangeByScore(eq("presence:offline_queue"), eq(0.0), anyDouble()))
+                .thenReturn(expiredUsers);
+        when(hashOperations.get("online_users_count", "user_reconnected")).thenReturn(1L);
+
+        sessionCleanupScheduler.processOfflineDebounceQueue();
+
+        verify(userService, never()).setUserOnlineStatus(eq("user_reconnected"), anyBoolean());
+        verify(zSetOperations).remove("presence:offline_queue", "user_reconnected");
+        verify(redisTemplate).execute(any(RedisScript.class), eq(Collections.singletonList("lock:presence_debounce")), anyString());
+    }
 }

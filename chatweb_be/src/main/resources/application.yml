@@ -12,6 +12,10 @@ spring:
     encoding: UTF-8
   profiles:
     active: @spring.profiles.active@
+  task:
+    scheduling:
+      pool:
+        size: 4
 
 management:
   endpoints:
