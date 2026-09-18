@@ -168,6 +168,19 @@ public class AuthenticationServiceImpl implements AuthenticationService {
 
     @Override
     public LoginResponse login(LoginRequest loginRequest) {
+        boolean mightExist = true;
+        try {
+            mightExist = cuckooFilterService.exists(USERNAME_FILTER_KEY, loginRequest.getUsername());
+        } catch (Exception ex) {
+            log.warn("Cuckoo filter check failed, falling back to database authentication: {}", ex.getMessage());
+            mightExist = true;
+        }
+
+        if (!mightExist) {
+            log.debug("Login rejected early by Cuckoo Filter for non-existent user '{}'", loginRequest.getUsername());
+            throw new AuthenticationFailedException(Translator.tolocale(ERROR_AUTH_INVALID_CREDENTIALS_STRING));
+        }
+
         List<String> authorities = new ArrayList<>();
 
         Integer tokenVersion;
