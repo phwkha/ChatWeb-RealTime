@@ -78,7 +78,7 @@ public class DatabaseWriteBehindConsumer {
         try {
             ChatMessage entity = messageMapper.toEntity(message);
             entity.setStatus(MessageStatus.SENT);
-            mongoTemplate.save(entity);
+            mongoTemplate.insert(entity);
             log.info("Successfully recovered and saved message '{}' from DLT to MongoDB", message.getId());
         } catch (DuplicateKeyException dke) {
             log.warn("Message '{}' in DLT was already saved (idempotent)", message.getId());
@@ -110,7 +110,7 @@ public class DatabaseWriteBehindConsumer {
         try {
             ChatMessage entity = messageMapper.toEntity(payload);
             entity.setStatus(MessageStatus.SENT);
-            mongoTemplate.save(entity);
+            mongoTemplate.insert(entity);
             log.info("Individually saved previously failed message '{}'", payload.getId());
         } catch (DuplicateKeyException dke) {
             log.warn("Message '{}' already exists (idempotent), treating as success", payload.getId());
