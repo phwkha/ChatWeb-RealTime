@@ -109,6 +109,8 @@ class AuthenticationServiceTest {
         mockUser.setEmail("test@example.com");
         mockUser.setPassword("encodedPassword");
         mockUser.setTokenVersion(1);
+
+        lenient().when(cuckooFilterService.exists(anyString(), anyString())).thenReturn(true);
     }
 
     // ==========================================
@@ -174,6 +176,48 @@ class AuthenticationServiceTest {
 
         // Act & Assert
         assertThrows(AccessForbiddenException.class, () -> authenticationService.login(loginRequest));
+    }
+
+    @Test
+    void testLogin_UsernameNotInCuckooFilter_ThrowsAuthenticationFailedException() {
+        // Arrange
+        LoginRequest loginRequest = new LoginRequest();
+        loginRequest.setUsername("unknownuser");
+        loginRequest.setPassword("password123");
+
+        when(cuckooFilterService.exists(eq("filter:usernames"), eq("unknownuser"))).thenReturn(false);
+
+        // Act & Assert
+        assertThrows(AuthenticationFailedException.class, () -> authenticationService.login(loginRequest));
+        verify(authenticationManager, never()).authenticate(any());
+        verify(jwtService, never()).generateAccessToken(anyString(), any(), anyInt());
+    }
+
+    @Test
+    void testLogin_CuckooFilterException_FallsBackToDatabaseAuthentication() {
+        // Arrange
+        LoginRequest loginRequest = new LoginRequest();
+        loginRequest.setUsername("testuser");
+        loginRequest.setPassword("password123");
+
+        when(cuckooFilterService.exists(anyString(), anyString()))
+                .thenThrow(new RuntimeException("Redis connection refused"));
+
+        Authentication authentication = mock(Authentication.class);
+        when(authenticationManager.authenticate(any(UsernamePasswordAuthenticationToken.class)))
+                .thenReturn(authentication);
+        when(authentication.getAuthorities()).thenReturn(Collections.emptyList());
+        when(authentication.getPrincipal()).thenReturn(mockUser);
+        when(jwtService.generateAccessToken(anyString(), any(), anyInt())).thenReturn("mockAccessToken");
+        when(jwtService.generateRefreshToken(anyString(), any())).thenReturn("mockRefreshToken");
+        when(userMapper.toUserResponse(mockUser)).thenReturn(UserResponse.builder().username("testuser").build());
+
+        // Act
+        LoginResponse response = authenticationService.login(loginRequest);
+
+        // Assert
+        assertNotNull(response);
+        verify(authenticationManager, times(1)).authenticate(any());
     }
 
     // ==========================================

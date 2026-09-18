@@ -1,37 +1,41 @@
-# Danh Mục Sự Kiện Kafka & Avro Schema (Kafka Event Catalog)
+# Kafka Event Catalog & Avro Specifications
 
-Tài liệu này tổng hợp toàn bộ các Topic, mô hình dữ liệu nhị phân (Avro Schema), cơ chế Producer - Consumer và chiến lược xử lý sự cố (Retry / Dead Letter Topic) trong cụm Kafka của ChatWeb.
-
----
-
-## 1. Tổng Quan Cụm Kafka (Kafka Cluster Architecture)
-
-- **Cấu hình cụm**: 2 Kafka Brokers chạy chế độ **KRaft (Kafka Raft Metadata)** không cần ZooKeeper ([docker-compose.yml](file:///home/phanhuukha/Dev/ChatWeb/docker-compose.yml#L48-L89)).
-- **Quản lý Schema**: Confluent Schema Registry (Port `8081`) quản lý phiên bản Avro schemas và bảo đảm tính tương thích.
-- **Serialization**: Apache Avro Serializer / Deserializer cho các topic có throughput cao (tin nhắn chat), và JSON Serializer cho các tác vụ sự kiện thông thường.
+This document catalogs all Apache Kafka topics, binary serialization contracts (**Apache Avro**), consumer group topologies, and resilience strategies (retries and Dead Letter Topics) in ChatWeb.
 
 ---
 
-## 2. Bảng Danh Mục Các Kafka Topic (Topic Catalog)
+## 1. Kafka Cluster Architecture
 
-| Tên Topic | Định dạng Payload | Consumer Groups | Trách nhiệm chính |
-| :--- | :--- | :--- | :--- |
-| `chat-messages` | **Apache Avro** (`ChatMessageAvro`) | 1. `chat-websocket-group`<br/>2. `chat-save-group` | Luồng xử lý tin nhắn chat thời gian thực: đẩy WebSocket nhanh (Fast-Push) và ghi đệm CSDL MongoDB (Write-Behind). |
-| `chat-messages-save-dlt` | **Apache Avro** (`ChatMessageAvro`) | `chat-save-group-dlt` | Hàng đợi thư chết (DLT) cứu hộ các tin nhắn bị lỗi ghi MongoDB sau khi đã cạn số lần retry. |
-| `chat-system-messages` | **JSON** (`SystemMessage`) | `system-websocket-group` | Phát sóng thông báo quản trị tới toàn bộ người dùng qua WebSocket `/topic/public`. |
-| `message-update` | **JSON** (`UpdateMessagePayload`) | `message-update-group-id` | Xử lý các sự kiện sửa nội dung, thu hồi tin nhắn (xóa mềm), hoặc thả reaction emoji. |
-| `email-messages` | **JSON** (`EmailEvent`) | `email-worker-group` | Worker ngầm gửi email xác thực OTP bất đồng bộ, chống nghẽn luồng đăng ký tài khoản. |
-| `friend-notifications` | **JSON** (`FriendNotificationPayload`) | `friend-websocket-group` | Đẩy thông báo mời kết bạn hoặc chấp nhận kết bạn theo thời gian thực tới `/user/queue/notifications`. |
+- **Cluster Topology**: 2 Kafka Brokers configured in **KRaft (Kafka Raft Metadata)** mode, eliminating ZooKeeper dependencies.
+- **Schema Management**: Confluent Schema Registry (Port `8081`) validates schema evolution and manages binary serialization contracts.
+- **Producer Configuration Defaults**:
+  - `enable.idempotence = true`: Enforces exactly-once semantic delivery from Spring Boot producers to broker partitions.
+  - `acks = all`: Requires full acknowledgment across all in-sync replicas (ISR) before considering an event committed.
+  - `compression.type = snappy`: High-performance binary compression minimizing network overhead.
+- **Consumer Configuration Defaults**:
+  - `partition.assignment.strategy = CooperativeStickyAssignor`: Enables incremental cooperative rebalancing, preventing stop-the-world pauses during consumer node scaling.
+  - `session.timeout.ms = 45000` & `heartbeat.interval.ms = 15000`.
 
 ---
 
-## 3. Chi Tiết Avro Schema: `ChatMessageAvro`
+## 2. Kafka Topic Catalog
 
-- **Tên Schema**: `ChatMessageAvro`
+| Topic Name | Serialization | Consumer Group ID | Concurrency | Primary Responsibility |
+| :--- | :--- | :--- | :--- | :--- |
+| **`chat-messages`** | **Apache Avro** (`ChatMessageAvro`) | 1. `chat-websocket-group`<br/>2. `chat-save-group` | 4 (Realtime)<br/>2 (Batch Save) | Core chat stream: Fast WebSocket push delivery and bulk Write-Behind persistence into MongoDB. |
+| **`chat-messages-save-dlt`**| **Apache Avro** (`ChatMessageAvro`) | `chat-save-group-dlt` | 2 | Dead Letter Topic (DLT) holding records that failed MongoDB batch insertion after maximum retries. |
+| **`chat-system-messages`** | **JSON** (`SystemMessage`) | `system-websocket-group` | 2 | Broadcasts administrative system announcements to connected users via `/topic/public`. |
+| **`message-update`** | **JSON** (`UpdateMessagePayload`) | `message-update-group-id` | 2 | Dispatches message edits, soft-deletions, emoji reactions, and watermark read receipt notifications. |
+| **`email-messages`** | **JSON** (`EmailEvent`) | `email-worker-group` | 1 | Asynchronously delivers verification OTPs and password reset emails without blocking web requests. |
+| **`friend-notifications`**| **JSON** (`FriendNotificationPayload`) | `friend-websocket-group` | 2 | Pushes real-time friend invitation and acceptance notifications to `/user/queue/notifications`. |
+
+---
+
+## 3. Avro Schema Definition: `ChatMessageAvro`
+
+- **Schema Name**: `ChatMessageAvro`
 - **Namespace**: `com.web.backend.kafka.avro`
-- **File định nghĩa**: [chatweb_be/src/main/resources/avro/ChatMessageAvro.avsc](file:///home/phanhuukha/Dev/ChatWeb/chatweb_be/src/main/resources/avro/ChatMessageAvro.avsc)
-
-### Các trường dữ liệu (19 Fields):
+- **Source File**: `chatweb_be/src/main/resources/avro/ChatMessageAvro.avsc`
 
 ```json
 {
@@ -62,35 +66,38 @@ Tài liệu này tổng hợp toàn bộ các Topic, mô hình dữ liệu nhị
 }
 ```
 
-*Lợi ích*: Dữ liệu được nén thành chuỗi nhị phân chuẩn hóa, tiết kiệm băng thông và tối ưu hiệu suất serialize/deserialize giữa Java backend và cụm Kafka.
+*Binary Serialization Advantage*: Using Apache Avro with Confluent Schema Registry compresses payload sizes up to 70% compared to raw JSON strings, maximizing Kafka broker throughput.
 
 ---
 
-## 4. Cơ Chế Xử Lý Lỗi & Tái Thử (Retry & DLT Resilience)
+## 4. Resilience & Fault Tolerance Strategies
 
-Để bảo đảm tính sẵn sàng cao và không bao giờ đánh mất tin nhắn của người dùng, hệ thống áp dụng chiến lược tái thử nghiêm ngặt tại các Consumer:
-
-### 4.1. Cấu Hình Tự Động Thử Lại (`@RetryableTopic`)
-Tại [ChatConsumer.java](file:///home/phanhuukha/Dev/ChatWeb/chatweb_be/src/main/java/com/web/backend/kafka/consumer/ChatConsumer.java#L39-L40):
+### 4.1. Fast-Push Consumer Resilience (`@RetryableTopic`)
+Implemented in `ChatConsumer.java`:
 ```java
 @RetryableTopic(
-    attempts = "5", 
-    backoff = @Backoff(delay = 200), 
-    sameIntervalTopicReuseStrategy = SameIntervalTopicReuseStrategy.SINGLE_TOPIC, 
-    dltStrategy = DltStrategy.NO_DLT, 
+    attempts = "5",
+    backoff = @Backoff(delay = 200),
+    sameIntervalTopicReuseStrategy = SameIntervalTopicReuseStrategy.SINGLE_TOPIC,
+    dltStrategy = DltStrategy.NO_DLT,
     autoCreateTopics = "true"
 )
 @KafkaListener(topics = "${spring.kafka.topic.chat.messages}", groupId = "${spring.kafka.topic.chat.messages-group-id}")
+public void listen(ConsumerRecord<String, ChatMessageAvro> record) { ... }
 ```
-- Khi tiến trình đẩy WebSocket gặp sự cố mạng đột xuất, Consumer tự động retry tối đa 5 lần với khoảng nghỉ (backoff) 200ms trước khi ném ngoại lệ.
+- In the event of transient network hiccups or temporary socket routing delays, the consumer automatically retries up to 5 times with a 200ms fixed backoff before surfacing an error.
 
-### 4.2. Khôi Phục Dữ Liệu Ngoại Tuyến (DLT & Write-Behind Bulk Ops)
-Tại [DatabaseWriteBehindConsumer.java](file:///home/phanhuukha/Dev/ChatWeb/chatweb_be/src/main/java/com/web/backend/kafka/consumer/DatabaseWriteBehindConsumer.java):
-1. **Ghi theo lô không tuần tự (Bulk Unordered Write)**:
-   - Gom hàng loạt tin nhắn từ Kafka batch để thực thi `bulkOps.insert(entitiesToSave)` một lần duy nhất vào MongoDB.
-2. **Tính lũy đẳng (Idempotent Write)**:
-   - Nếu gặp lỗi trùng khóa (`DuplicateKeyException`), coi như tin nhắn đã được lưu an toàn và tiếp tục xử lý các phần tử khác trong batch.
-3. **Cứu trợ đơn lẻ khi gặp lỗi (`BulkOperationException`)**:
-   - Nếu cả lô gặp lỗi, hệ thống phân tích danh sách lỗi và tái thử ghi đơn lẻ từng phần tử thành công.
-4. **Hàng đợi thư chết (`chat-messages-save-dlt`)**:
-   - Mọi bản ghi thất bại vĩnh viễn sẽ chuyển tới topic DLT để một Consumer cứu hộ độc lập phục hồi và ghi đệm lại khi MongoDB hoạt động bình thường.
+### 4.2. Database Write-Behind Batching & DLT Strategy
+Configured in `KafkaConfig.java` and executed in `DatabaseWriteBehindConsumer.java`:
+1. **Unordered Bulk Insert**:
+   - Gathers batches of up to 200 records per poll (max wait 500ms) and executes an unordered bulk insert into MongoDB:
+     ```java
+     BulkOperations bulkOps = mongoTemplate.bulkOps(BulkOperations.BulkMode.UNORDERED, ChatMessage.class);
+     bulkOps.insert(entitiesToSave);
+     bulkOps.execute();
+     ```
+2. **Duplicate Key Tolerance**:
+   - Catches `DuplicateKeyException` to guarantee idempotent execution: already-persisted records do not abort the remainder of the batch.
+3. **Dead Letter Recovery**:
+   - If an unrecoverable failure occurs (e.g. malformed database document), `DeadLetterPublishingRecoverer` transfers the failed record to `chat-messages-save-dlt` after 4 retries with a 500ms backoff.
+   - Non-retryable exceptions (e.g., `SerializationException`, `RecordTooLargeException`) are routed directly to the DLT without redundant retries.

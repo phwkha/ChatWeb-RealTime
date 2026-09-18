@@ -11,9 +11,19 @@ services:
     volumes:
       - mongo_data:/data/db
       - mongo_config_data:/data/configdb
-      - ./chatweb_be/mongo/init:/docker-entrypoint-initdb.d
+      - ./chatweb_be/init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
     networks:
       - default
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'mongosh --quiet --eval "db.adminCommand(''ping'')" || mongo --eval "db.adminCommand(''ping'')"',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   # --- POSTGRESQL ---
   cw_postgres:
@@ -22,6 +32,7 @@ services:
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
     ports:
       - "127.0.0.1:${POSTGRES_PORT}:5432"
     volumes:
@@ -29,6 +40,16 @@ services:
       - ./chatweb_be/initdb.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - default
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB:-postgres}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   # --- REDIS ---
   cw_redis:
@@ -44,6 +65,12 @@ services:
       - redis_data:/data
     networks:
       - default
+    healthcheck:
+      test: ["CMD-SHELL", 'redis-cli -a "${REDIS_PASSWORD}" ping | grep PONG']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
 
   # --- KAFKA BROKER 1 ---
   kafka:
@@ -65,6 +92,13 @@ services:
     volumes:
       - kafka_data:/var/lib/kafka/data
       - kafka_secrets:/etc/kafka/secrets
+    healthcheck:
+      test:
+        ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
   # --- KAFKA BROKER 2 ---
   kafka2:
@@ -86,6 +120,13 @@ services:
     volumes:
       - kafka2_data:/var/lib/kafka/data
       - kafka2_secrets:/etc/kafka/secrets
+    healthcheck:
+      test:
+        ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
   # --- SCHEMA REGISTRY ---
   schema-registry:
@@ -101,8 +142,16 @@ services:
     networks:
       - default
     depends_on:
-      - kafka
-      - kafka2
+      kafka:
+        condition: service_healthy
+      kafka2:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8081/subjects || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   # --- FILEBEAT ---
   filebeat:
@@ -195,7 +244,7 @@ services:
     environment:
       - GF_SECURITY_ADMIN_USER=${GF_SECURITY_ADMIN_USER}
       - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD}
-      - GF_SERVER_ROOT_URL=http://localhost/grafana/
+      - GF_SERVER_ROOT_URL=https://localhost/grafana/
       - GF_SERVER_SERVE_FROM_SUB_PATH=true
     volumes:
       - grafana_data:/var/lib/grafana
@@ -210,9 +259,12 @@ services:
     container_name: nginx_load_balancer
     ports:
       - "80:80"
+      - "443:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./ssl/ca/rootCA.crt:/etc/nginx/ssl/rootCA.crt:ro
+      - ./ssl/nginx/nginx.crt:/etc/nginx/ssl/nginx.crt:ro
+      - ./ssl/nginx/nginx.key:/etc/nginx/ssl/nginx.key:ro
     networks:
       - default
     depends_on:
@@ -287,12 +339,18 @@ services:
     networks:
       - default
     depends_on:
-      - cw_mongo
-      - cw_postgres
-      - cw_redis
-      - kafka
-      - kafka2
-      - schema-registry
+      cw_mongo:
+        condition: service_healthy
+      cw_postgres:
+        condition: service_healthy
+      cw_redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      kafka2:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
 
 volumes:
   mongo_data:

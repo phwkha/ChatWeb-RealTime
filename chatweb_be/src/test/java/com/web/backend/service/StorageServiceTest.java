@@ -97,7 +97,7 @@ class StorageServiceTest {
     void testUploadImage_Success() throws Exception {
         when(file.isEmpty()).thenReturn(false);
         when(file.getSize()).thenReturn(1000L);
-        // raw upload does not check content type
+        when(file.getContentType()).thenReturn("image/png");
         when(file.getBytes()).thenReturn(new byte[] { 1 });
         when(uploader.upload(any(byte[].class), anyMap())).thenReturn(Map.of("secure_url", "http://raw-image.jpg"));
 
@@ -106,14 +106,36 @@ class StorageServiceTest {
     }
 
     @Test
+    void testUploadImage_InvalidFormat() {
+        when(file.isEmpty()).thenReturn(false);
+        when(file.getContentType()).thenReturn("application/x-sh");
+        assertThrows(InvalidDataException.class, () -> storageService.upLoadImage(file));
+    }
+
+    @Test
+    void testUploadImage_SvgDisallowed() {
+        when(file.isEmpty()).thenReturn(false);
+        when(file.getContentType()).thenReturn("image/svg+xml");
+        assertThrows(InvalidDataException.class, () -> storageService.upLoadImage(file));
+    }
+
+    @Test
     void testUploadVideo_Success() throws Exception {
         when(file.isEmpty()).thenReturn(false);
         when(file.getSize()).thenReturn(1000L);
+        when(file.getContentType()).thenReturn("video/mp4");
         when(file.getBytes()).thenReturn(new byte[] { 1 });
         when(uploader.upload(any(byte[].class), anyMap())).thenReturn(Map.of("secure_url", "http://video.mp4"));
 
         String result = storageService.uploadVideo(file);
         assertEquals("http://video.mp4", result);
+    }
+
+    @Test
+    void testUploadVideo_InvalidFormat() {
+        when(file.isEmpty()).thenReturn(false);
+        when(file.getContentType()).thenReturn("image/jpeg");
+        assertThrows(InvalidDataException.class, () -> storageService.uploadVideo(file));
     }
 
     @Test

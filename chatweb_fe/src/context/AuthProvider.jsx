@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { apiRequest } from '../services/apiClient.js'
-import { clearAccessToken } from '../services/tokenStore.js'
+import { apiRequest, setAccessToken } from '../services/apiClient.js'
 import { AuthContext } from './auth-context.js'
 
 function AuthProvider({ children }) {
@@ -9,11 +8,17 @@ function AuthProvider({ children }) {
 
   const refreshUser = useCallback(async () => {
     try {
+      try {
+        await apiRequest('/api/auth/refresh-token', { method: 'POST', skipRefresh: true })
+      } catch {
+        // Refresh token might not exist yet if unauthenticated
+      }
       const response = await apiRequest('/api/users/me')
       const currentUser = response?.data || null
       setUser(currentUser)
       return currentUser
     } catch {
+      setAccessToken(null)
       setUser(null)
       return null
     }
@@ -55,7 +60,7 @@ function AuthProvider({ children }) {
     try {
       await apiRequest('/api/auth/logout', { method: 'POST', skipRefresh: true })
     } finally {
-      clearAccessToken()
+      setAccessToken(null)
       setUser(null)
     }
   }, [])
@@ -64,14 +69,14 @@ function AuthProvider({ children }) {
     try {
       return await apiRequest('/api/auth/logout-all-devices', { method: 'POST', skipRefresh: true })
     } finally {
-      clearAccessToken()
+      setAccessToken(null)
       setUser(null)
     }
   }, [])
 
   const deleteAccount = useCallback(async () => {
     const response = await apiRequest('/api/users/me', { method: 'DELETE' })
-    clearAccessToken()
+    setAccessToken(null)
     setUser(null)
     return response
   }, [])

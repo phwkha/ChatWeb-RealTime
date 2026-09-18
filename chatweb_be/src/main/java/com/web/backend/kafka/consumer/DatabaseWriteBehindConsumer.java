@@ -8,6 +8,7 @@ import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
 import com.mongodb.bulk.BulkWriteError;
+import com.web.backend.common.ActionType;
 import com.web.backend.common.MessageStatus;
 import com.web.backend.common.MessageType;
 import com.web.backend.kafka.avro.ChatMessageAvro;
@@ -17,6 +18,9 @@ import com.web.backend.model.mongodb.ChatMessage;
 import org.springframework.data.mongodb.core.BulkOperations;
 import org.springframework.data.mongodb.BulkOperationException;
 import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.dao.DuplicateKeyException;
 
 import lombok.RequiredArgsConstructor;
@@ -44,19 +48,34 @@ public class DatabaseWriteBehindConsumer {
             return;
         }
 
-        List<ChatMessage> entitiesToSave = payloadsToSave.stream()
-                .map(avro -> {
-                    ChatMessage entity = messageMapper.toEntity(avro);
-                    entity.setStatus(MessageStatus.SENT);
-                    return entity;
-                })
-                .toList();
-
         try {
             BulkOperations bulkOps = mongoTemplate.bulkOps(BulkOperations.BulkMode.UNORDERED, ChatMessage.class);
-            bulkOps.insert(entitiesToSave);
+            for (ChatMessageAvro avro : payloadsToSave) {
+                ActionType action = parseActionType(avro.getActionType());
+                switch (action) {
+                    case EDIT -> {
+                        Query query = Query.query(Criteria.where("_id").is(avro.getId()));
+                        bulkOps.upsert(query, buildEditUpdate(avro));
+                    }
+                    case REVOKE -> {
+                        Query query = Query.query(Criteria.where("_id").is(avro.getId()));
+                        bulkOps.upsert(query, buildRevokeUpdate(avro));
+                    }
+                    case REACT -> {
+                        Query query = Query.query(Criteria.where("_id").is(avro.getId()));
+                        bulkOps.upsert(query, buildReactUpdate(avro));
+                    }
+                    case CREATE -> {
+                        ChatMessage entity = messageMapper.toEntity(avro);
+                        if (entity.getStatus() == null) {
+                            entity.setStatus(MessageStatus.SENT);
+                        }
+                        bulkOps.insert(entity);
+                    }
+                }
+            }
             bulkOps.execute();
-            log.debug("Persisted batch of {} chat messages to MongoDB", entitiesToSave.size());
+            log.debug("Persisted batch of {} chat message operations to MongoDB", payloadsToSave.size());
         } catch (DuplicateKeyException dke) {
             log.warn("Duplicate key detected in batch, treating as idempotent save: {}", dke.getMessage());
         } catch (BulkOperationException boe) {
@@ -64,7 +83,7 @@ public class DatabaseWriteBehindConsumer {
             retryBulkFailuresIndividually(payloadsToSave, boe);
         } catch (Exception ex) {
             log.error("Fatal exception during batch database persistence of {} messages. Delegating to Kafka retry.",
-                    entitiesToSave.size(), ex);
+                    payloadsToSave.size(), ex);
             throw ex;
         }
     }
@@ -76,10 +95,30 @@ public class DatabaseWriteBehindConsumer {
         }
 
         try {
-            ChatMessage entity = messageMapper.toEntity(message);
-            entity.setStatus(MessageStatus.SENT);
-            mongoTemplate.save(entity);
-            log.info("Successfully recovered and saved message '{}' from DLT to MongoDB", message.getId());
+            ActionType action = parseActionType(message.getActionType());
+            switch (action) {
+                case EDIT -> {
+                    Query query = Query.query(Criteria.where("_id").is(message.getId()));
+                    mongoTemplate.upsert(query, buildEditUpdate(message), ChatMessage.class);
+                }
+                case REVOKE -> {
+                    Query query = Query.query(Criteria.where("_id").is(message.getId()));
+                    mongoTemplate.upsert(query, buildRevokeUpdate(message), ChatMessage.class);
+                }
+                case REACT -> {
+                    Query query = Query.query(Criteria.where("_id").is(message.getId()));
+                    mongoTemplate.upsert(query, buildReactUpdate(message), ChatMessage.class);
+                }
+                case CREATE -> {
+                    ChatMessage entity = messageMapper.toEntity(message);
+                    if (entity.getStatus() == null) {
+                        entity.setStatus(MessageStatus.SENT);
+                    }
+                    mongoTemplate.insert(entity);
+                }
+            }
+            log.info("Successfully recovered and processed message '{}' [action={}] from DLT to MongoDB",
+                    message.getId(), action);
         } catch (DuplicateKeyException dke) {
             log.warn("Message '{}' in DLT was already saved (idempotent)", message.getId());
         } catch (Exception ex) {
@@ -108,14 +147,90 @@ public class DatabaseWriteBehindConsumer {
 
     private void saveIndividually(ChatMessageAvro payload) {
         try {
-            ChatMessage entity = messageMapper.toEntity(payload);
-            entity.setStatus(MessageStatus.SENT);
-            mongoTemplate.save(entity);
-            log.info("Individually saved previously failed message '{}'", payload.getId());
+            ActionType action = parseActionType(payload.getActionType());
+            switch (action) {
+                case EDIT -> {
+                    Query query = Query.query(Criteria.where("_id").is(payload.getId()));
+                    mongoTemplate.upsert(query, buildEditUpdate(payload), ChatMessage.class);
+                }
+                case REVOKE -> {
+                    Query query = Query.query(Criteria.where("_id").is(payload.getId()));
+                    mongoTemplate.upsert(query, buildRevokeUpdate(payload), ChatMessage.class);
+                }
+                case REACT -> {
+                    Query query = Query.query(Criteria.where("_id").is(payload.getId()));
+                    mongoTemplate.upsert(query, buildReactUpdate(payload), ChatMessage.class);
+                }
+                case CREATE -> {
+                    ChatMessage entity = messageMapper.toEntity(payload);
+                    if (entity.getStatus() == null) {
+                        entity.setStatus(MessageStatus.SENT);
+                    }
+                    mongoTemplate.insert(entity);
+                }
+            }
+            log.info("Individually processed previously failed message '{}' [action={}]", payload.getId(), action);
         } catch (DuplicateKeyException dke) {
             log.warn("Message '{}' already exists (idempotent), treating as success", payload.getId());
         } catch (Exception ex) {
-            log.error("Permanently failed to save message '{}' after individual retry", payload.getId(), ex);
+            log.error("Permanently failed to process message '{}' after individual retry", payload.getId(), ex);
+        }
+    }
+
+    private ActionType parseActionType(String actionStr) {
+        if (actionStr == null || actionStr.isBlank()) {
+            return ActionType.CREATE;
+        }
+        try {
+            return ActionType.valueOf(actionStr.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return ActionType.CREATE;
+        }
+    }
+
+    private Update buildEditUpdate(ChatMessageAvro avro) {
+        ChatMessage entity = messageMapper.toEntity(avro);
+        Update update = new Update()
+                .set("content", entity.getContent())
+                .set("isEdited", true);
+        applyBaseOnInsert(update, entity, avro);
+        return update;
+    }
+
+    private Update buildRevokeUpdate(ChatMessageAvro avro) {
+        ChatMessage entity = messageMapper.toEntity(avro);
+        Update update = new Update()
+                .set("content", "")
+                .set("isDeleted", true)
+                .unset("fileUrl")
+                .unset("fileName")
+                .unset("fileSize")
+                .unset("reactions");
+        applyBaseOnInsert(update, entity, avro);
+        return update;
+    }
+
+    private Update buildReactUpdate(ChatMessageAvro avro) {
+        ChatMessage entity = messageMapper.toEntity(avro);
+        Update update = new Update()
+                .set("reactions", entity.getReactions())
+                .set("isReacted", entity.isReacted());
+        applyBaseOnInsert(update, entity, avro);
+        return update;
+    }
+
+    private void applyBaseOnInsert(Update update, ChatMessage entity, ChatMessageAvro avro) {
+        update.setOnInsert("_id", avro.getId())
+                .setOnInsert("conversationId", entity.getConversationId())
+                .setOnInsert("sender", entity.getSender())
+                .setOnInsert("recipient", entity.getRecipient())
+                .setOnInsert("timestamp", entity.getTimestamp())
+                .setOnInsert("status", MessageStatus.SENT);
+        if (entity.getMessageType() != null) {
+            update.setOnInsert("messageType", entity.getMessageType());
+        }
+        if (entity.getContentType() != null) {
+            update.setOnInsert("contentType", entity.getContentType());
         }
     }
 }

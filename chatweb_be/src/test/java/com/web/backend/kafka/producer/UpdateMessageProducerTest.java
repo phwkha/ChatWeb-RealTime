@@ -20,10 +20,8 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import com.web.backend.common.UpdateMessageType;
 import com.web.backend.controller.response.ReadReceiptResponse;
 import com.web.backend.kafka.payload.UpdateMessagePayload;
-import com.web.backend.model.mongodb.ChatMessage;
 
 @ExtendWith(MockitoExtension.class)
 class UpdateMessageProducerTest {
@@ -44,7 +42,7 @@ class UpdateMessageProducerTest {
         @SuppressWarnings("unchecked")
         SendResult<String, Object> sendResult = mock(SendResult.class, org.mockito.Mockito.RETURNS_DEEP_STUBS);
         CompletableFuture<SendResult<String, Object>> future = CompletableFuture.completedFuture(sendResult);
-        when(kafkaTemplate.send(any(), any())).thenReturn(future);
+        when(kafkaTemplate.send(any(), any(), any())).thenReturn(future);
 
         ReadReceiptResponse data = ReadReceiptResponse.builder()
                 .conversationId("conv1")
@@ -55,32 +53,14 @@ class UpdateMessageProducerTest {
 
         updateMessageProducer.handleReadReceiptEvent(data);
 
-        verify(kafkaTemplate).send(eq("chat-update-topic"), any(UpdateMessagePayload.class));
+        verify(kafkaTemplate).send(eq("chat-update-topic"), eq("conv1"), any(UpdateMessagePayload.class));
     }
 
     @Test
     void testHandleReadReceiptEvent_NullData() {
         updateMessageProducer.handleReadReceiptEvent(null);
 
-        verify(kafkaTemplate, never()).send(any(), any());
-    }
-
-    @Test
-    void testHandleUpdateMessageEvent() {
-        @SuppressWarnings("unchecked")
-        SendResult<String, Object> sendResult = mock(SendResult.class, org.mockito.Mockito.RETURNS_DEEP_STUBS);
-        CompletableFuture<SendResult<String, Object>> future = CompletableFuture.completedFuture(sendResult);
-        when(kafkaTemplate.send(any(), any())).thenReturn(future);
-
-        UpdateMessagePayload payload = UpdateMessagePayload.builder()
-                .type(UpdateMessageType.EDIT)
-                .relatedUsername("sender1")
-                .updateEvent(new ChatMessage())
-                .build();
-
-        updateMessageProducer.handleUpdateMessageEvent(payload);
-
-        verify(kafkaTemplate).send(eq("chat-update-topic"), eq(payload));
+        verify(kafkaTemplate, never()).send(any(), any(), any());
     }
 
     @Test

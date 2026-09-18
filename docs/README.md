@@ -1,54 +1,57 @@
-# Tài Liệu Kỹ Thuật Dự Án ChatWeb (ChatWeb Technical Documentation)
+# ChatWeb Technical Documentation
 
-Chào mừng bạn đến với trung tâm tài liệu kỹ thuật của dự án **ChatWeb** — Nền tảng nhắn tin thời gian thực hiệu năng cao, xây dựng trên kiến trúc hướng sự kiện (Event-Driven) và lưu trữ đa dạng (Polyglot Persistence).
-
----
-
-## 📑 Mục Lục Tài Liệu Cốt Lõi (Core Documentation Index)
-
-Bộ tài liệu được tổ chức thành 3 phân hệ chính:
-
-### 1. Kiến Trúc & Thiết Kế Hệ Thống (Architecture & Design)
-- 🏛️ **[01. Kiến Trúc Hệ Thống Tổng Thể](architecture/01-system-overview.md)**: Sơ đồ Topology đa tầng, mô hình bảo mật Upstream TLS với Nginx, tổng quan vai trò của từng dịch vụ.
-- 💡 **[02. Các Quyết Định Kiến Trúc (ADRs)](architecture/02-architecture-decisions.md)**: Phân tích nguyên nhân và sự đánh đổi:
-  - *ADR-01*: Tại sao kết hợp PostgreSQL + MongoDB + Redis Stack?
-  - *ADR-02*: Tại sao dùng Kafka + Avro với 2 Consumer Group (Fast Push vs Write-Behind)?
-  - *ADR-03*: Cơ chế định tuyến WebSocket đa node bằng Redis Hash & Pub/Sub.
-  - *ADR-04*: Cơ chế Rate Limiting 2 tầng (Nginx IP + Redis Sliding Window Log).
-  - *ADR-05*: Cơ chế Bảo đảm tính lũy đẳng (Idempotency) & Khử trùng lặp tin nhắn (Deduplication).
-  - *ADR-06*: Cơ chế Debounce 5 giây xử lý hiện diện (Online/Offline).
-- 🔄 **[03. Sơ Đồ Tuần Tự Nghiệp Vụ (Sequence Diagrams)](architecture/03-sequence-diagrams.md)**: Biểu đồ Mermaid chi tiết cho:
-  - Luồng gửi & nhận tin nhắn thời gian thực (Real-time Chat Pipeline).
-  - Luồng xác thực, cấp phát token & Single Sign-Out (`token_version`).
-  - Luồng quản lý trạng thái hiện diện (Presence Lifecycle & Debouncing).
-  - Luồng lời mời kết bạn & thông báo thời gian thực (Friend Request & Notification Pipeline).
+Welcome to the technical documentation hub for **ChatWeb** — a high-performance, real-time messaging platform built upon an **Event-Driven Architecture (EDA)** and a **Polyglot Persistence** model.
 
 ---
 
-### 2. Thiết Kế Cơ Sở Dữ Liệu (Database Design)
-- 💾 **[Thiết Kế Cơ Sở Dữ Liệu Đa Dạng](database/database-design.md)**:
-  - **PostgreSQL**: Sơ đồ quan hệ ERD (Users, Roles, Permissions, Friendships, Addresses), phân tích chỉ mục và ràng buộc toàn vẹn.
-  - **MongoDB**: Chi tiết Document Schema `messages`, `read_receipts`, và `system_message` với 4 Compound Indexes và TTL Index.
-  - **Redis Stack**: Bảng tra cứu cấu trúc dữ liệu, quy ước đặt tên Key, giá trị TTL, Cuckoo Filter (`filter:usernames`, `filter:emails`) và bộ nhớ đệm.
+## 📑 Master Documentation Index
+
+The documentation suite is structured into three specialized domains:
+
+### 1. Architecture & System Design
+- 🏛️ **[01. System Architecture Overview](architecture/01-system-overview.md)**: High-level system topology, Nginx Ingress proxy with upstream TLS verification, application tier layout, event streaming pipelines, polyglot storage layout, and observability infrastructure.
+- 💡 **[02. Architecture Decision Records (ADR)](architecture/02-architecture-decisions.md)**: In-depth rationale, alternatives, and trade-offs for 8 foundational architectural decisions:
+  - *ADR-01*: Polyglot Persistence Strategy (PostgreSQL + MongoDB + Redis Stack).
+  - *ADR-02*: Asynchronous Write-Behind & Fast-Push via Kafka Dual Consumer Groups.
+  - *ADR-03*: Multi-Node WebSocket Session Routing via Redis Hash & Server Pub/Sub.
+  - *ADR-04*: Two-Tier Rate Limiting (Nginx Edge IP Limit + Redis Sliding Window Lua).
+  - *ADR-05*: Multi-Tier Idempotency & Message Deduplication Engine (`@Idempotent`, `ws:dedup`).
+  - *ADR-06*: Distributed 5-Second Presence Debounce Queue via Redis Sorted Set.
+  - *ADR-07*: Redis Cuckoo Filter for Sub-Millisecond Credential Preflight & Anti-Enumeration.
+  - *ADR-08*: Watermark-Based Read Receipts with MongoDB `$max` Upsert & Real-Time Fanout.
+- 🔄 **[03. Core Business Sequence Diagrams](architecture/03-sequence-diagrams.md)**: Detailed Mermaid sequence diagrams for:
+  - Real-Time Chat Pipeline (Deduplication $\rightarrow$ Fast-Push $\rightarrow$ Bulk Write-Behind $\rightarrow$ DLT).
+  - Authentication, Token Rotation, and Single Sign-Out (`token_version` revocation).
+  - Distributed Presence Lifecycle & 5-Second Debounce Queue.
+  - Friend Request & Real-Time Notification Pipeline.
+  - Watermark-Based Read Receipt Lifecycle.
 
 ---
 
-### 3. Đặc Tả Giao Tiếp & Hợp Đồng Dữ Liệu (Protocols & Contracts)
-- 🔌 **[Đặc Tả Giao Thức WebSocket & STOMP](api/websocket-stomp-spec.md)**: Điểm bắt tay `/ws`, xác thực JWT, cấu trúc frame gửi nhận `/app/chat/...`, `/user/queue/messages`, `/user/queue/notifications`, `/topic/public`, và chuẩn hóa lỗi `ErrorSocketResponse`.
-- ⚡ **[Danh Mục Sự Kiện Kafka & Avro Schema](api/kafka-event-catalog.md)**: Danh mục 6 Kafka Topic, chi tiết 19 trường trong Schema `ChatMessageAvro.avsc`, chiến lược `@RetryableTopic` và hàng đợi thư chết (DLT).
-- 🌐 **[Tổng Quan REST API & Quy Ước Phản Hồi](api/rest-api-overview.md)**: Cấu trúc phong bì `ApiResponse<T>`, tính lũy đẳng `X-Idempotency-Key`, danh mục đầy đủ các phân hệ Auth, Users, Friends, Messages, Upload, Roles, Systems, Email và Admin.
+### 2. Database Design & Persistence Models
+- 💾 **[Polyglot Database Design](database/database-design.md)**:
+  - **PostgreSQL 16+**: Authoritative relational ERD (`users`, `roles`, `permissions`, `friendships`, `addresses`), column constraints, foreign keys, and index optimization.
+  - **MongoDB 7+**: Document schemas for `messages`, `read_receipts`, and `system_message`, compound indexing strategies, TTL auto-expiration, and automated initialization via `init-mongo.js`.
+  - **Redis Stack**: Master key catalog, data structures, TTL rules, Cuckoo Filters (`filter:usernames`, `filter:emails`), sliding-window Lua rate limiters, and presence queues.
 
 ---
 
-## 🛠️ Công Nghệ Chủ Đạo (Key Tech Stack)
+### 3. Protocols, Event Catalogs & API Contracts
+- 🔌 **[WebSocket & STOMP Protocol Specification](api/websocket-stomp-spec.md)**: Handshake endpoint (`/ws`), SockJS fallback, JWT authentication in CONNECT frames, destination prefix conventions (`/app`, `/topic`, `/user/queue`), payload contracts, and standardized STOMP error handling.
+- ⚡ **[Kafka Event Catalog & Avro Specifications](api/kafka-event-catalog.md)**: Cluster topology (2 KRaft brokers, Confluent Schema Registry), complete topic catalog, Apache Avro schema (`ChatMessageAvro.avsc`), `@RetryableTopic` backoff, batch Write-Behind, and Dead Letter Topic (`chat-messages-save-dlt`) fault recovery.
+- 🌐 **[REST API Overview & Integration Guide](api/rest-api-overview.md)**: Standard envelope format (`ApiResponse<T>`), idempotency headers (`X-Idempotency-Key`), error structures, Swagger UI integration, and exhaustive endpoint catalogs across Auth, Users, Search, Friends, Messages, Media Uploads, Roles, Systems, and Administration.
 
-| Lĩnh vực | Công nghệ sử dụng |
+---
+
+## 🛠️ Key Technology Stack
+
+| Domain | Selected Technologies |
 | :--- | :--- |
-| **Backend Core** | Java 21 LTS, Spring Boot 3.5.x, Spring Security 6, Spring Data (JPA, MongoDB, Redis) |
-| **Realtime Messaging**| Spring WebSocket, STOMP Protocol, SockJS |
-| **Event Streaming** | Apache Kafka (2 Brokers KRaft), Confluent Schema Registry, Apache Avro |
-| **Databases** | PostgreSQL 16+, MongoDB 7+, Redis Stack (Cuckoo Filter, Sliding Window Lua) |
-| **Ingress & Security**| Nginx Alpine, Upstream TLS (Private CA `rootCA.crt`), Dual Rate Limiting, API Idempotency |
-| **Frontend** | React 19, Vite 8, Modular CSS, STOMP.js |
+| **Backend Core** | Java 21 LTS, Spring Boot 3.5.x, Spring Security 6, Spring Data JPA / MongoDB / Redis |
+| **Real-Time Communication** | Spring WebSocket, STOMP Protocol, SockJS client, WebRTC |
+| **Event Streaming** | Apache Kafka 3.x (2 Brokers - KRaft mode), Confluent Schema Registry, Apache Avro |
+| **Persistence Tier** | PostgreSQL 16+, MongoDB 7+, Redis Stack (RedisBloom, Cuckoo Filter, Lua Scripts) |
+| **Ingress & Security** | Nginx Alpine, Upstream TLS (Private CA `rootCA.crt`), IP Rate Limiting, API Idempotency |
+| **Frontend SPA** | React 19, Vite 8, Modular CSS, STOMP.js |
 | **Observability** | ELK Stack (Filebeat, Logstash, Elasticsearch, Kibana), Prometheus, Grafana |
-| **CI / CD & Infra** | Docker, Docker Compose, Google Jib, Jenkins Pipeline |
+| **Containerization & CI/CD**| Docker, Docker Compose, Google Jib, Jenkins Pipeline |

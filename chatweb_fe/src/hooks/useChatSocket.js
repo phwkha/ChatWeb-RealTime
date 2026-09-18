@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Client } from '@stomp/stompjs'
 import SockJS from 'sockjs-client'
-import { API_BASE_URL } from '../services/apiClient.js'
+import { API_BASE_URL, getAccessToken } from '../services/apiClient.js'
 import { normalizeSocketPayload } from '../services/socketPayload.js'
-import { getAccessToken } from '../services/tokenStore.js'
 
 function parseFrame(frame) {
   try {
@@ -29,8 +28,10 @@ export function useChatSocket({ enabled, language, subscribeToWorld, onMessage, 
 
     let disposed = false
     const token = getAccessToken()
-    const connectHeaders = { 'Accept-Language': language }
-    if (token) connectHeaders.Authorization = `Bearer ${token}`
+    const connectHeaders = {
+      'Accept-Language': language,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    }
 
     const client = new Client({
       webSocketFactory: () => new SockJS(`${API_BASE_URL}/ws`),

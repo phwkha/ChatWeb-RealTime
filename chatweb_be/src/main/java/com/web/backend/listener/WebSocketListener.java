@@ -4,9 +4,6 @@ import com.web.backend.config.ServerIdentity;
 
 import java.security.Principal;
 import java.time.Instant;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 
 import org.springframework.context.event.EventListener;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -29,11 +26,13 @@ public class WebSocketListener {
 
     private final RedisTemplate<String, Object> redisTemplate;
 
-    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+    public static final String ONLINE_USERS_KEY = "online_users";
 
-    private static final String ONLINE_USERS_KEY = "online_users";
+    public static final String ONLINE_USERS_COUNT_KEY = "online_users_count";
 
-    private static final String ONLINE_USERS_COUNT_KEY = "online_users_count";
+    public static final String OFFLINE_DEBOUNCE_KEY = "presence:offline_queue";
+
+    public static final long DEBOUNCE_DELAY_MS = 5000L;
 
     private static final String WS_ROUTING_SERVERS_KEY = "ws:routing:servers:";
 
@@ -47,6 +46,10 @@ public class WebSocketListener {
         }
 
         String username = user.getName();
+
+        // Cancel any pending offline debounce in distributed Redis ZSet if user reconnected
+        redisTemplate.opsForZSet().remove(OFFLINE_DEBOUNCE_KEY, username);
+
         Long count = redisTemplate.opsForHash().increment(ONLINE_USERS_COUNT_KEY, username, 1);
 
         if (count != null && count <= 0) {
@@ -92,38 +95,11 @@ public class WebSocketListener {
         }
 
         if (count != null && count <= 0) {
-            log.debug("User session count <= 0. Scheduling offline debounce for user '{}'", username);
-            scheduler.schedule(() -> processOfflineDebounce(username), 5, TimeUnit.SECONDS);
+            long offlineDeadline = System.currentTimeMillis() + DEBOUNCE_DELAY_MS;
+            redisTemplate.opsForZSet().add(OFFLINE_DEBOUNCE_KEY, username, offlineDeadline);
+            log.debug("User session count <= 0. Queued distributed offline debounce for user '{}' until {}", username, offlineDeadline);
         } else {
             log.debug("User '{}' closed one session [remainingSessions={}]", username, count);
         }
-    }
-
-    private void processOfflineDebounce(String username) {
-        try {
-            long currentCount = getCurrentUserCount(username);
-
-            if (currentCount <= 0) {
-                redisTemplate.opsForZSet().remove(ONLINE_USERS_KEY, username);
-                redisTemplate.opsForHash().delete(ONLINE_USERS_COUNT_KEY, username);
-                redisTemplate.delete(WS_ROUTING_SERVERS_KEY + username);
-                userService.setUserOnlineStatus(username, false);
-                log.info("User '{}' disconnected completely (All sessions closed)", username);
-            } else {
-                log.debug("User '{}' reconnected during debounce period", username);
-            }
-        } catch (Exception e) {
-            log.error("Error during offline debounce processing for user '{}'", username, e);
-        }
-    }
-
-    private long getCurrentUserCount(String username) {
-        Object currentCountObj = redisTemplate.opsForHash().get(ONLINE_USERS_COUNT_KEY, username);
-        if (currentCountObj instanceof Number number) {
-            return number.longValue();
-        } else if (currentCountObj != null) {
-            return Long.parseLong(currentCountObj.toString());
-        }
-        return 0L;
     }
 }

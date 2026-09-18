@@ -40,11 +40,12 @@ public class StorageServiceImpl implements StorageService {
     private static final String VIDEOS_STRING = "videos";
 
     private static final String IMAGE_STRING = "image";
-    private static final String RAW_STRING = "raw";
+    private static final String VIDEO_STRING = "video";
 
     private static final String AVATARS_STRING = "avatars";
     private static final String DELIMITER_SLASH_STRING = "/";
     private static final String DELIMITER_DOT_STRING = ".";
+    private static final String SVG_MIME_TYPE_STRING = "image/svg+xml";
 
     private static final String ERROR_STORAGE_INVALID_FORMAT_STRING = "error.storage.invalid_format";
     private static final String ERROR_STORAGE_FILE_TOO_LARGE_STRING = "error.storage.file_too_large";
@@ -58,26 +59,25 @@ public class StorageServiceImpl implements StorageService {
 
     @Override
     public String upLoadImage(MultipartFile image) {
-        return uploadFile(image, IMAGES_STRING, maxImageSize, RAW_STRING);
+        return uploadFile(image, IMAGES_STRING, maxImageSize, IMAGE_STRING);
     }
 
     @Override
     public String uploadVideo(MultipartFile video) {
-        return uploadFile(video, VIDEOS_STRING, maxVideoSize, RAW_STRING);
+        return uploadFile(video, VIDEOS_STRING, maxVideoSize, VIDEO_STRING);
     }
 
     private String uploadFile(MultipartFile file, String folder, Long maxSize, String resourceType) {
         try {
-            if (file.isEmpty()) {
+            if (file == null || file.isEmpty()) {
                 throw new InvalidDataException(Translator.tolocale(ERROR_STORAGE_EMPTY_FILE_STRING));
             }
 
-            if (!resourceType.equals(RAW_STRING)) {
-                String contentType = file.getContentType();
-                if (contentType == null || !contentType.startsWith(resourceType + DELIMITER_SLASH_STRING)) {
-                    throw new InvalidDataException(
-                            Translator.tolocale(ERROR_STORAGE_INVALID_FORMAT_STRING, resourceType));
-                }
+            String contentType = file.getContentType();
+            if (contentType == null || !contentType.toLowerCase().startsWith(resourceType + DELIMITER_SLASH_STRING)
+                    || SVG_MIME_TYPE_STRING.equalsIgnoreCase(contentType)) {
+                throw new InvalidDataException(
+                        Translator.tolocale(ERROR_STORAGE_INVALID_FORMAT_STRING, resourceType));
             }
 
             if (file.getSize() > maxSize) {
@@ -109,7 +109,7 @@ public class StorageServiceImpl implements StorageService {
             if (url == null || url.isEmpty())
                 return;
 
-            String resourceType = folder.equals(AVATARS_STRING) ? IMAGE_STRING : RAW_STRING;
+            String resourceType = folder.equals(VIDEOS_STRING) ? VIDEO_STRING : IMAGE_STRING;
             publicId = extractPublicId(url, folder);
 
             if (publicId != null) {

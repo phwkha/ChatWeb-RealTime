@@ -1,58 +1,61 @@
-# Đặc Tả Giao Thức WebSocket & STOMP (WebSocket & STOMP Protocol Spec)
+# WebSocket & STOMP Protocol Specification
 
-Tài liệu này đặc tả toàn bộ giao diện truyền thông thời gian thực qua giao thức **STOMP over WebSocket** trong hệ thống ChatWeb.
+This document specifies the real-time full-duplex communication interface built upon the **STOMP (Simple Text Oriented Messaging Protocol) over WebSocket** architecture within ChatWeb.
 
 ---
 
-## 1. Kết Nối & Bắt Tay (Handshake & Authentication)
+## 1. Connection Handshake & Authentication
 
-Hệ thống cung cấp điểm kết nối WebSocket chuẩn hỗ trợ fallback SockJS cho các trình duyệt hoặc mạng chặn giao thức WS thuần.
+The messaging gateway exposes a standardized WebSocket endpoint with transparent **SockJS fallback** support for restrictive proxies and legacy browsers.
 
-- **WebSocket URL**:
-  - Phát triển cục bộ: `ws://localhost/ws` (hoặc qua SockJS: `http://localhost/ws`)
-  - Nginx Reverse Proxy: `wss://<domain>/ws`
-- **Cơ chế xác thực (Authentication)**:
-  1. **Ưu tiên 1 (Cookie)**: Tự động trích xuất từ Cookie `accessToken` (được bọc vào session attribute `jwt_token_cookie`) đi kèm trong request bắt tay HTTP Upgrade.
-  2. **Ưu tiên 2 (STOMP Header)**: Truyền qua header `Authorization` khi gửi frame STOMP `CONNECT`:
+- **WebSocket URLs**:
+  - Direct / Local Development: `ws://localhost/ws` (or SockJS HTTP fallback: `http://localhost/ws`)
+  - Reverse Proxy (Production / Staging): `wss://<domain>/ws`
+- **Authentication Lifecycle**:
+  The system supports dual token transmission strategies during the initial STOMP handshake:
+  1. **Primary Strategy (STOMP Header)**: The client attaches the JWT Access Token directly within the `CONNECT` frame:
      ```stomp
      CONNECT
      accept-version:1.2,1.1,1.0
      heart-beat:10000,10000
      Authorization:Bearer <access_token>
-     Accept-Language:vi-VN
+     Accept-Language:en-US
      \0
      ```
-- **Xác thực bảo mật đa tầng tại [WebSocketConfig.java](file:///home/phanhuukha/Dev/ChatWeb/chatweb_be/src/main/java/com/web/backend/config/WebSocketConfig.java)**:
-  - **Blacklist Check**: Kiểm tra token có nằm trong Redis key `blacklist:<token>` hay không.
-  - **Token Version Check**: Giải mã claim `v` trong JWT và so sánh với `token_version` trong PostgreSQL. Nếu không khớp $\rightarrow$ Từ chối kết nối ngay lập tức (thu hồi phiên).
-  - **I18n Locale Resolution**: Thiết lập ngôn ngữ phản hồi theo header `Accept-Language`.
+  2. **Secondary Strategy (HttpOnly Cookie Fallback)**: The handshake interceptor extracts the `accessToken` cookie from the initial HTTP Upgrade request attributes.
+
+### Handshake Interceptor Security Checks
+Implemented in `WebSocketConfig.java` / `ChannelInterceptor`:
+- **Redis Token Blacklist**: Verifies the token has not been revoked (`blacklist:<token>`).
+- **Token Version Enforcement**: Extracts claim `v` from the JWT and compares it against the user's current `token_version` in PostgreSQL. If mismatched, the connection is instantly rejected, terminating sessions across all revoked devices.
+- **Locale Resolution**: Configures localized socket responses based on the client's `Accept-Language` header.
 
 ---
 
-## 2. Quy Ước Tiền Tố Định Tuyến (Destination Prefixes)
+## 2. Destination Prefix Conventions
 
-Spring Boot WebSocket Broker được cấu hình phân tách rõ ràng 3 không gian địa chỉ:
+Spring Boot WebSocket message broker partitions destination paths into three distinct scopes:
 
-| Tiền tố (Prefix) | Loại hình (Type) | Mục đích sử dụng |
+| Prefix | Type | Description |
 | :--- | :--- | :--- |
-| **`/app`** | Application Destination | Điểm nhận dữ liệu từ Client gửi lên Controller để xử lý logic. |
-| **`/topic`** | Broadcast Broker | Kênh phát thanh công khai một-nhiều (One-to-Many / Pub-Sub). |
-| **`/user` / `/queue`** | Point-to-Point Broker | Kênh gửi dữ liệu riêng tư một-một (One-to-One) tới một tài khoản cụ thể. |
+| **`/app`** | Application Destination | Targets Spring `@MessageMapping` controller endpoints for business logic processing. |
+| **`/topic`** | Broadcast Broker | One-to-many public Pub/Sub channels delivered to all subscribed online clients. |
+| **`/user` / `/queue`** | Point-to-Point Broker | One-to-one private queues addressed to specific authenticated usernames. |
 
 ---
 
-## 3. Danh Sách Inbound Endpoints (Client $\rightarrow$ Server)
+## 3. Inbound Endpoints (Client $\rightarrow$ Server)
 
-### 3.1. Gửi Tin Nhắn Riêng Tư 1-1 (Private Message & Typing)
+### 3.1. Send Private Message (1-to-1 Chat & Typing Indicator)
 - **STOMP Destination**: `/app/chat/sendPrivateMessage`
-- **Quyền hạn**: Người dùng đã xác thực (Authenticated User). Phải là bạn bè của người nhận (kiểm tra quan hệ bạn bè trong CSDL).
-- **Payload Request** ([ChatMessageRequest](file:///home/phanhuukha/Dev/ChatWeb/chatweb_be/src/main/java/com/web/backend/controller/request/ChatMessageRequest.java)):
+- **Authorization**: Authenticated user. Sender and recipient must have an `ACCEPTED` friendship record.
+- **Request Payload (`ChatMessageRequest`)**:
 
 ```json
 {
-  "localId": "uuid-v4-client-generated-12345",
-  "recipient": "bob_username",
-  "content": "Xin chào Bob, bạn khỏe không?",
+  "localId": "b1f8b417-742a-43cf-bb15-090c2a7df641",
+  "recipient": "bob_smith",
+  "content": "Hello Bob, are we still meeting today?",
   "contentType": "TEXT",
   "messageType": "CHAT",
   "color": "#3B82F6",
@@ -63,45 +66,51 @@ Spring Boot WebSocket Broker được cấu hình phân tách rõ ràng 3 không
 }
 ```
 
-*Lưu ý nghiệp vụ*:
-- `localId`: Client tự sinh UUID để Backend thực hiện kiểm tra `SETNX` với key `ws:dedup:{sender}:{localId}` chống nhận tin nhắn trùng lặp khi mạng bị chập chờn.
-- `messageType`:
-  - `CHAT`: Tin nhắn trò chuyện thông thường.
-  - `TYPING`: Thông báo người gửi đang nhập văn bản.
-- `contentType`: `TEXT`, `IMAGE`, `VIDEO`, `FILE`.
+#### Field Specifications:
+- `localId` (*String, Required*): Client-generated UUID v4 used for backend deduplication (`SETNX ws:dedup:{sender}:{localId}` with TTL 300s).
+- `recipient` (*String, Required*): Username of the intended recipient.
+- `content` (*String, Optional*): Text content. Required when `contentType == 'TEXT'`.
+- `contentType` (*Enum*): `TEXT`, `IMAGE`, `VIDEO`, `FILE`.
+- `messageType` (*Enum*):
+  - `CHAT`: Standard chat message.
+  - `TYPING`: Transient typing indicator event (not persisted to MongoDB).
+- `color` (*String, Optional*): UI bubble accent color hex code.
+- `replyToId` (*String, Optional*): MongoDB `_id` of a quoted parent message.
+- `fileUrl` (*String, Optional*): Direct Cloudinary CDN URL for media payloads.
+- `fileName` / `fileSize` (*Optional*): Metadata for attachments.
 
 ---
 
-### 3.2. Gửi Thông Báo Hệ Thống (System Announcement)
+### 3.2. Broadcast System Announcement
 - **STOMP Destination**: `/app/chat/sendMessageSystem`
-- **Quyền hạn**: Chỉ dành cho Admin có quyền `@PreAuthorize("hasAuthority('ADMIN_SEND-MESSAGE')")`.
-- **Payload Request** ([MessageSystemRequest](file:///home/phanhuukha/Dev/ChatWeb/chatweb_be/src/main/java/com/web/backend/controller/request/MessageSystemRequest.java)):
+- **Authorization**: Administrative users with authority `@PreAuthorize("hasAuthority('ADMIN_SEND-MESSAGE')")`.
+- **Request Payload (`MessageSystemRequest`)**:
 
 ```json
 {
-  "content": "Hệ thống sẽ bảo trì nâng cấp cụm máy chủ vào lúc 02:00 sáng mai.",
+  "content": "Scheduled server maintenance will take place tonight at 02:00 UTC.",
   "survivalTime": 86400
 }
 ```
-*`survivalTime`*: Thời gian tồn tại của thông báo tính bằng giây. Sau thời gian này, MongoDB TTL Index sẽ tự động hủy thông báo.
+
+- `survivalTime` (*Long, Required*): Lifetime of the announcement in seconds. The backend computes `expiresAt = now + survivalTime`, allowing MongoDB TTL index to automatically purge the document upon expiration.
 
 ---
 
-## 4. Danh Sách Outbound Destinations (Server $\rightarrow$ Client)
+## 4. Outbound Destinations (Server $\rightarrow$ Client)
 
-### 4.1. Kênh Nhận Tin Nhắn Riêng Tư & Phản Hồi (ACK)
+### 4.1. Private Messages & Delivery Acknowledgment (ACK)
 - **Client Subscription**: `/user/queue/messages`
-- **Mô tả**: Khi có người gửi tin nhắn cho bạn, hoặc server gửi lại bản tin xác nhận đã nhận (ACK chứa `localId` để client cập nhật trạng thái tin nhắn đã gửi thành công).
-- **Payload Response** ([ChatMessageResponse](file:///home/phanhuukha/Dev/ChatWeb/chatweb_be/src/main/java/com/web/backend/controller/response/ChatMessageResponse.java)):
+- **Payload Model (`ChatMessageResponse`)**:
 
 ```json
 {
   "id": "65e52b121f938b29c8e1a456",
-  "localId": "uuid-v4-client-generated-12345",
+  "localId": "b1f8b417-742a-43cf-bb15-090c2a7df641",
   "conversationId": "alice_bob",
-  "sender": "alice_username",
-  "recipient": "bob_username",
-  "content": "Xin chào Bob, bạn khỏe không?",
+  "sender": "alice_smith",
+  "recipient": "bob_smith",
+  "content": "Hello Bob, are we still meeting today?",
   "contentType": "TEXT",
   "messageType": "CHAT",
   "color": "#3B82F6",
@@ -109,7 +118,7 @@ Spring Boot WebSocket Broker được cấu hình phân tách rõ ràng 3 không
   "fileUrl": null,
   "fileName": null,
   "fileSize": null,
-  "timestamp": "2026-09-03T07:45:00.120Z",
+  "timestamp": "2026-09-18T15:30:00.120Z",
   "status": "SENT",
   "isEdited": false,
   "isDeleted": false,
@@ -118,46 +127,63 @@ Spring Boot WebSocket Broker được cấu hình phân tách rõ ràng 3 không
 }
 ```
 
+*Delivery Semantics*:
+- When User A sends a message, User B receives this payload to display the message.
+- User A also receives this payload via their personal queue containing the matching `localId` and assigned MongoDB `id`, serving as an instant delivery acknowledgment (ACK).
+
 ---
 
-### 4.2. Kênh Nhận Thông Báo Lời Mời Kết Bạn (Friend Notifications)
+### 4.2. User Notifications (Friend Requests & Read Receipts)
 - **Client Subscription**: `/user/queue/notifications`
-- **Mô tả**: Nhận thông báo thời gian thực khi có người gửi lời mời kết bạn hoặc chấp nhận lời mời từ bạn.
+- **Payload Model (`NotificationResponse<T>`)**:
+  - **Friend Request Notification**: Dispatched when an invitation is received or accepted.
+  - **Read Receipt Notification (`ReadReceiptResponse`)**:
+    ```json
+    {
+      "type": "READ_RECEIPT",
+      "data": {
+        "conversationId": "alice_bob",
+        "reader": "bob_smith",
+        "sender": "alice_smith",
+        "readTimestamp": "2026-09-18T15:32:10.500Z"
+      }
+    }
+    ```
 
 ---
 
-### 4.3. Kênh Nhận Thông Báo Toàn Hệ Thống (Public Broadcast)
+### 4.3. Global Public Announcements
 - **Client Subscription**: `/topic/public`
-- **Mô tả**: Toàn bộ người dùng đang trực tuyến đều nhận được thông báo chung từ ban quản trị.
-- **Payload Response** ([MessageSystemResponse](file:///home/phanhuukha/Dev/ChatWeb/chatweb_be/src/main/java/com/web/backend/controller/response/MessageSystemResponse.java)):
+- **Payload Model (`MessageSystemResponse`)**:
 
 ```json
 {
   "id": "65e52c901f938b29c8e1a789",
   "sender": "admin_system",
-  "content": "Hệ thống sẽ bảo trì nâng cấp cụm máy chủ vào lúc 02:00 sáng mai.",
-  "timestamp": "2026-09-03T07:46:15.000Z"
+  "content": "Scheduled server maintenance will take place tonight at 02:00 UTC.",
+  "timestamp": "2026-09-18T15:00:00.000Z"
 }
 ```
 
 ---
 
-### 4.4. Kênh Báo Lỗi WebSocket Cá Nhân
+### 4.4. Targeted WebSocket Error Alerts
 - **Client Subscription**: `/user/queue/errors`
-- **Mô tả**: Nhận thông báo lỗi xử lý socket khi gửi tin thất bại (ví dụ vi phạm rate limit hoặc gửi tin cho người chưa kết bạn).
+- Delivers real-time business and validation errors specifically directed to the offending client session.
 
 ---
 
-## 5. Xử Lý Lỗi WebSocket Chuẩn Hóa (STOMP Error Handling)
+## 5. Standardized Error Handling (`ErrorSocketResponse`)
 
-Khi xảy ra lỗi trong quá trình xử lý STOMP frame, hệ thống sử dụng [StompSubProtocolErrorHandler](file:///home/phanhuukha/Dev/ChatWeb/chatweb_be/src/main/java/com/web/backend/config/WebSocketConfig.java#L77-L100) để tạo frame `ERROR` với payload JSON [ErrorSocketResponse](file:///home/phanhuukha/Dev/ChatWeb/chatweb_be/src/main/java/com/web/backend/controller/response/ErrorSocketResponse.java):
+When an exception occurs during frame parsing, validation, or business execution, `StompSubProtocolErrorHandler` generates a standardized JSON payload:
 
 ```json
 {
   "code": 400,
   "errorCode": "STOMP_ERROR",
-  "message": "Hai người chưa phải là bạn bè, không thể gửi tin nhắn.",
+  "message": "Users must have an accepted friendship before exchanging private messages.",
   "request": null
 }
 ```
-Client bắt frame STOMP `ERROR` hoặc tin nhắn từ `/user/queue/errors` để hiển thị Toast thông báo lỗi tới người dùng.
+
+Client-side STOMP listeners intercept this frame or `/user/queue/errors` messages to present contextual UI notifications (e.g., error toast dialogs) without terminating the underlying WebSocket transport connection.

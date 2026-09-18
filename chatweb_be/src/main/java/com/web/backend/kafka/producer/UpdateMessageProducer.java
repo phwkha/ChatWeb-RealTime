@@ -40,24 +40,28 @@ public class UpdateMessageProducer {
         sendUpdateMessage(payload);
     }
 
-    @Async
-    @EventListener
-    public void handleUpdateMessageEvent(UpdateMessagePayload payload) {
-        sendUpdateMessage(payload);
-    }
-
     public void sendUpdateMessage(UpdateMessagePayload payload) {
         if (payload == null) {
             return;
         }
+        String key = null;
+        if (payload.updateEvent() instanceof ReadReceiptResponse receipt) {
+            key = receipt.getConversationId();
+        } else if (payload.relatedUsername() != null) {
+            key = payload.relatedUsername();
+        }
         try {
-            kafkaTemplate.send(Objects.requireNonNull(chatTopicUpdate, TOPIC_MUST_NOT_BE_NULL_STRING), payload)
+            (key != null
+                    ? kafkaTemplate.send(Objects.requireNonNull(chatTopicUpdate, TOPIC_MUST_NOT_BE_NULL_STRING), key, payload)
+                    : kafkaTemplate.send(Objects.requireNonNull(chatTopicUpdate, TOPIC_MUST_NOT_BE_NULL_STRING), payload))
                     .whenComplete((result, ex) -> {
                         if (ex != null) {
-                            log.error("Failed to publish update message event [type='{}', user='{}'] to Kafka topic '{}'",
+                            log.error(
+                                    "Failed to publish update message event [type='{}', user='{}'] to Kafka topic '{}'",
                                     payload.type(), payload.relatedUsername(), chatTopicUpdate, ex);
                         } else {
-                            log.debug("Published update message event [type='{}', user='{}'] to Kafka topic '{}' [offset={}]",
+                            log.debug(
+                                    "Published update message event [type='{}', user='{}'] to Kafka topic '{}' [offset={}]",
                                     payload.type(), payload.relatedUsername(), chatTopicUpdate,
                                     result.getRecordMetadata().offset());
                         }

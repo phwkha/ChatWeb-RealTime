@@ -71,7 +71,7 @@ public class SecurityConfig {
                                                 .requestMatchers("/api/auth/logout", "/api/auth/logout-all-devices")
                                                 .authenticated()
                                                 .requestMatchers("/ws/**", "/oauth2/**", "/login/oauth2/**",
-                                                                "/api/auth/**", "/actuator/health", "/actuator/prometheus")
+                                                                "/api/auth/**", "/actuator/health", "/actuator/info", "/actuator/prometheus")
                                                 .permitAll()
                                                 .requestMatchers("/actuator/**").hasAuthority("ADMIN_VIEW_USERS")
                                                 .anyRequest().authenticated())
@@ -118,7 +118,7 @@ public class SecurityConfig {
                 configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
                 configuration.setAllowedHeaders(Arrays.asList("*"));
                 configuration.setAllowCredentials(true);
-                configuration.setExposedHeaders(Arrays.asList("Set-Cookie"));
+                configuration.setExposedHeaders(Arrays.asList("Set-Cookie", "Authorization", "X-Idempotency-Key"));
 
                 UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
                 source.registerCorsConfiguration("/**", configuration);

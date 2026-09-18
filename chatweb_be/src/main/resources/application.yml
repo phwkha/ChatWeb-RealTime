@@ -12,13 +12,19 @@ spring:
     encoding: UTF-8
   profiles:
     active: @spring.profiles.active@
+  task:
+    scheduling:
+      pool:
+        size: 4
 
 management:
   endpoints:
     web:
       exposure:
-        include: '*'
+        include: health,info,prometheus
   endpoint:
+    health:
+      show-details: when_authorized
     prometheus:
       access: unrestricted
   metrics:

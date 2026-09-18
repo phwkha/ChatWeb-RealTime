@@ -24,6 +24,7 @@ import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
 import org.springframework.context.support.ResourceBundleMessageSource;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.test.context.ActiveProfiles;
@@ -132,7 +133,8 @@ class AuthControllerTest {
                                 .content(objectMapper.writeValueAsString(request)))
                                 .andExpect(status().isOk())
                                 .andExpect(jsonPath("$.code").value(200))
-                                .andExpect(cookie().exists("accessToken"))
+                                .andExpect(header().string(HttpHeaders.AUTHORIZATION, "Bearer mockAccessToken"))
+                                .andExpect(cookie().doesNotExist("accessToken"))
                                 .andExpect(cookie().exists("refreshToken"));
         }
 
@@ -160,7 +162,9 @@ class AuthControllerTest {
 
                 UserResponse userResponse = new UserResponse();
                 userResponse.setUsername("newuser");
+                userResponse.setEmail("newuser@gmail.com");
 
+                when(rateLimitingService.isAllowed(any(), eq(3), eq(60L))).thenReturn(true);
                 when(authenticationService.createUser(any(CreateUserRequest.class))).thenReturn(userResponse);
 
                 mockMvc.perform(post("/api/auth/register")
@@ -177,6 +181,8 @@ class AuthControllerTest {
                 request.setEmail("test@gmail.com");
                 request.setOtp("123456");
 
+                when(rateLimitingService.isAllowed(any(), eq(5), eq(60L))).thenReturn(true);
+
                 mockMvc.perform(post("/api/auth/verify-account")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(objectMapper.writeValueAsString(request)))
@@ -188,6 +194,8 @@ class AuthControllerTest {
 
         @Test
         void testResendOtp_Success() throws Exception {
+                when(rateLimitingService.isAllowed(any(), eq(3), eq(60L))).thenReturn(true);
+
                 mockMvc.perform(post("/api/auth/resend-otp")
                                 .param("email", "test@gmail.com"))
                                 .andExpect(status().isOk())
@@ -212,7 +220,8 @@ class AuthControllerTest {
                                 .andExpect(status().isOk())
                                 .andExpect(jsonPath("$.code").value(200))
                                 .andExpect(jsonPath("$.data").value("newAccessToken"))
-                                .andExpect(cookie().exists("accessToken"))
+                                .andExpect(header().string(HttpHeaders.AUTHORIZATION, "Bearer newAccessToken"))
+                                .andExpect(cookie().doesNotExist("accessToken"))
                                 .andExpect(cookie().exists("refreshToken"));
         }
 

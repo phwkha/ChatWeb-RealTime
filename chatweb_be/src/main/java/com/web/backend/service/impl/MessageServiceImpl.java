@@ -18,7 +18,6 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
-import org.springframework.data.mongodb.core.FindAndModifyOptions;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
@@ -26,9 +25,9 @@ import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
+import com.web.backend.common.ActionType;
 import com.web.backend.common.MessageStatus;
 import com.web.backend.common.MessageType;
-import com.web.backend.common.UpdateMessageType;
 import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.request.EditMessageRequest;
 import com.web.backend.controller.request.MarkReadRequest;
@@ -43,7 +42,8 @@ import com.web.backend.exception.custom.AccessForbiddenException;
 import com.web.backend.exception.custom.InvalidDataException;
 import com.web.backend.exception.custom.ResourceNotFoundException;
 import com.web.backend.exception.custom.SystemOverloadException;
-import com.web.backend.kafka.payload.UpdateMessagePayload;
+import com.web.backend.kafka.avro.ChatMessageAvro;
+import com.web.backend.kafka.producer.ChatProducer;
 import com.web.backend.mapper.MessageMapper;
 import com.web.backend.model.mongodb.ChatMessage;
 import com.web.backend.model.mongodb.ReadReceipt;
@@ -71,29 +71,19 @@ public class MessageServiceImpl implements MessageService {
     private final MongoTemplate mongoTemplate;
     private final MessageMapper messageMapper;
     private final ApplicationEventPublisher eventPublisher;
+    private final ChatProducer chatProducer;
 
     private static final String TIMESTAMP_STRING = "timestamp";
-    private static final String SENTINEL_EMPTY_STRING = "_empty";
     private static final String EMPTY_STRING = "";
     private static final String DELIMITER_COLON_STRING = ":";
     private static final String DELIMITER_UNDERSCORE_STRING = "_";
 
     private static final String FIELD_ID_STRING = "id";
     private static final String FIELD_CONVERSATION_ID_STRING = "conversationId";
-    private static final String FIELD_SENDER_STRING = "sender";
     private static final String FIELD_IS_DELETED_STRING = "isDeleted";
     private static final String FIELD_CONTENT_STRING = "content";
-    private static final String FIELD_IS_EDITED_STRING = "isEdited";
-    private static final String FIELD_FILE_URL_STRING = "fileUrl";
-    private static final String FIELD_FILE_NAME_STRING = "fileName";
-    private static final String FIELD_FILE_SIZE_STRING = "fileSize";
-    private static final String FIELD_REACTIONS_STRING = "reactions";
-    private static final String FIELD_REACTIONS_PREFIX_STRING = "reactions.";
-    private static final String FIELD_IS_REACTED_STRING = "isReacted";
     private static final String FIELD_LAST_READ_TIMESTAMP_STRING = "lastReadTimestamp";
     private static final String FIELD_USERNAME_STRING = "username";
-    private static final String FIELD_STATUS_STRING = "status";
-    private static final String FIELD_RECIPIENT_STRING = "recipient";
     private static final String FIELD_MESSAGE_TYPE_STRING = "messageType";
 
     private static final String CHAT_RECENT_HASH_STRING = "chat:recent:hash:";
@@ -104,7 +94,6 @@ public class MessageServiceImpl implements MessageService {
     private static final String ERROR_MSG_RECIPIENT_NOT_FOUND_STRING = "error.msg.recipient_not_found";
     private static final String ERROR_MSG_NOT_FRIENDS_STRING = "error.msg.not_friends";
     private static final String ERROR_MSG_NOT_FOUND_STRING = "error.msg.not_found";
-    private static final String ERROR_MSG_SYNCING_STRING = "error.msg.syncing";
     private static final String ERROR_MSG_EDIT_FORBIDDEN_STRING = "error.msg.edit_forbidden";
     private static final String ERROR_MSG_DELETE_FORBIDDEN_STRING = "error.msg.delete_forbidden";
     private static final String ERROR_MSG_EDIT_DELETED_STRING = "error.msg.edit_deleted";
@@ -120,7 +109,7 @@ public class MessageServiceImpl implements MessageService {
             throw new AccessForbiddenException(Translator.tolocale(ERROR_MSG_RECIPIENT_NOT_FOUND_STRING));
         }
 
-        return messageMapper.toResponse(message);
+        return mapToEnrichedResponse(message);
     }
 
     @Override
@@ -141,7 +130,8 @@ public class MessageServiceImpl implements MessageService {
             }
         }
 
-        List<ChatMessage> finalMessages = fetchMessagesFromDatabaseAndMerge(conversationId, cursorStr, pageSize, pageable);
+        List<ChatMessage> finalMessages = fetchMessagesFromDatabaseAndMerge(conversationId, cursorStr, pageSize,
+                pageable);
         return buildCursorResponse(finalMessages, pageSize, conversationId, user1, user2);
     }
 
@@ -213,17 +203,17 @@ public class MessageServiceImpl implements MessageService {
 
         String key = UNREAD_COUNTS_STRING + recipientUsername;
 
-        Map<Object, Object> redisCounts = redisTemplate.opsForHash().entries(key);
-
-        if (!redisCounts.isEmpty()) {
-            if (redisCounts.containsKey(SENTINEL_EMPTY_STRING)) {
-                return UnreadCountsResponse.builder().unreadCounts(new HashMap<>()).build();
+        try {
+            Map<Object, Object> redisCounts = redisTemplate.opsForHash().entries(key);
+            if (!redisCounts.isEmpty()) {
+                Map<String, Long> result = redisCounts.entrySet().stream()
+                        .collect(Collectors.toMap(
+                                e -> (String) e.getKey(),
+                                e -> Long.valueOf(e.getValue().toString())));
+                return UnreadCountsResponse.builder().unreadCounts(result).build();
             }
-            Map<String, Long> result = redisCounts.entrySet().stream()
-                    .collect(Collectors.toMap(
-                            e -> (String) e.getKey(),
-                            e -> Long.valueOf(e.getValue().toString())));
-            return UnreadCountsResponse.builder().unreadCounts(result).build();
+        } catch (Exception e) {
+            log.warn("Failed to check Redis unread counts for '{}'", recipientUsername, e);
         }
 
         List<UnreadCountProjection> dbResults = messageRepository.countUnreadMessagesBySender(recipientUsername);
@@ -231,17 +221,19 @@ public class MessageServiceImpl implements MessageService {
         Map<String, Long> resultMap = new HashMap<>();
         Map<String, Object> redisMap = new HashMap<>();
 
-        if (dbResults.isEmpty()) {
-            redisMap.put(SENTINEL_EMPTY_STRING, 0L);
-        } else {
-            for (UnreadCountProjection r : dbResults) {
-                resultMap.put(r.sender(), r.count());
-                redisMap.put(r.sender(), r.count());
-            }
+        for (UnreadCountProjection r : dbResults) {
+            resultMap.put(r.sender(), r.count());
+            redisMap.put(r.sender(), r.count());
         }
 
-        redisTemplate.opsForHash().putAll(key, redisMap);
-        redisTemplate.expire(key, getRandomTtl(7 * 24 * 3600L, 12 * 3600L));
+        if (!redisMap.isEmpty()) {
+            try {
+                redisTemplate.opsForHash().putAll(key, redisMap);
+                redisTemplate.expire(key, getRandomTtl(7 * 24 * 3600L, 12 * 3600L));
+            } catch (Exception e) {
+                log.warn("Failed to cache unread counts in Redis for '{}'", recipientUsername, e);
+            }
+        }
 
         return UnreadCountsResponse.builder()
                 .unreadCounts(resultMap)
@@ -254,6 +246,12 @@ public class MessageServiceImpl implements MessageService {
         if (recipientUsername.equals(senderUsername)) {
             return;
         }
+
+        if (!friendService.isFriend(Objects.requireNonNull(recipientUsername),
+                Objects.requireNonNull(senderUsername))) {
+            throw new AccessForbiddenException(Translator.tolocale(ERROR_MSG_NOT_FRIENDS_STRING));
+        }
+
         String convId = generateConversationId(recipientUsername, senderUsername);
         Instant now = Instant.now();
         String receiptId = convId + DELIMITER_COLON_STRING + recipientUsername;
@@ -274,27 +272,11 @@ public class MessageServiceImpl implements MessageService {
         }
 
         try {
-            Query msgQuery = new Query(Criteria.where(FIELD_CONVERSATION_ID_STRING).is(convId)
-                    .and(FIELD_RECIPIENT_STRING).is(recipientUsername)
-                    .and(FIELD_STATUS_STRING).is(MessageStatus.SENT)
-                    .and(FIELD_MESSAGE_TYPE_STRING).is(MessageType.CHAT));
-            Update msgUpdate = new Update().set(FIELD_STATUS_STRING, MessageStatus.READ);
-            mongoTemplate.updateMulti(msgQuery, msgUpdate, ChatMessage.class);
-            log.debug("Bulk-updated SENT→READ for conv '{}' recipient '{}'", convId, recipientUsername);
-        } catch (Exception ex) {
-            log.warn("Failed to bulk-update message statuses for conv '{}'", convId, ex);
-        }
-
-        try {
             String readReceiptKey = READ_RECEIPT_KEY_STRING + convId + DELIMITER_COLON_STRING + recipientUsername;
             redisTemplate.opsForValue().set(readReceiptKey, now.toString(), Duration.ofDays(7));
 
             String unreadKey = UNREAD_COUNTS_STRING + recipientUsername;
-            redisTemplate.opsForHash().delete(unreadKey, senderUsername);
-            Long remaining = redisTemplate.opsForHash().size(unreadKey);
-            if (remaining != null && remaining == 0) {
-                redisTemplate.opsForHash().put(unreadKey, SENTINEL_EMPTY_STRING, 0L);
-            }
+            redisTemplate.delete(unreadKey);
         } catch (Exception e) {
             log.warn("Failed to update read receipt in Redis for conv '{}'", convId, e);
         }
@@ -325,33 +307,17 @@ public class MessageServiceImpl implements MessageService {
             throw new InvalidDataException(Translator.tolocale(ERROR_MSG_EDIT_DELETED_STRING));
         }
 
-        Query query = new Query(Criteria.where(FIELD_ID_STRING).is(request.getMessageId())
-                .and(FIELD_CONVERSATION_ID_STRING).is(convId)
-                .and(FIELD_SENDER_STRING).is(senderUsername)
-                .and(FIELD_IS_DELETED_STRING).is(false));
+        msg.setContent(request.getNewContent());
+        msg.setEdited(true);
+        msg.setStatus(resolveCurrentStatus(msg));
 
-        Update update = new Update();
-        update.set(FIELD_CONTENT_STRING, request.getNewContent());
-        update.set(FIELD_IS_EDITED_STRING, true);
+        putMessageIfCached(convId, msg);
 
+        ChatMessageAvro payload = messageMapper.toAvro(msg);
+        payload.setActionType(ActionType.EDIT.name());
+        chatProducer.sendChatMessage(payload);
 
-        FindAndModifyOptions options = new FindAndModifyOptions().returnNew(true);
-        ChatMessage updatedMsg = mongoTemplate.findAndModify(query, update, options, ChatMessage.class);
-
-        if (updatedMsg == null) {
-            handleMissingMongoMessage(convId, request.getMessageId(), request);
-            return null;
-        }
-
-        putMessageIfCached(convId, updatedMsg);
-
-        eventPublisher.publishEvent(UpdateMessagePayload.builder()
-                .relatedUsername(senderUsername)
-                .type(UpdateMessageType.EDIT)
-                .updateEvent(updatedMsg)
-                .build());
-
-        return messageMapper.toResponse(updatedMsg);
+        return mapToEnrichedResponse(msg);
     }
 
     @Override
@@ -372,49 +338,27 @@ public class MessageServiceImpl implements MessageService {
             return;
         }
 
-        Query query = new Query(Criteria.where(FIELD_ID_STRING).is(request.getMessageId())
-                .and(FIELD_CONVERSATION_ID_STRING).is(convId)
-                .and(FIELD_SENDER_STRING).is(senderUsername)
-                .and(FIELD_IS_DELETED_STRING).is(false));
+        msg.setContent(EMPTY_STRING);
+        msg.setFileUrl(null);
+        msg.setFileName(null);
+        msg.setFileSize(null);
+        msg.setReactions(null);
+        msg.setDeleted(true);
+        msg.setStatus(resolveCurrentStatus(msg));
 
-        Update update = new Update();
-        update.set(FIELD_CONTENT_STRING, EMPTY_STRING);
-        update.set(FIELD_FILE_URL_STRING, null);
-        update.set(FIELD_FILE_NAME_STRING, null);
-        update.set(FIELD_FILE_SIZE_STRING, null);
-        update.set(FIELD_REACTIONS_STRING, null);
-        update.set(FIELD_IS_DELETED_STRING, true);
-
-        FindAndModifyOptions options = new FindAndModifyOptions().returnNew(true);
-        ChatMessage updatedMsg = mongoTemplate.findAndModify(query, update, options, ChatMessage.class);
-
-        if (updatedMsg == null) {
-            handleMissingMongoMessage(convId, request.getMessageId(), request);
-            return;
-        }
-
-        if (msg.getStatus() != MessageStatus.READ && msg.getRecipient() != null) {
-            String unreadKey = UNREAD_COUNTS_STRING + msg.getRecipient();
+        if (msg.getRecipient() != null) {
             try {
-                Boolean hasKey = redisTemplate.hasKey(unreadKey);
-                if (Boolean.TRUE.equals(hasKey)) {
-                    Object currentVal = redisTemplate.opsForHash().get(unreadKey, senderUsername);
-                    if (currentVal != null && Long.parseLong(currentVal.toString()) > 0) {
-                        redisTemplate.opsForHash().increment(unreadKey, senderUsername, -1);
-                    }
-                }
+                redisTemplate.delete(UNREAD_COUNTS_STRING + msg.getRecipient());
             } catch (Exception e) {
-                log.warn("Failed to decrement unread count for recipient '{}'", msg.getRecipient(), e);
+                log.warn("Failed to evict unread count cache for recipient '{}'", msg.getRecipient(), e);
             }
         }
 
-        putMessageIfCached(convId, updatedMsg);
+        putMessageIfCached(convId, msg);
 
-        eventPublisher.publishEvent(UpdateMessagePayload.builder()
-                .relatedUsername(senderUsername)
-                .type(UpdateMessageType.REVOKE)
-                .updateEvent(updatedMsg)
-                .build());
+        ChatMessageAvro payload = messageMapper.toAvro(msg);
+        payload.setActionType(ActionType.REVOKE.name());
+        chatProducer.sendChatMessage(payload);
     }
 
     @Override
@@ -437,53 +381,28 @@ public class MessageServiceImpl implements MessageService {
             throw new InvalidDataException(Translator.tolocale(ERROR_MSG_EDIT_DELETED_STRING));
         }
 
-        Query query = new Query(Criteria.where(FIELD_ID_STRING).is(request.getMessageId())
-                .and(FIELD_CONVERSATION_ID_STRING).is(convId)
-                .and(FIELD_IS_DELETED_STRING).is(false));
+        Map<String, String> reactions = msg.getReactions();
+        if (reactions == null) {
+            reactions = new HashMap<>();
+            msg.setReactions(reactions);
+        }
 
-        Update update = new Update();
         if (request.getReactionType() != null) {
-            update.set(FIELD_REACTIONS_PREFIX_STRING + senderUsername, request.getReactionType().toString());
-            update.set(FIELD_IS_REACTED_STRING, true);
+            reactions.put(senderUsername, request.getReactionType().toString());
+            msg.setReacted(true);
         } else {
-            update.unset(FIELD_REACTIONS_PREFIX_STRING + senderUsername);
-            Map<String, String> currentReactions = msg.getReactions();
-            if (currentReactions == null || currentReactions.size() <= 1) {
-                update.set(FIELD_IS_REACTED_STRING, false);
-            }
+            reactions.remove(senderUsername);
+            msg.setReacted(!reactions.isEmpty());
         }
+        msg.setStatus(resolveCurrentStatus(msg));
 
-        FindAndModifyOptions options = new FindAndModifyOptions().returnNew(true);
-        ChatMessage updatedMsg = mongoTemplate.findAndModify(query, update, options, ChatMessage.class);
+        putMessageIfCached(convId, msg);
 
-        if (updatedMsg == null) {
-            handleMissingMongoMessage(convId, request.getMessageId(), request);
-            return null;
-        }
+        ChatMessageAvro payload = messageMapper.toAvro(msg);
+        payload.setActionType(ActionType.REACT.name());
+        chatProducer.sendChatMessage(payload);
 
-        putMessageIfCached(convId, updatedMsg);
-
-        eventPublisher.publishEvent(UpdateMessagePayload.builder()
-                .relatedUsername(senderUsername)
-                .type(UpdateMessageType.REACT)
-                .updateEvent(updatedMsg)
-                .build());
-
-        return messageMapper.toResponse(updatedMsg);
-    }
-
-    private void handleMissingMongoMessage(String convId, String messageId, Object requestData) {
-        String hashKey = CHAT_RECENT_HASH_STRING + convId;
-        Object redisObj = null;
-        try {
-            redisObj = redisTemplate.opsForHash().get(hashKey, messageId);
-        } catch (Exception e) {
-            log.warn("Failed to check Redis cache for message '{}'", messageId, e);
-        }
-        if (redisObj != null) {
-            throw new SystemOverloadException(Translator.tolocale(ERROR_MSG_SYNCING_STRING), requestData);
-        }
-        throw new ResourceNotFoundException(Translator.tolocale(ERROR_MSG_NOT_FOUND_STRING));
+        return mapToEnrichedResponse(msg);
     }
 
     private String generateConversationId(String user1, String user2) {
@@ -650,6 +569,34 @@ public class MessageServiceImpl implements MessageService {
         }
         return messageRepository.findById(messageId)
                 .orElseThrow(() -> new ResourceNotFoundException(Translator.tolocale(ERROR_MSG_NOT_FOUND_STRING)));
+    }
+
+    private MessageStatus resolveCurrentStatus(ChatMessage message) {
+        if (message == null) {
+            return MessageStatus.SENT;
+        }
+        String convId = message.getConversationId();
+        String recipient = message.getRecipient();
+        if (convId != null && recipient != null) {
+            Instant recipientReadTime = getLastReadTimestamp(convId, recipient);
+            if (recipientReadTime != null && message.getTimestamp() != null
+                    && !message.getTimestamp().isAfter(recipientReadTime)) {
+                return MessageStatus.READ;
+            }
+        }
+        return MessageStatus.SENT;
+    }
+
+    private ChatMessageResponse mapToEnrichedResponse(ChatMessage message) {
+        if (message == null) {
+            return null;
+        }
+        ChatMessageResponse response = messageMapper.toResponse(message);
+        if (response == null) {
+            return null;
+        }
+        response.setStatus(resolveCurrentStatus(message));
+        return response;
     }
 
     private String escapeRegex(String input) {

@@ -55,9 +55,8 @@ import com.web.backend.controller.response.UnreadCountsResponse;
 import com.web.backend.exception.custom.AccessForbiddenException;
 import com.web.backend.exception.custom.InvalidDataException;
 import com.web.backend.exception.custom.ResourceNotFoundException;
-import com.web.backend.exception.custom.SystemOverloadException;
 import com.web.backend.kafka.avro.ChatMessageAvro;
-import com.web.backend.kafka.payload.UpdateMessagePayload;
+import com.web.backend.kafka.producer.ChatProducer;
 import com.web.backend.mapper.MessageMapper;
 import com.web.backend.model.mongodb.ChatMessage;
 import com.web.backend.model.mongodb.ReadReceipt;
@@ -85,6 +84,8 @@ class MessageServiceTest {
     private MongoTemplate mongoTemplate;
     @Mock
     private MessageMapper messageMapper;
+    @Mock
+    private ChatProducer chatProducer;
 
     @Mock
     private ApplicationEventPublisher eventPublisher;
@@ -127,6 +128,17 @@ class MessageServiceTest {
             return payload;
         });
 
+        lenient().when(messageMapper.toResponse(any(ChatMessage.class))).thenAnswer(inv -> {
+            ChatMessage entity = inv.getArgument(0);
+            if (entity == null) return null;
+            return ChatMessageResponse.builder()
+                    .id(entity.getId())
+                    .sender(entity.getSender())
+                    .recipient(entity.getRecipient())
+                    .content(entity.getContent())
+                    .build();
+        });
+
         lenient().when(friendService.isFriend(anyString(), anyString())).thenReturn(true);
     }
 
@@ -156,18 +168,14 @@ class MessageServiceTest {
         message.setRecipient("recipient");
         message.setConversationId("recipient_sender");
         when(messageRepository.findById("msg123")).thenReturn(Optional.of(message));
-        when(mongoTemplate.findAndModify(any(), any(), any(), eq(ChatMessage.class))).thenReturn(message);
 
         messageService.reactToMessage("sender", request);
-
-        // Verify MongoDB updated
-        verify(mongoTemplate).findAndModify(any(), any(), any(), eq(ChatMessage.class));
 
         // Verify Redis updated
         verify(redisTemplate, atLeastOnce()).opsForHash();
 
         // Verify Kafka event published
-        verify(eventPublisher).publishEvent(any(UpdateMessagePayload.class));
+        verify(chatProducer).sendChatMessage(any(ChatMessageAvro.class));
     }
 
     @Test
@@ -230,12 +238,10 @@ class MessageServiceTest {
         message.setMessageType(com.web.backend.common.MessageType.CHAT);
 
         when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
-        when(mongoTemplate.findAndModify(any(), any(), any(), eq(ChatMessage.class))).thenReturn(message);
 
         messageService.editMessage("sender", request);
 
-        verify(mongoTemplate).findAndModify(any(), any(), any(), eq(ChatMessage.class));
-        verify(eventPublisher).publishEvent(any(UpdateMessagePayload.class));
+        verify(chatProducer).sendChatMessage(any(ChatMessageAvro.class));
     }
 
     @Test
@@ -245,22 +251,14 @@ class MessageServiceTest {
         request.setNewContent("Edited text");
         request.setRecipient("recipient");
 
-        ChatMessage message = new ChatMessage();
-        message.setId("msg1");
-        message.setSender("sender");
-        message.setRecipient("recipient");
-        message.setConversationId("recipient_sender");
-        message.setMessageType(com.web.backend.common.MessageType.CHAT);
-
-        when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
-        when(mongoTemplate.findAndModify(any(), any(), any(), eq(ChatMessage.class))).thenReturn(null);
+        when(messageRepository.findById("msg1")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> messageService.editMessage("sender", request))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 
     @Test
-    void testEditMessage_InRedisButNotInDb_ThrowsSystemOverloadException() {
+    void testEditMessage_InRedis_SucceedsImmediately() {
         EditMessageRequest request = new EditMessageRequest();
         request.setMessageId("msg1");
         request.setNewContent("Edited text");
@@ -273,12 +271,12 @@ class MessageServiceTest {
         message.setConversationId("recipient_sender");
         message.setMessageType(com.web.backend.common.MessageType.CHAT);
 
-        when(mongoTemplate.findAndModify(any(), any(), any(), eq(ChatMessage.class))).thenReturn(null);
         when(redisTemplate.opsForHash()).thenReturn(hashOperations);
         when(hashOperations.get("chat:recent:hash:recipient_sender", "msg1")).thenReturn(message);
 
-        assertThatThrownBy(() -> messageService.editMessage("sender", request))
-                .isInstanceOf(SystemOverloadException.class);
+        ChatMessageResponse response = messageService.editMessage("sender", request);
+        assertThat(response).isNotNull();
+        verify(chatProducer).sendChatMessage(any(ChatMessageAvro.class));
     }
 
     @Test
@@ -357,15 +355,60 @@ class MessageServiceTest {
         message.setMessageType(com.web.backend.common.MessageType.CHAT);
 
         when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
-        when(mongoTemplate.findAndModify(any(), any(), any(), eq(ChatMessage.class))).thenReturn(message);
-        when(redisTemplate.hasKey("unread_counts:recipient")).thenReturn(true);
-        when(hashOperations.get("unread_counts:recipient", "sender")).thenReturn("5");
 
         messageService.revokeMessage("sender", request);
 
-        verify(mongoTemplate).findAndModify(any(), any(), any(), eq(ChatMessage.class));
-        verify(hashOperations).increment(eq("unread_counts:recipient"), eq("sender"), eq(-1L));
-        verify(eventPublisher).publishEvent(any(UpdateMessagePayload.class));
+        verify(redisTemplate).delete("unread_counts:recipient");
+        verify(hashOperations, never()).increment(anyString(), anyString(), anyLong());
+        verify(chatProducer).sendChatMessage(any(ChatMessageAvro.class));
+    }
+
+    @Test
+    void testRevokeMessage_AlreadyReadStatus_DoesNotDecrementUnreadCount() {
+        RevokeMessageRequest request = new RevokeMessageRequest();
+        request.setMessageId("msg1");
+        request.setRecipient("recipient");
+
+        ChatMessage message = new ChatMessage();
+        message.setId("msg1");
+        message.setConversationId("recipient_sender");
+        message.setSender("sender");
+        message.setRecipient("recipient");
+        message.setContent("Hello");
+        message.setStatus(MessageStatus.READ);
+        message.setMessageType(com.web.backend.common.MessageType.CHAT);
+
+        when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
+
+        messageService.revokeMessage("sender", request);
+
+        verify(hashOperations, never()).increment(anyString(), anyString(), anyLong());
+        verify(chatProducer).sendChatMessage(any(ChatMessageAvro.class));
+    }
+
+    @Test
+    void testRevokeMessage_AlreadyReadViaWatermark_DoesNotDecrementUnreadCount() {
+        RevokeMessageRequest request = new RevokeMessageRequest();
+        request.setMessageId("msg1");
+        request.setRecipient("recipient");
+
+        Instant msgTime = Instant.parse("2026-09-17T10:00:00Z");
+        ChatMessage message = new ChatMessage();
+        message.setId("msg1");
+        message.setConversationId("recipient_sender");
+        message.setSender("sender");
+        message.setRecipient("recipient");
+        message.setContent("Hello");
+        message.setTimestamp(msgTime);
+        message.setStatus(MessageStatus.SENT); // Still SENT in stale cache
+        message.setMessageType(com.web.backend.common.MessageType.CHAT);
+
+        when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
+
+        messageService.revokeMessage("sender", request);
+
+        verify(hashOperations, never()).increment(anyString(), anyString(), anyLong());
+        verify(chatProducer).sendChatMessage(any(ChatMessageAvro.class));
     }
 
     @Test
@@ -466,8 +509,8 @@ class MessageServiceTest {
 
     @Test
     void testMarkMessagesAsRead_Success() {
+        when(friendService.isFriend("recipient", "sender")).thenReturn(true);
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(redisTemplate.opsForHash()).thenReturn(hashOperations);
 
         MarkReadRequest request = new MarkReadRequest();
         request.setSender("sender");
@@ -475,9 +518,20 @@ class MessageServiceTest {
         messageService.markMessagesAsRead("recipient", request);
 
         verify(valueOperations).set(eq("read_receipt:recipient_sender:recipient"), anyString(), any());
-        verify(hashOperations).delete("unread_counts:recipient", "sender");
+        verify(redisTemplate).delete("unread_counts:recipient");
         verify(mongoTemplate).upsert(any(Query.class), any(Update.class), eq(ReadReceipt.class));
         verify(eventPublisher).publishEvent(any(ReadReceiptResponse.class));
+    }
+
+    @Test
+    void testMarkMessagesAsRead_NotFriends_ThrowsException() {
+        when(friendService.isFriend("recipient", "stranger")).thenReturn(false);
+
+        MarkReadRequest request = new MarkReadRequest();
+        request.setSender("stranger");
+
+        assertThatThrownBy(() -> messageService.markMessagesAsRead("recipient", request))
+                .isInstanceOf(AccessForbiddenException.class);
     }
 
     @Test
@@ -597,8 +651,10 @@ class MessageServiceTest {
                     .build();
         });
 
-        // Request pageSize = 1 with 2 messages available in DB -> hasMore should be true and trimmed to 1
-        CursorResponse<ChatMessageResponse> result = messageService.findPrivateMessageWithCursor("user2", "user1", null, 1);
+        // Request pageSize = 1 with 2 messages available in DB -> hasMore should be
+        // true and trimmed to 1
+        CursorResponse<ChatMessageResponse> result = messageService.findPrivateMessageWithCursor("user2", "user1", null,
+                1);
 
         assertThat(result.isHasMore()).isTrue();
         assertThat(result.getContent()).hasSize(1);
@@ -665,14 +721,12 @@ class MessageServiceTest {
         message.setRecipient("recipient");
         message.setConversationId("recipient_sender");
         when(messageRepository.findById("msg1")).thenReturn(Optional.of(message));
-        when(mongoTemplate.findAndModify(any(), any(), any(), eq(ChatMessage.class))).thenReturn(message);
 
         when(friendService.isFriend("sender", "recipient")).thenReturn(true);
 
         messageService.reactToMessage("sender", request);
 
-        verify(mongoTemplate).findAndModify(any(), any(), any(), eq(ChatMessage.class));
-        verify(eventPublisher).publishEvent(any(UpdateMessagePayload.class));
+        verify(chatProducer).sendChatMessage(any(ChatMessageAvro.class));
     }
 
     @Test
@@ -758,7 +812,8 @@ class MessageServiceTest {
         msg.setRecipient("user2");
 
         when(mongoTemplate.find(any(Query.class), eq(ChatMessage.class))).thenReturn(List.of(msg));
-        when(messageMapper.toResponse(any())).thenReturn(ChatMessageResponse.builder().id("msg1").content("Hello there").build());
+        when(messageMapper.toResponse(any()))
+                .thenReturn(ChatMessageResponse.builder().id("msg1").content("Hello there").build());
 
         CursorResponse<ChatMessageResponse> result = messageService.searchMessages("user1", "user2", "Hello", null, 20);
         assertThat(result).isNotNull();
@@ -777,9 +832,11 @@ class MessageServiceTest {
         msg.setRecipient("user1");
 
         when(mongoTemplate.find(any(Query.class), eq(ChatMessage.class))).thenReturn(List.of(msg));
-        when(messageMapper.toResponse(any())).thenReturn(ChatMessageResponse.builder().id("msg2").content("Testing cursor").build());
+        when(messageMapper.toResponse(any()))
+                .thenReturn(ChatMessageResponse.builder().id("msg2").content("Testing cursor").build());
 
-        CursorResponse<ChatMessageResponse> result = messageService.searchMessages("user1", "user2", "cursor", Instant.now().toString(), 20);
+        CursorResponse<ChatMessageResponse> result = messageService.searchMessages("user1", "user2", "cursor",
+                Instant.now().toString(), 20);
         assertThat(result).isNotNull();
         assertThat(result.getContent()).hasSize(1);
         assertThat(result.getContent().get(0).getId()).isEqualTo("msg2");
