@@ -11,7 +11,7 @@ services:
     volumes:
       - mongo_data:/data/db
       - mongo_config_data:/data/configdb
-      - ./chatweb_be/mongo/init:/docker-entrypoint-initdb.d
+      - ./chatweb_be/init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
     networks:
       - default
     healthcheck:
