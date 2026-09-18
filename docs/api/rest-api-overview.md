@@ -1,175 +1,180 @@
-# Tổng Quan REST API & Quy Ước Phản Hồi (REST API Overview)
+# REST API Overview & Integration Guide
 
-Tài liệu này cung cấp cái nhìn toàn diện về hệ thống REST API, cấu trúc đóng gói dữ liệu phản hồi, quy ước mã lỗi, tính lũy đẳng (Idempotency) và danh mục đầy đủ các phân hệ chức năng trong backend của ChatWeb.
+This document provides a comprehensive reference for the ChatWeb REST API, including global response envelope formats, error handling standards, idempotency controls, and a complete catalog of all service modules.
 
 ---
 
-## 1. Quy Ước Chung (Global Conventions)
+## 1. Global Conventions
 
-- **Base URL**: `http://localhost` (Cục bộ qua Nginx) hoặc `https://<domain>`.
-- **Interactive Documentation**: Swagger UI trực quan có sẵn tại:  
+- **Base URLs**:
+  - Local Ingress: `http://localhost`
+  - Production / Staging: `https://<domain>`
+- **Interactive Documentation**: OpenAPI / Swagger UI is available at:  
   👉 `http://localhost/swagger-ui/index.html`
-- **Định dạng dữ liệu**: `application/json; charset=UTF-8`
-- **Đa ngôn ngữ (i18n)**: Thông điệp phản hồi (`message`) tự động thay đổi theo header `Accept-Language: vi-VN` hoặc `en-US`.
-- **Cơ chế lũy đẳng (Idempotency)**: Đối với các thao tác nhạy cảm (tải ảnh/video, chấp nhận kết bạn), Client có thể gửi kèm header `X-Idempotency-Key: <UUID>` để Backend ngăn chặn xử lý trùng lặp trong khoảng thời gian TTL.
+- **Media Type**: `application/json; charset=UTF-8`
+- **Internationalization (i18n)**: Response messages adapt to client preferences via the `Accept-Language` header (`en-US`, `vi-VN`, `ja-JP`).
+- **Idempotency Safeguard**: For state-mutating requests (file uploads, friend request approvals), clients should provide an `X-Idempotency-Key: <UUID>` header. The backend acquires a distributed Redis lock (`idempotent:{key}:{idempotencyKey}`) to guarantee execution safety against network timeouts and retries.
 
-### Cấu Trúc Phản Hồi Chuẩn (`ApiResponse<T>`)
-Tất cả các endpoint REST đều trả về một phong bì (Envelope) thống nhất:
+### Standard Response Envelope (`ApiResponse<T>`)
+
+Every REST response follows a structured envelope model:
 
 ```json
 {
   "code": 200,
-  "message": "Thao tác thành công",
+  "message": "Operation completed successfully",
   "data": { ... }
 }
 ```
 
-Khi xảy ra lỗi (Validation, Business, Security), `GlobalExceptionHandler` sẽ bắt và trả về mã lỗi cụ thể:
+When an exception occurs (validation error, business failure, or unauthorized access), `GlobalExceptionHandler` traps the exception and returns a standardized error payload:
 
 ```json
 {
   "code": 400,
-  "message": "Mật khẩu xác nhận không trùng khớp",
+  "message": "Password confirmation does not match",
   "data": null
 }
 ```
 
 ---
 
-## 2. Danh Mục Các Phân Hệ REST API
+## 2. Comprehensive Module Catalog
 
-### 2.1. Phân Hệ Xác Thực & Phiên Truy Cập (`/api/auth`)
-Quản lý vòng đời tài khoản và token bảo mật.
+### 2.1. Authentication & Session Management (`/api/auth`)
 
-| Phương thức | Đường dẫn API | Mô tả & Chức năng |
+Manages user registration, credential authentication, session tokens, and security revocations.
+
+| Method | Endpoint | Description & Security |
 | :--- | :--- | :--- |
-| `POST` | `/api/auth/register` | Nhận thông tin đăng ký, tạo dữ liệu tạm trong Redis và gửi mã OTP qua email. |
-| `POST` | `/api/auth/verify-account` | Xác minh mã OTP trong 5 phút để kích hoạt tài khoản chính thức vào PostgreSQL. |
-| `POST` | `/api/auth/resend-otp` | Gửi lại mã OTP kích hoạt tài khoản. |
-| `POST` | `/api/auth/login` | Đăng nhập bằng username/password, cấp phát cặp Cookie `accessToken` (Path `/`) và Opaque `refreshToken` (UUID trong Redis, Path `/api/auth`). |
-| `POST` | `/api/auth/refresh-token` | Sử dụng Refresh Token trong Cookie để cấp mới Access Token theo cơ chế Token Rotation và đối chiếu `token_version`. |
-| `POST` | `/api/auth/logout` | Đăng xuất phiên hiện tại: xóa Refresh Token khỏi Redis và đưa Access Token vào Redis Blacklist. |
-| `POST` | `/api/auth/logout-all-devices` | Tăng `token_version` trong PostgreSQL ($O(1)$) để vô hiệu hóa toàn bộ session cũ trên mọi thiết bị. |
-| `POST` | `/api/auth/forgot-password` | Yêu cầu gửi mã OTP đặt lại mật khẩu qua email. |
-| `POST` | `/api/auth/reset-password` | Đặt lại mật khẩu mới bằng mã OTP xác thực. |
-| `POST` | `/api/auth/resend-forgot-password` | Gửi lại mã OTP quên mật khẩu. |
-| `GET` | `/oauth2/authorization/google` | Khởi tạo luồng đăng nhập SSO bằng tài khoản Google OAuth2. |
+| `POST` | `/api/auth/register` | Initiates registration. Stores data in Redis cache for 5 minutes and sends a 6-digit OTP email. Rate limit: 3 req/min. |
+| `POST` | `/api/auth/verify-account` | Validates registration OTP. Persists the user into PostgreSQL and indexes credentials into Redis Cuckoo Filters. |
+| `POST` | `/api/auth/resend-otp` | Resends account activation OTP. Rate limit: 3 req/min. |
+| `POST` | `/api/auth/login` | Authenticates via username/password. Performs Cuckoo Filter preflight check. Returns Access Token in `Authorization: Bearer <token>` header and sets HttpOnly `refreshToken` cookie. |
+| `POST` | `/api/auth/refresh-token` | Exchanges the `refreshToken` cookie for a new token pair using Token Rotation. Validates `token_version`. |
+| `POST` | `/api/auth/logout` | Revokes the current session: removes `refreshToken` from Redis and blacklists the active `accessToken`. |
+| `POST` | `/api/auth/logout-all-devices` | Increments `token_version` in PostgreSQL ($O(1)$) to invalidate all active sessions across all devices globally. |
+| `POST` | `/api/auth/forgot-password` | Initiates password reset by dispatching an OTP to the user's registered email. |
+| `POST` | `/api/auth/reset-password` | Verifies reset OTP and updates user password (increments `token_version`). |
+| `POST` | `/api/auth/resend-forgot-password`| Resends password reset OTP. |
+| `GET` | `/oauth2/authorization/google` | Initiates Google OAuth2 Single Sign-On flow. Redirects to `/oauth2/redirect` upon successful authentication. |
 
 ---
 
-### 2.2. Phân Hệ Người Dùng & Hồ Sơ (`/api/users`)
-Quản lý thông tin tài khoản, hồ sơ cá nhân, địa chỉ và luồng xác minh cập nhật.
+### 2.2. User Management & Personal Profiles (`/api/users`)
 
-| Phương thức | Đường dẫn API | Mô tả & Chức năng |
+Provides self-service profile updates, credential management, and address book operations.
+
+| Method | Endpoint | Description |
 | :--- | :--- | :--- |
-| `GET` | `/api/users/me` | Lấy thông tin tài khoản hiện tại đang đăng nhập. |
-| `GET` | `/api/users/profile` | Lấy chi tiết hồ sơ người dùng (họ tên, ngày sinh, giới tính, avatar). |
-| `PUT` | `/api/users/profile` | Cập nhật thông tin hồ sơ cá nhân. |
-| `PATCH` | `/api/users/avatar` | Tải lên và cập nhật ảnh đại diện mới qua Multipart file. |
-| `POST` | `/api/users/change-password` | Đổi mật khẩu cá nhân (tự động tăng `token_version` thu hồi session cũ). |
-| `DELETE` | `/api/users/me` | Xóa tài khoản cá nhân của chính mình. |
-| `GET` | `/api/users/addresses` | Danh sách toàn bộ sổ địa chỉ của người dùng. |
-| `GET` | `/api/users/address/{addressId}` | Chi tiết một địa chỉ cụ thể theo ID. |
-| `POST` | `/api/users/address` | Thêm mới địa chỉ (số nhà, đường, phường/xã, quận/huyện, tỉnh/TP). |
-| `PUT` | `/api/users/address/{addressId}` | Cập nhật thông tin địa chỉ đã có. |
-| `DELETE` | `/api/users/address/{addressId}` | Xóa một địa chỉ khỏi danh sách. |
-| `POST` | `/api/users/initiate-email-change` | Khởi tạo yêu cầu đổi email (gửi mã OTP đến email mới). |
-| `POST` | `/api/users/verify-email-change` | Xác thực OTP để hoàn tất cập nhật email mới. |
-| `POST` | `/api/users/resend-email-verification`| Gửi lại OTP xác minh email mới. |
-| `POST` | `/api/users/initiate-phone-change` | Khởi tạo yêu cầu cập nhật số điện thoại. |
-| `POST` | `/api/users/verify-phone-change` | Xác thực hoàn tất đổi số điện thoại. |
-| `POST` | `/api/users/resend-phone-change-verification` | Gửi lại mã xác minh số điện thoại. |
+| `GET` | `/api/users/me` | Retrieves the account details of the currently authenticated user. |
+| `GET` | `/api/users/profile` | Fetches personal profile details (names, birthday, gender, avatar). |
+| `PUT` | `/api/users/profile` | Updates personal profile fields. |
+| `PATCH` | `/api/users/avatar` | Uploads and updates avatar via multipart file upload. |
+| `POST` | `/api/users/change-password` | Changes account password. Invalidates old session tokens. |
+| `DELETE` | `/api/users/me` | Permanently deletes the current user's account and personal data. |
+| `GET` | `/api/users/addresses` | Lists all saved addresses for the authenticated user. |
+| `GET` | `/api/users/address/{addressId}` | Retrieves details for a specific address. |
+| `POST` | `/api/users/address` | Adds a new address entry. |
+| `PUT` | `/api/users/address/{addressId}` | Updates an existing address. |
+| `DELETE` | `/api/users/address/{addressId}` | Deletes an address entry. |
+| `POST` | `/api/users/initiate-email-change` | Initiates email address update; sends verification OTP to the new email. |
+| `POST` | `/api/users/verify-email-change` | Validates OTP and completes email update (re-indexes Redis Cuckoo Filter). |
+| `POST` | `/api/users/resend-email-verification` | Resends verification OTP for pending email update. |
+| `POST` | `/api/users/initiate-phone-change` | Initiates phone number update. |
+| `POST` | `/api/users/verify-phone-change` | Validates OTP and updates phone number. |
+| `POST` | `/api/users/resend-phone-change-verification` | Resends verification OTP for pending phone update. |
 
 ---
 
-### 2.3. Phân Hệ Tìm Kiếm (`/api/search`)
-Tìm kiếm người dùng theo từ khóa và bộ lọc đa tiêu chí.
+### 2.3. User Search (`/api/search`)
 
-| Phương thức | Đường dẫn API | Mô tả & Chức năng |
+| Method | Endpoint | Description |
 | :--- | :--- | :--- |
-| `GET` | `/api/search/users?keyword={keyword}` | Tìm kiếm người dùng cơ bản theo username, họ tên hoặc email. |
-| `GET` | `/api/search/users/filter` | Tìm kiếm nâng cao kết hợp các tiêu chí người dùng (`user`) và địa chỉ (`address`). |
+| `GET` | `/api/search/users?keyword={q}` | Basic user search matching usernames, full names, or email addresses. |
+| `GET` | `/api/search/users/filter` | Multi-criteria advanced search combining user attributes and address fields. |
 
 ---
 
-### 2.4. Phân Hệ Quản Lý Bạn Bè (`/api/friends`)
-Quản lý quan hệ bạn bè, gửi lời mời và danh sách chặn.
+### 2.4. Friend Management & Social Graph (`/api/friends`)
 
-| Phương thức | Đường dẫn API | Mô tả & Chức năng |
+| Method | Endpoint | Description |
 | :--- | :--- | :--- |
-| `GET` | `/api/friends` | Lấy danh sách bạn bè hiện tại (phân trang, sắp xếp). |
-| `GET` | `/api/friends/requests` | Danh sách lời mời kết bạn nhận được đang chờ phản hồi. |
-| `GET` | `/api/friends/sent` | Danh sách lời mời kết bạn do chính mình đã gửi đi. |
-| `GET` | `/api/friends/blocked` | Danh sách các tài khoản đang bị người dùng chặn. |
-| `POST` | `/api/friends/request` | Gửi lời mời kết bạn (Body: `{ "targetUsername": "..." }`). |
-| `POST` | `/api/friends/accept` | Chấp nhận lời mời kết bạn (Body: `{ "targetUsername": "..." }`, hỗ trợ `X-Idempotency-Key`). |
-| `DELETE` | `/api/friends/{username}` | Hủy kết bạn hoặc thu hồi/từ chối lời mời kết bạn. |
-| `POST` | `/api/friends/block/{username}` | Chặn người dùng theo username. |
-| `POST` | `/api/friends/unblock/{username}` | Bỏ chặn người dùng. |
+| `GET` | `/api/friends` | Returns paginated list of accepted friends. |
+| `GET` | `/api/friends/requests` | Returns pending incoming friend requests. |
+| `GET` | `/api/friends/sent` | Returns pending outgoing friend requests. |
+| `GET` | `/api/friends/blocked` | Lists users blocked by the authenticated user. |
+| `POST` | `/api/friends/request` | Sends a friend invitation (`{ "targetUsername": "..." }`). Dispatches real-time WebSocket alert. |
+| `POST` | `/api/friends/accept` | Accepts a friend request (`{ "targetUsername": "..." }`). Supports `X-Idempotency-Key`. |
+| `DELETE` | `/api/friends/{username}` | Unfriends a user or declines/cancels a friend invitation. |
+| `POST` | `/api/friends/block/{username}` | Blocks a user, preventing all messaging and friend interactions. |
+| `POST` | `/api/friends/unblock/{username}` | Removes block status for a user. |
 
 ---
 
-### 2.5. Phân Hệ Lịch Sử Tin Nhắn (`/api/messages`)
-Truy xuất tin nhắn, tìm kiếm, đánh dấu đã đọc và phản hồi emoji.
+### 2.5. Messaging History & Moderation (`/api/messages`)
 
-| Phương thức | Đường dẫn API | Mô tả & Chức năng |
+| Method | Endpoint | Description |
 | :--- | :--- | :--- |
-| `GET` | `/api/messages/private` | Lấy lịch sử chat 1-1 dạng con trỏ (`?user2={recipient}&cursor={cursor}&size={size}`). |
-| `GET` | `/api/messages/unread-counts` | Thống kê số lượng tin nhắn chưa đọc phân nhóm theo từng người gửi. |
-| `GET` | `/api/messages/search` | Tìm kiếm nội dung tin nhắn trong cuộc trò chuyện (`?user2={recipient}&keyword={keyword}`). |
-| `GET` | `/api/messages/{id}` | Truy vấn chi tiết một tin nhắn cụ thể theo ID. |
-| `POST` | `/api/messages/mark-as-read` | Đánh dấu đã đọc tin nhắn (Body: `{ "sender": "...", "conversationId": "..." }`). |
-| `POST` | `/api/messages/reaction` | Thả reaction emoji vào tin nhắn (Body: `{ "messageId": "...", "reaction": "..." }`). |
-| `PUT` | `/api/messages/edit` | Chỉnh sửa nội dung tin nhắn đã gửi (Body: `{ "messageId": "...", "content": "..." }`). |
-| `DELETE` | `/api/messages/revoke` | Thu hồi tin nhắn (Xóa mềm - Body: `{ "messageId": "..." }`). |
+| `GET` | `/api/messages/private` | Cursor-based paginated chat history (`?user2={recipient}&cursor={cursor}&size={size}`). |
+| `GET` | `/api/messages/unread-counts` | Aggregates unread message counts grouped by conversation partner. |
+| `GET` | `/api/messages/search` | Searches text content within a private conversation (`?user2={recipient}&keyword={q}`). |
+| `GET` | `/api/messages/{id}` | Fetches detailed metadata for an individual message. |
+| `POST` | `/api/messages/mark-as-read` | Atomic read receipt watermark upsert (`{ "sender": "...", "conversationId": "..." }`). Updates MongoDB `$max`, evicts unread cache, and dispatches real-time Kafka event. |
+| `POST` | `/api/messages/reaction` | Adds or updates an emoji reaction on a message (`{ "messageId": "...", "reaction": "..." }`). |
+| `PUT` | `/api/messages/edit` | Edits message text content (`{ "messageId": "...", "content": "..." }`). |
+| `DELETE` | `/api/messages/revoke` | Revokes a message (soft deletion - `{ "messageId": "..." }`). |
 
 ---
 
-### 2.6. Phân Hệ Tải Lên Đa Phương Tiện (`/api/chat`)
-Tải tệp media lên Cloudinary có kiểm tra định dạng, giới hạn kích thước và bảo đảm tính lũy đẳng.
+### 2.6. Cloud Media Uploads (`/api/chat`)
 
-| Phương thức | Đường dẫn API | Mô tả & Chức năng |
-| :--- | :--- | :--- |
-| `POST` | `/api/chat/image` | Tải ảnh chat (Multipart, max 20MB, hỗ trợ `X-Idempotency-Key`). |
-| `POST` | `/api/chat/video` | Tải video chat (Multipart, max 20MB, hỗ trợ `X-Idempotency-Key`). |
-| `POST` | `/api/chat/file` | Tải tệp đính kèm tài liệu (Multipart, hỗ trợ `X-Idempotency-Key`). |
+Processes multipart media uploads to Cloudinary storage with strict security sanitization.
 
----
-
-### 2.7. Phân Hệ Quản Lý Vai Trò & Quyền Hạn (`/api/roles`)
-Dành cho quản trị viên hệ thống để kiểm soát phân quyền RBAC.
-
-| Phương thức | Đường dẫn API | Mô tả & Chức năng |
-| :--- | :--- | :--- |
-| `GET` | `/api/roles` | Lấy danh sách toàn bộ các vai trò (`ROLE_USER`, `ROLE_ADMIN`, ...). |
-| `GET` | `/api/roles/permissions` | Lấy danh sách tất cả quyền hạn có trong hệ thống. |
-| `POST` | `/api/roles` | Tạo mới vai trò và gán quyền hạn. |
-| `PUT` | `/api/roles/{id}` | Cập nhật tên, mô tả hoặc danh sách quyền hạn của vai trò. |
-| `DELETE` | `/api/roles/{id}` | Xóa một vai trò khỏi hệ thống. |
+| Method | Endpoint | Allowed Formats & Limits | Description |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/api/chat/image` | JPEG, PNG, WEBP, GIF (Max 20MB). **SVG explicitly disallowed** to prevent Stored XSS attacks. | Uploads image and returns Cloudinary CDN URL. Supports `X-Idempotency-Key`. |
+| `POST` | `/api/chat/video` | MP4, MOV, WEBM (Max 20MB). | Uploads video. Supports `X-Idempotency-Key`. |
+| `POST` | `/api/chat/file` | Documents, PDF, archives (Max 20MB). | Uploads attachment file. Supports `X-Idempotency-Key`. |
 
 ---
 
-### 2.8. Phân Hệ Tin Nhắn Hệ Thống & Email (`/api/systems`, `/api/email`)
+### 2.7. Role-Based Access Control (`/api/roles`)
 
-| Phương thức | Đường dẫn API | Mô tả & Chức năng |
+Restricted to administrative personnel.
+
+| Method | Endpoint | Description |
 | :--- | :--- | :--- |
-| `GET` | `/api/systems/message` | Lấy danh sách thông báo hệ thống phát từ Ban Quản Trị theo cursor (`?cursor=&size=20`). |
-| `POST` | `/api/email/send` | Gửi email đơn lẻ (yêu cầu quyền `SEND_EMAIL`). |
+| `GET` | `/api/roles` | Lists all defined system roles (`ROLE_USER`, `ROLE_ADMIN`). |
+| `GET` | `/api/roles/permissions` | Lists all available application permissions. |
+| `POST` | `/api/roles` | Creates a new role and maps associated permissions. |
+| `PUT` | `/api/roles/{id}` | Modifies role name, description, or assigned permissions. |
+| `DELETE` | `/api/roles/{id}` | Deletes a role from the system. |
 
 ---
 
-### 2.9. Phân Hệ Quản Trị Người Dùng (`/api/admin/users`)
-Quản trị tài khoản người dùng, trạng thái khóa và dữ liệu liên quan.
+### 2.8. System Announcements & Mailer (`/api/systems`, `/api/email`)
 
-| Phương thức | Đường dẫn API | Mô tả & Chức năng |
+| Method | Endpoint | Description |
 | :--- | :--- | :--- |
-| `GET` | `/api/admin/users` | Lấy danh sách, tìm kiếm và lọc người dùng theo vai trò, trạng thái, giới tính. |
-| `GET` | `/api/admin/users/online` | Lấy danh sách tài khoản đang online trực tiếp từ Redis ZSet. |
-| `GET` | `/api/admin/users/{username}` | Xem thông tin chi tiết một người dùng bất kỳ. |
-| `POST` | `/api/admin/users` | Admin tạo mới tài khoản người dùng. |
-| `PUT` | `/api/admin/users/{username}` | Admin cập nhật thông tin tài khoản người dùng. |
-| `DELETE` | `/api/admin/users/{username}` | Admin xóa người dùng khỏi hệ thống. |
-| `POST` | `/api/admin/users/{username}/lock` | Khóa tài khoản người dùng (`user_status = LOCKED`). |
-| `POST` | `/api/admin/users/{username}/unlock` | Mở khóa tài khoản người dùng. |
-| `DELETE` | `/api/admin/users/{username}/avatar` | Xóa ảnh đại diện của tài khoản người dùng vi phạm. |
-| `GET/POST/PUT/DELETE` | `/api/admin/users/{username}/addresses...` | Quản lý sổ địa chỉ của một người dùng bất kỳ. |
+| `GET` | `/api/systems/message` | Cursor-paginated list of active system announcements (`?cursor=&size=20`). |
+| `POST` | `/api/email/send` | Dispatches individual email. Requires `SEND_EMAIL` permission. |
+
+---
+
+### 2.9. Administrative User Management (`/api/admin/users`)
+
+Administrative controls for user account governance.
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/admin/users` | Paginated search, sorting, and filtering by role, status, and gender. |
+| `GET` | `/api/admin/users/online` | Queries real-time online users directly from Redis Sorted Set `online_users`. |
+| `GET` | `/api/admin/users/{username}` | Retrieves complete profile and status for a specific user. |
+| `POST` | `/api/admin/users` | Admin creation of new user accounts. |
+| `PUT` | `/api/admin/users/{username}` | Admin update of user profile and role assignments. |
+| `DELETE` | `/api/admin/users/{username}` | Admin account deletion. |
+| `POST` | `/api/admin/users/{username}/lock` | Suspends an account (`user_status = LOCKED`). |
+| `POST` | `/api/admin/users/{username}/unlock` | Re-activates a locked account. |
+| `DELETE` | `/api/admin/users/{username}/avatar` | Purges inappropriate avatar media. |
+| `*` | `/api/admin/users/{username}/addresses...`| Administrative management of any user's address book entries. |

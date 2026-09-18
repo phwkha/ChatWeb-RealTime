@@ -1,95 +1,108 @@
-# Kiến Trúc Hệ Thống Tổng Thể (System Architecture Overview)
+# System Architecture Overview
 
-Tài liệu này mô tả bức tranh kiến trúc mức cao (High-Level Design - HLD) của nền tảng **ChatWeb Real-Time Messaging**. Hệ thống được xây dựng theo mô hình **Event-Driven Architecture (EDA)** kết hợp **Polyglot Persistence**, đáp ứng yêu cầu độ trễ thấp (low-latency), tính nhất quán dữ liệu, khả năng mở rộng ngang (horizontal scalability) và bảo mật nhiều lớp.
+This document describes the high-level design (HLD) of the **ChatWeb Real-Time Messaging Platform**. The system is built around an **Event-Driven Architecture (EDA)** coupled with a **Polyglot Persistence** model to achieve ultra-low latency, robust data consistency, horizontal scalability, and defense-in-depth security.
 
 ---
 
-## 1. Sơ Đồ Kiến Trúc Hệ Thống (Architecture Topology)
+## 1. High-Level Architecture Topology
 
-Dưới đây là sơ đồ tổng thể các thành phần trong hệ sinh thái ChatWeb:
+The diagram below illustrates the end-to-end component topology and interactions within the ChatWeb ecosystem:
 
 ```mermaid
 graph TB
-    subgraph ClientLayer["🖥️ Tầng Client"]
-        WebClient["React 19 + Vite SPA<br/>(Modular CSS, STOMP.js)"]
+    subgraph ClientLayer["Client Layer"]
+        WebClient["React 19 + Vite SPA<br/>(Modular CSS, STOMP.js, WebRTC)"]
     end
 
-    subgraph IngressLayer["🛡️ Tầng Cổng Vào & Tải (Ingress & Load Balancing)"]
-        Nginx["Nginx Reverse Proxy & Load Balancer<br/>- HTTP Port 80 (Docker Host: 80)<br/>- IP Rate Limiting (auth: 10r/m, global: 30r/s)<br/>- Upstream TLS Verification (Private CA)"]
+    subgraph IngressLayer["Ingress & Load Balancing"]
+        Nginx["Nginx Reverse Proxy & Load Balancer<br/>- HTTP/HTTPS Ports 80 & 443<br/>- IP Rate Limiting (auth: 10r/m, global: 30r/s)<br/>- Upstream TLS Verification (Private rootCA.crt)"]
     end
 
-    subgraph AppLayer["⚙️ Tầng Ứng Dụng (Application Layer)"]
-        Backend["Spring Boot 3.5.x (Java 21 LTS)<br/>- Spring Security 6 (JWT + OAuth2 Google)<br/>- WebSocket STOMP Message Broker (/ws)<br/>- Dynamic Rate Limiting (@RateLimit Sliding Window)<br/>- Idempotency Engine (@Idempotent)"]
+    subgraph AppLayer["Application Layer"]
+        Backend["Spring Boot 3.5.x (Java 21 LTS)<br/>- Spring Security 6 (JWT + Google OAuth2)<br/>- WebSocket STOMP Broker (/ws)<br/>- Dynamic Rate Limiter (@RateLimit Sliding Window)<br/>- Idempotency Engine (@Idempotent)<br/>- Distributed Presence Scheduler"]
     end
 
-    subgraph EventLayer["⚡ Tầng Xử Lý Sự Kiện (Event Streaming & Buffer)"]
-        Kafka["Apache Kafka Cluster (2 Brokers - KRaft)<br/>- Topics: chat-messages, system-messages, email-messages...<br/>- Write-Behind & WebSocket Routing"]
-        SchemaRegistry["Confluent Schema Registry<br/>- Quản lý Avro Schemas (ChatMessageAvro)"]
+    subgraph EventLayer["Event Streaming & Buffer"]
+        Kafka["Apache Kafka Cluster (2 Brokers - KRaft)<br/>- Topics: chat-messages, message-update, friend-notifications...<br/>- CooperativeStickyAssignor & Snappy Compression"]
+        SchemaRegistry["Confluent Schema Registry<br/>- Avro Schema Management (ChatMessageAvro)"]
     end
 
-    subgraph StorageLayer["💾 Tầng Lưu Trữ Đa Hình (Polyglot Persistence)"]
-        Postgres[("PostgreSQL 16+<br/>- Users, Roles, Permissions<br/>- Friendships, Addresses")]
-        Mongo[("MongoDB 7+<br/>- Chat Messages, Read Receipts<br/>- System Messages (TTL Auto-expire)")]
-        Redis[("Redis Stack<br/>- Session Routing & Pub/Sub<br/>- Presence ZSet & Heartbeat<br/>- Token Blacklist & Recent Cache<br/>- Cuckoo Filters (filter:usernames, filter:emails)<br/>- Sliding Window Rate Limit & Idempotency")]
-        Cloudinary[("Cloudinary Storage<br/>- Media files, Avatars, Attachments")]
+    subgraph StorageLayer["Polyglot Persistence"]
+        Postgres[("PostgreSQL 16+<br/>- Users, Roles, Permissions<br/>- Friendships, Addresses<br/>- ACID & Relational Integrity")]
+        Mongo[("MongoDB 7+<br/>- Chat Messages (messages)<br/>- Read Receipts (read_receipts)<br/>- System Messages (TTL Auto-expire)")]
+        Redis[("Redis Stack<br/>- Session Routing Hash & Server Pub/Sub<br/>- Presence ZSet & Distributed Debounce Queue<br/>- Token Blacklist & Recent Messages Cache<br/>- Cuckoo Filters (filter:usernames, filter:emails)<br/>- Sliding Window Rate Limit & Idempotency Keys")]
+        Cloudinary[("Cloudinary Media Cloud<br/>- Images, Videos, Avatars, Attachments<br/>- Strict MIME & SVG XSS Sanitization")]
     end
 
-    subgraph ObservabilityLayer["📊 Tầng Giám Sát & Nhật Ký (Observability)"]
-        Filebeat["Filebeat Log Shipper"] --> Logstash["Logstash Pipeline"] --> Elasticsearch["Elasticsearch Store"] --> Kibana["Kibana Dashboard"]
+    subgraph ObservabilityLayer["Observability & Logging"]
+        Filebeat["Filebeat Shipper"] --> Logstash["Logstash Pipeline"] --> Elasticsearch["Elasticsearch Cluster"] --> Kibana["Kibana Dashboard"]
         Prometheus["Prometheus Scraper"] --> Grafana["Grafana Visualizer"]
-        Backend -. "Metrics /actuator" .-> Prometheus
-        Backend -. "App Logs (JSON)" .-> Filebeat
+        Backend -. "Metrics (/actuator/prometheus)" .-> Prometheus
+        Backend -. "Structured JSON Logs" .-> Filebeat
     end
 
     %% Network Connections
-    WebClient -->|"HTTP / WS (Port 80)"| Nginx
-    Nginx -->|"HTTPS / WSS (Port 8443)<br/>Upstream TLS Verified"| Backend
-    Backend -->|"Pub / Sub & State"| Redis
-    Backend -->|"Relational Data"| Postgres
-    Backend -->|"Document Data"| Mongo
+    WebClient -->|"HTTP / WS (Port 80/443)"| Nginx
+    Nginx -->|"HTTPS / WSS (Port 8443)<br/>mTLS / Upstream TLS Verified"| Backend
+    Backend -->|"Pub/Sub, Caching & Routing"| Redis
+    Backend -->|"Relational Data & Auth"| Postgres
+    Backend -->|"Document Storage & Bulk Ops"| Mongo
     Backend -->|"Produce / Consume Events"| Kafka
-    Backend -->|"Schema Registry"| SchemaRegistry
-    Backend -->|"Direct Upload"| Cloudinary
+    Backend -->|"Schema Validation"| SchemaRegistry
+    Backend -->|"Multipart Media Upload"| Cloudinary
 ```
 
 ---
 
-## 2. Chi Tiết Các Phân Tầng Cốt Lõi
+## 2. Core Architectural Tiers
 
-### 2.1. Tầng Client (Frontend Application)
-- **Công nghệ**: [React 19](file:///home/phanhuukha/Dev/ChatWeb/chatweb_fe/package.json), Vite 8, React Router DOM 7, STOMP.js.
-- **Phong cách giao diện**: Kiến trúc CSS Module theo từng phân hệ (`auth.css`, `chat.css`, `admin.css`), tối ưu dung lượng tải và độ tương thích trình duyệt.
-- **Giao tiếp kép**:
-  - **REST Client (`apiClient.js`)**: Thực hiện các yêu cầu HTTP xác thực, quản lý profile, lịch sử tin nhắn và tải media. Tự động đính kèm `X-Idempotency-Key` với các tác vụ nhạy cảm.
-  - **WebSocket Client (`useChatSocket.js`)**: Duy trì kết nối hai chiều thời gian thực qua SockJS/STOMP, tự động reconnect và heartbeat định kỳ (10s).
+### 2.1. Client Tier (Frontend Application)
+- **Technology Stack**: React 19, Vite 8, React Router DOM 7, STOMP.js (`@stomp/stompjs`), SockJS client.
+- **Styling Architecture**: Modular CSS isolating scope across domains (`auth.css`, `chat.css`, `admin.css`), minimizing payload size while maintaining design consistency.
+- **Dual Communication Channels**:
+  - **REST API Client (`apiClient.js`)**: Executes HTTP requests for authentication, profile updates, conversation history queries, and media uploads. Automatically attaches the `X-Idempotency-Key` header for state-modifying operations.
+  - **WebSocket Client (`useChatSocket.js`)**: Maintains a persistent, bi-directional full-duplex connection via STOMP over SockJS, featuring automatic reconnection, subscription resumption, and 10-second heartbeats.
+  - **WebRTC Peer-to-Peer Subsystem (`useWebRTC.js`)**: Facilitates real-time audio and video peer-to-peer calls directly between clients, using WebSocket STOMP for signaling exchange.
 
-### 2.2. Tầng Cổng Vào & Tải (Ingress & Reverse Proxy)
-- Điểm tiếp nhận lưu lượng duy nhất của toàn bộ hệ thống từ bên ngoài.
-- **Rate Limiting tầng mạng**: 
-  - Vùng bảo vệ xác thực: Tối đa 10 requests/phút (burst 5) cho các endpoint `/api/auth/`.
-  - Vùng toàn cục: Tối đa 30 requests/giây (burst 20) cho các endpoint khác.
-- **Bảo mật kết nối nội bộ**: Nginx kết nối ngược tới Spring Boot qua cổng an toàn `8443` (HTTPS) và kiểm tra tính hợp lệ của chứng chỉ thông qua chứng chỉ gốc nội bộ `rootCA.crt` (`proxy_ssl_verify on`).
+### 2.2. Ingress & Reverse Proxy Tier (Nginx)
+- Serves as the single unified entry point into the system from external networks, listening on ports `80` (HTTP) and `443` (HTTPS).
+- **Network-Level Rate Limiting**:
+  - **Authentication Zone**: Enforces a strict limit of 10 requests/minute (burst 5) on `/api/auth/` routes to mitigate credential stuffing and brute-force attacks.
+  - **Global Zone**: Enforces 30 requests/second (burst 20) across general API and static asset traffic.
+- **Upstream TLS Verification**:
+  - Nginx proxies internal traffic to the backend instances over HTTPS on port `8443`.
+  - Enforces `proxy_ssl_verify on` and validates backend certificates against the internal Private Root Certificate Authority (`rootCA.crt`).
 
-### 2.3. Tầng Ứng Dụng (Spring Boot Application)
-- Trung tâm điều phối nghiệp vụ backend viết trên **Java 21 LTS** và **Spring Boot 3.5.x**.
-- **Kiến trúc phân lớp chuẩn mực**: `Controller` $\rightarrow$ `Service` $\rightarrow$ `Repository` $\rightarrow$ `Model / DTO`.
-- **Bảo vệ chống tấn công & quá tải**:
-  - Tích hợp `@RateLimit` theo thuật toán Sliding Window Log (lưu tại Redis).
-  - Tích hợp `@Idempotent` dựa trên header `X-Idempotency-Key` để bảo đảm tính an toàn khi client retry.
-  - Kiểm tra tức thì sự tồn tại của tài khoản thông qua **Redis Cuckoo Filter** trước khi truy vấn PostgreSQL.
+### 2.3. Application Tier (Spring Boot Application)
+- Powered by **Java 21 LTS** and **Spring Boot 3.5.x**.
+- Structured following enterprise clean layered architecture: `Controller` $\rightarrow$ `Service` $\rightarrow$ `Repository` $\rightarrow$ `Model / DTO`.
+- **Defensive Engineering & Protection**:
+  - **Redis Cuckoo Filter Preflight**: Intercepts authentication and registration requests to test existence in $O(1)$ time in memory prior to querying PostgreSQL.
+  - **Sliding Window Rate Limiter**: Method-level rate-limiting via `@RateLimit` backed by custom Redis Lua scripts.
+  - **Idempotency Engine**: `@Idempotent` aspect backed by Redis distributed locks, eliminating duplicate execution caused by client network timeouts and retries.
+  - **Distributed Presence Debounce**: Queues disconnected sessions into a Redis Sorted Set (`presence:offline_queue`) with a 5-second deadline, suppressing connection flapping during page reloads.
 
-### 2.4. Tầng Xử Lý Sự Kiện (Event Streaming Layer)
-- Cụm Kafka gồm **2 Brokers chạy chế độ KRaft** kết hợp **Confluent Schema Registry**.
-- Đảm bảo luồng xử lý bất đồng bộ không gây nghẽn:
-  - Tách luồng đẩy tin nhắn nhanh cho WebSocket (`ChatConsumer`) và luồng ghi MongoDB theo lô (`DatabaseWriteBehindConsumer`).
-  - Phục vụ worker gửi email xác thực OTP ngầm mà không làm chậm API đăng ký.
+### 2.4. Event Streaming Tier (Apache Kafka)
+- 2-broker Kafka cluster operating in **KRaft (Kafka Raft Metadata)** mode, eliminating external ZooKeeper dependencies.
+- Integrated with **Confluent Schema Registry** to enforce binary **Apache Avro** schemas on critical real-time topics (`chat-messages`).
+- **Asynchronous Dual-Consumer Separation**:
+  - **Fast-Push Consumer Group** (`chat-websocket-group`): Prioritizes sub-10ms delivery to online recipients over WebSocket.
+  - **Write-Behind Batch Consumer Group** (`chat-save-group`): Batches messages for bulk persistence into MongoDB, shielding the primary database from write spikes.
+  - **Dead Letter Topic (DLT)** (`chat-messages-save-dlt`): Isolates unrecoverable persistence failures for automated or manual remediation without blocking event flow.
 
-### 2.5. Tầng Lưu Trữ Đa Dạng (Polyglot Persistence)
-Hệ thống không phụ thuộc vào một cơ sở dữ liệu duy nhất mà phân công chuyên biệt theo bản chất dữ liệu:
-1. **PostgreSQL**: Lưu trữ dữ liệu quan hệ có cấu trúc khắt khe (Users, Roles, Permissions, Friendships, Addresses).
-2. **MongoDB**: Lưu trữ dữ liệu phi cấu trúc, tốc độ ghi cao (Messages, Read Receipts, System Messages).
-3. **Redis Stack**: Duy trì trạng thái in-memory, session routing WebSocket, bộ lọc Cuckoo Filter, hàng đợi Sliding Window và Cache.
+### 2.5. Polyglot Persistence Tier
+ChatWeb employs specialized data stores matched to specific storage characteristics:
+1. **PostgreSQL 16+**: Authoritative relational data requiring strict ACID guarantees and foreign key constraints (`users`, `roles`, `permissions`, `friendships`, `addresses`).
+2. **MongoDB 7+**: High-throughput document store with compound indexing and TTL support (`messages`, `read_receipts`, `system_message`).
+3. **Redis Stack**: High-speed in-memory data structures, WebSocket multi-node routing tables, Cuckoo Filters, sliding-window logs, token blacklists, and distributed debounce queues.
+4. **Cloudinary**: Cloud-based object storage for media files and avatars, with strict MIME validation rejecting vulnerable formats (e.g., SVG XSS vectors).
 
-### 2.6. Tầng Giám Sát & Nhật Ký (Observability Layer)
-- **ELK Stack**: Filebeat đọc file log định dạng JSON từ backend, chuyển tới Logstash để chuẩn hóa, lưu trữ tại Elasticsearch và hiển thị qua Kibana.
-- **Prometheus & Grafana**: Prometheus định kỳ cào chỉ số hoạt động từ Spring Actuator (`/actuator/prometheus`) và biểu diễn qua bảng điều khiển Grafana.
+### 2.6. Observability & Telemetry Tier
+- **ELK Stack (Elasticsearch, Logstash, Kibana, Filebeat)**:
+  - Backend writes machine-readable structured JSON logs to mounted disk volumes.
+  - Filebeat tails log streams and ships them to Logstash for filtering, normalization, and indexing into Elasticsearch.
+  - Kibana provides centralized visualization dashboards for auditing, error tracing, and operational analytics.
+- **Prometheus & Grafana**:
+  - Spring Boot Actuator exports Prometheus metrics at `/actuator/prometheus`.
+  - Prometheus scrapes JVM statistics, HTTP request latencies, Kafka consumer lag, and database connection pools.
+  - Grafana renders real-time telemetry dashboards and health alerts.

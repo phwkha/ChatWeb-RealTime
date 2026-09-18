@@ -1,54 +1,54 @@
-# Thiết Kế Cơ Sở Dữ Liệu Đa Dạng (Polyglot Database Design)
+# Polyglot Database Design
 
-Tài liệu này mô tả chi tiết thiết kế lưu trữ dữ liệu của hệ thống ChatWeb trên cả 3 tầng: **PostgreSQL (Quan hệ)**, **MongoDB (NoSQL Document)** và **Redis (In-Memory Data Structures & Filter)**.
+This document details the data storage architecture of **ChatWeb** across its three dedicated persistence engines: **PostgreSQL (Relational)**, **MongoDB (Document Store)**, and **Redis Stack (In-Memory Data Structures & Filters)**.
 
 ---
 
-## 1. Tầng Quan Hệ: PostgreSQL (RDBMS)
+## 1. Relational Tier: PostgreSQL (RDBMS)
 
-PostgreSQL chịu trách nhiệm bảo toàn tính toàn vẹn nghiệp vụ, xác thực tài khoản, quyền hạn RBAC và quan hệ bạn bè.
+PostgreSQL serves as the authoritative source of truth for user authentication, role-based access control (RBAC), friendship graphs, and address records.
 
-### 1.1. Sơ Đồ Thực Thể Quan Hệ (Entity-Relationship Diagram)
+### 1.1. Entity-Relationship Diagram (ERD)
 
 ```mermaid
 erDiagram
-    ROLES ||--o{ USERS : "has (role_id)"
+    ROLES ||--o{ USERS : "assigned_to (role_id)"
     ROLES }o--o{ PERMISSIONS : "includes (role_has_permission)"
     USERS ||--o{ FRIENDSHIPS : "requests (requester_id)"
     USERS ||--o{ FRIENDSHIPS : "receives (addressee_id)"
-    USERS ||--o{ ADDRESSES : "has (user_id)"
+    USERS ||--o{ ADDRESSES : "owns (user_id)"
 
     USERS {
         bigint id PK
-        varchar username UK "Not Null"
+        varchar username UK "Not Null, Indexed"
         varchar password "BCrypt Hash"
-        varchar email UK
-        varchar phone
+        varchar email UK "Not Null, Indexed"
+        varchar phone "Nullable"
         varchar auth_provider "LOCAL, GOOGLE"
-        varchar provider_id UK
-        boolean is_online "Trạng thái online"
+        varchar provider_id UK "Nullable"
+        boolean is_online "Online Status Flag"
         varchar user_status "ACTIVE, INACTIVE, LOCKED, UNVERIFIED"
-        integer token_version "Default 0 - Hỗ trợ Single Sign-Out"
-        varchar first_name
-        varchar last_name
+        integer token_version "Default 0 - Single Sign-Out"
+        varchar first_name "Nullable"
+        varchar last_name "Nullable"
         varchar avatar "Cloudinary URL"
-        date birthday
+        date birthday "Nullable"
         varchar gender "MALE, FEMALE, OTHER"
         bigint role_id FK "Not Null"
-        timestamp created_at
-        timestamp updated_at
+        timestamp created_at "Default Current Timestamp"
+        timestamp updated_at "Auto-updated Timestamp"
     }
 
     ROLES {
         bigint id PK
         varchar name UK "Not Null, e.g. ROLE_USER, ROLE_ADMIN"
-        varchar description
+        varchar description "Human-readable description"
     }
 
     PERMISSIONS {
         bigint id PK
         varchar name UK "Not Null, e.g. ADMIN_SEND-MESSAGE"
-        varchar description
+        varchar description "Permission scope"
     }
 
     FRIENDSHIPS {
@@ -56,132 +56,169 @@ erDiagram
         bigint requester_id FK "Not Null"
         bigint addressee_id FK "Not Null"
         varchar status "PENDING, ACCEPTED, BLOCKED"
-        timestamp created_at
-        timestamp updated_at
+        timestamp created_at "Timestamp"
+        timestamp updated_at "Timestamp"
     }
 
     ADDRESSES {
         bigint id PK
         bigint user_id FK "Not Null"
-        varchar house_number
-        varchar street
-        varchar ward
-        varchar district
+        varchar house_number "Nullable"
+        varchar street "Nullable"
+        varchar ward "Nullable"
+        varchar district "Nullable"
         varchar city "Not Null"
         varchar country "Not Null"
-        varchar postal_code
-        timestamp created_at
-        timestamp updated_at
+        varchar postal_code "Nullable"
+        timestamp created_at "Timestamp"
+        timestamp updated_at "Timestamp"
     }
 ```
 
-### 1.2. Chiến Lược Đánh Chỉ Mục (Index Optimization)
-- **Bảng `users`**:
-  - Index `idx_user_status` trên cột `user_status`: Tối ưu các câu lệnh lọc tài khoản hoạt động/bị khóa.
-  - Index `idx_user_role_id` trên cột `role_id`: Tối ưu nạp quyền hạn khi xác thực JWT.
-  - Khóa duy nhất (Unique Index): `username`, `email`, `provider_id`.
-- **Bảng `friendships`**:
-  - Unique Constraint `(requester_id, addressee_id)`: Ngăn trùng lặp lời mời kết bạn giữa 2 người.
-  - Index `idx_friendship_requester_status` trên `(requester_id, status)`.
-  - Index `idx_friendship_addressee_status` trên `(addressee_id, status)`.
-- **Bảng `addresses`**:
-  - Index `idx_address_user_id` trên cột `user_id`: Tối ưu truy vấn danh sách địa chỉ theo từng người dùng.
-- **Bảng `roles`**:
-  - Index `idx_role_name` trên cột `name`.
+### 1.2. Index Optimization Strategy
+- **Table `users`**:
+  - `idx_user_status` on `(user_status)`: Accelerates queries filtering active, locked, or unverified accounts.
+  - `idx_user_role_id` on `(role_id)`: Speeds up authority loading during JWT authentication filter execution.
+  - Unique B-Tree Indexes: `uk_users_username`, `uk_users_email`, `uk_users_provider_id`.
+- **Table `friendships`**:
+  - Unique Constraint `(requester_id, addressee_id)`: Prevents duplicate friendship requests.
+  - Composite Index `idx_friendship_requester_status` on `(requester_id, status)`: Accelerates outgoing friend request lookups.
+  - Composite Index `idx_friendship_addressee_status` on `(addressee_id, status)`: Accelerates incoming pending invitation lookups.
+- **Table `addresses`**:
+  - `idx_address_user_id` on `(user_id)`: Optimizes user address book queries.
+- **Table `roles`**:
+  - Unique Index on `name`.
 
 ---
 
-## 2. Tầng Tài Liệu: MongoDB (NoSQL)
+## 2. Document Tier: MongoDB (NoSQL)
 
-MongoDB lưu trữ các thực thể phi cấu trúc, có tần suất ghi và đọc theo phân trang lớn.
+MongoDB stores unstructured, high-frequency chat messages, read receipts, and transient administrative broadcasts.
 
-### 2.1. Collection `messages` (Tin Nhắn Chat)
-Lưu trữ toàn bộ tin nhắn 1-1, tin nhắn đính kèm tệp và tương tác reactions.
+### 2.1. Collection `messages`
 
-| Tên trường (Field) | Kiểu dữ liệu | Ý nghĩa & Quy ước |
+Stores one-on-one direct messages, attachments, and reaction metadata.
+
+| Field Name | BSON Type | Constraints & Description |
 | :--- | :--- | :--- |
-| `_id` | `ObjectId / String` | Định danh duy nhất của tin nhắn. |
-| `conversationId` | `String` | Định danh hội thoại 1-1 theo chuẩn: `{minUsername}_{maxUsername}`. |
-| `sender` | `String` (Indexed) | Username người gửi. |
-| `recipient` | `String` | Username người nhận. |
-| `content` | `String` | Nội dung tin nhắn văn bản. |
+| `_id` | `ObjectId / String` | Unique message identifier. |
+| `conversationId` | `String` | Normalized deterministic ID: `{minUsername}_{maxUsername}` (e.g. `alice_bob`). |
+| `sender` | `String` | Sender username. |
+| `recipient` | `String` | Recipient username. |
+| `content` | `String` | Message text content (null for pure media). |
 | `contentType` | `String` (Enum) | `TEXT`, `IMAGE`, `VIDEO`, `FILE`. |
 | `messageType` | `String` (Enum) | `CHAT`, `TYPING`. |
-| `color` | `String` | Mã màu hiển thị bong bóng chat. |
-| `replyToId` | `String` | `_id` của tin nhắn được phản hồi (Quote reply). |
-| `fileUrl` | `String` | Đường dẫn tệp tải lên (Cloudinary). |
-| `fileName` | `String` | Tên gốc của tệp. |
-| `fileSize` | `Long` | Dung lượng tệp tính bằng bytes. |
-| `timestamp` | `Instant (ISODate)` | Thời điểm gửi tin nhắn. |
+| `color` | `String` | Hex color code for customized chat bubble UI. |
+| `replyToId` | `String` | `_id` of the quoted parent message (null if direct message). |
+| `fileUrl` | `String` | Cloudinary CDN URL for media attachments. |
+| `fileName` | `String` | Original filename of uploaded media. |
+| `fileSize` | `Long` | File size in bytes. |
+| `timestamp` | `Date / ISODate` | Message creation timestamp. |
 | `status` | `String` (Enum) | `SENDING`, `SENT`, `READ`. |
-| `isEdited` | `Boolean` | Đánh dấu tin nhắn đã qua chỉnh sửa. |
-| `isDeleted` | `Boolean` | Đánh dấu thu hồi tin nhắn (Xóa mềm). |
-| `isReacted` | `Boolean` | Đã có reaction emoji hay chưa. |
-| `reactions` | `Map<String, String>` | Danh sách tương tác: `{ "username": "❤️", ... }`. |
+| `isEdited` | `Boolean` | Flag indicating whether the message content has been edited. |
+| `isDeleted` | `Boolean` | Soft-deletion flag (revoked message). |
+| `isReacted` | `Boolean` | Flag indicating whether emoji reactions exist. |
+| `reactions` | `Map<String, String>` | Key-value dictionary of reactions: `{ "username": "emoji" }`. |
 
-#### Chỉ Mục Tổ Hợp (Compound Indexes):
-1. **`conv_msg_time_idx`**: `{"conversationId": 1, "messageType": 1, "timestamp": -1}`  
-   *Mục đích*: Tối ưu truy vấn lịch sử tin nhắn dạng con trỏ (Cursor-based pagination).
-2. **`unread_msg_idx`**: `{"recipient": 1, "status": 1, "messageType": 1, "sender": 1}`  
-   *Mục đích*: Thống kê và lấy nhanh số lượng tin nhắn chưa đọc theo từng bạn bè.
-3. **`conv_content_time_idx`**: `{"conversationId": 1, "messageType": 1, "isDeleted": 1, "timestamp": -1}`  
-   *Mục đích*: Tối ưu tìm kiếm nội dung trong cuộc trò chuyện và lọc các tin nhắn chưa bị xóa mềm.
-4. **`conv_recipient_status_idx`**: `{"conversationId": 1, "recipient": 1, "status": 1, "messageType": 1}`  
-   *Mục đích*: Đánh dấu hàng loạt trạng thái đã đọc (`SENT` -> `READ`) khi mở cuộc hội thoại.
+#### Compound Indexes:
+1. **`conv_msg_time_idx`**: `{ conversationId: 1, messageType: 1, timestamp: -1 }`  
+   *Purpose*: High-speed cursor-based pagination of chat history in reverse chronological order.
+2. **`unread_msg_idx`**: `{ recipient: 1, messageType: 1, isDeleted: 1, sender: 1 }`  
+   *Purpose*: Fast aggregation and counting of unread messages grouped by sender.
+3. **`conv_content_time_idx`**: `{ conversationId: 1, messageType: 1, isDeleted: 1, timestamp: -1 }`  
+   *Purpose*: Full-text and keyword searching within active (non-deleted) conversation messages.
+4. **`sender_idx`**: `{ sender: 1 }`  
+   *Purpose*: Accelerates user activity and moderation queries.
 
 ---
 
-### 2.2. Collection `read_receipts` (Biên Nhận Đã Đọc)
-Theo dõi mốc đọc tin nhắn cuối cùng của từng thành viên trong cuộc trò chuyện.
+### 2.2. Collection `read_receipts`
 
-| Tên trường | Kiểu dữ liệu | Ý nghĩa |
+Implements monotonic watermark tracking for user read positions.
+
+| Field Name | BSON Type | Constraints & Description |
 | :--- | :--- | :--- |
-| `_id` | `String` | ID biên nhận. |
-| `conversationId` | `String` (Indexed) | ID cuộc trò chuyện. |
-| `username` | `String` (Indexed) | Người đọc. |
-| `lastReadTimestamp` | `Instant` | Thời điểm đọc tin nhắn gần nhất. |
-| `lastReadMessageId` | `String` | ID của tin nhắn đã đọc sau cùng. |
+| `_id` | `String` | Unique receipt identifier: `{conversationId}:{username}`. |
+| `conversationId` | `String` | Canonical conversation identifier. |
+| `username` | `String` | Reader username. |
+| `lastReadTimestamp` | `Date / ISODate` | Monotonically updated read watermark timestamp. |
 
-#### Chỉ Mục Duy Nhất:
-- **`conv_user_idx`**: `{"conversationId": 1, "username": 1}`, `unique = true`  
-  Đảm bảo mỗi user chỉ có duy nhất 1 bản ghi vị trí đọc trong mỗi cuộc trò chuyện (Upsert Operation).
+#### Indexes:
+- **`conv_user_idx`**: `{ conversationId: 1, username: 1 }`, `unique: true`  
+  Guarantees exactly one watermark record per user per conversation.
+- **`conversationId_idx`**: `{ conversationId: 1 }`
+- **`username_idx`**: `{ username: 1 }`
 
 ---
 
-### 2.3. Collection `system_message` (Tin Nhắn Thông Báo Hệ Thống)
-Thông báo phát thanh từ Ban Quản Trị (Admin) gửi tới toàn thể người dùng.
+### 2.3. Collection `system_message`
 
-| Tên trường | Kiểu dữ liệu | Ý nghĩa |
+Stores administrative broadcast announcements with automated lifecycle expiration.
+
+| Field Name | BSON Type | Constraints & Description |
 | :--- | :--- | :--- |
-| `_id` | `String` | ID thông báo. |
-| `sender` | `String` | Tên tài khoản Admin phát thông báo. |
-| `content` | `String` | Nội dung thông báo hệ thống. |
-| `timestamp` | `Instant` | Thời gian phát sóng. |
-| `expiresAt` | `Instant` (Indexed) | Thời điểm hết hạn thông báo. |
+| `_id` | `String` | Unique announcement identifier. |
+| `sender` | `String` | Admin username who published the announcement. |
+| `content` | `String` | Broadcast message text. |
+| `timestamp` | `Date / ISODate` | Publication timestamp. |
+| `expiresAt` | `Date / ISODate` | Timestamp after which the announcement becomes obsolete. |
 
-#### Chỉ Mục Tự Hủy (TTL Index):
-- **`expiresAt_ttl_idx`**: `@Indexed(expireAfter = "0s")` trên trường `expiresAt`.  
-  Tiến trình nền của MongoDB tự động xóa bản ghi khi thời gian hiện tại vượt quá `expiresAt`.
+#### Time-To-Live (TTL) Index:
+- **`expiresAt_ttl_idx`**: `{ expiresAt: 1 }`, `expireAfterSeconds: 0`  
+  MongoDB background TTL thread automatically purges expired announcements without application intervention.
 
 ---
 
-## 3. Tầng Bộ Nhớ Đệm, Lọc & Trạng Thái: Redis (Redis Stack)
+### 2.4. Automated MongoDB Initialization Script (`init-mongo.js`)
 
-Redis Stack đóng vai trò là bộ nhớ trung tâm kết nối các node backend, định tuyến WebSocket và kiểm tra nhanh.
+ChatWeb includes an automated JavaScript database initialization file mounted to `/docker-entrypoint-initdb.d/init-mongo.js:ro` in `docker-compose.yml`:
 
-| Quy ước Key (Pattern) | Cấu trúc dữ liệu | Thời gian sống (TTL) | Mục đích sử dụng |
+```javascript
+const dbName = (typeof process !== 'undefined' && process.env && process.env.MONGO_DB) ? process.env.MONGO_DB : 'chatweb';
+const targetDb = db.getSiblingDB(dbName);
+
+// 1. messages collection & indexes
+targetDb.createCollection('messages');
+targetDb.messages.createIndex({ conversationId: 1, messageType: 1, timestamp: -1 }, { name: 'conv_msg_time_idx' });
+targetDb.messages.createIndex({ recipient: 1, messageType: 1, isDeleted: 1, sender: 1 }, { name: 'unread_msg_idx' });
+targetDb.messages.createIndex({ conversationId: 1, messageType: 1, isDeleted: 1, timestamp: -1 }, { name: 'conv_content_time_idx' });
+targetDb.messages.createIndex({ sender: 1 }, { name: 'sender_idx' });
+
+// 2. read_receipts collection & indexes
+targetDb.createCollection('read_receipts');
+targetDb.read_receipts.createIndex({ conversationId: 1, username: 1 }, { name: 'conv_user_idx', unique: true });
+targetDb.read_receipts.createIndex({ conversationId: 1 }, { name: 'conversationId_idx' });
+targetDb.read_receipts.createIndex({ username: 1 }, { name: 'username_idx' });
+
+// 3. system_message collection & TTL index
+targetDb.createCollection('system_message');
+targetDb.system_message.createIndex({ expiresAt: 1 }, { name: 'expiresAt_ttl_idx', expireAfterSeconds: 0 });
+```
+
+---
+
+## 3. In-Memory Tier: Redis Stack
+
+Redis Stack serves as the ultra-fast distributed coordinating fabric across all backend instances.
+
+### 3.1. Master Redis Key Catalog
+
+| Key Pattern | Data Structure | TTL | Purpose & Usage |
 | :--- | :--- | :--- | :--- |
-| `online_users` | **Sorted Set (ZSet)** | Không hết hạn | Danh sách user đang online. `Score` = Epoch Timestamp ping gần nhất. |
-| `online_users_count` | **Hash** | Không hết hạn | Key là `username`, value là tổng số session WebSocket đang mở. |
-| `ws:routing:servers:{username}` | **Hash** | Không hết hạn | Key là `serverId`, value là số session trên node server đó. |
-| `channel:server:{serverId}` | **Redis Pub/Sub** | N/A (Streaming) | Kênh trao đổi tin nhắn định tuyến liên node backend. |
-| `ws:dedup:{sender}:{localId}` | **String** | **300 giây (5 phút)** | Lệnh `SETNX` chống nhận tin nhắn trùng lặp khi client tự retry do lag mạng. |
-| `chat:recent:hash:{convId}` | **Hash** | 24 giờ | Cache nội dung tin nhắn mới nhất để hiển thị nhanh danh sách chat list. |
-| `chat:recent:zset:{convId}` | **Sorted Set (ZSet)** | 24 giờ | Lưu danh sách message ID gần nhất với score = timestamp. |
-| `blacklist:{token}` | **String** | Bằng TTL của JWT | Danh sách Access Token bị thu hồi (đăng xuất sớm). |
-| `rt:{token}` | **Object (RefreshTokenData)** | 7 ngày | Lưu trữ Opaque Refresh Token (UUID), username và `tokenVersion` phục vụ Token Rotation & Logout-all. |
-| `register:{email}` | **Object (Java Serialized)** | 5 phút | Dữ liệu đăng ký tạm thời (`RegisterData`) kèm mã OTP xác thực email. |
-| `filter:usernames` | **Cuckoo Filter (CF)** | Bền vững | Kiểm tra nhanh username đã tồn tại hay chưa bằng lệnh Redis `CF.EXISTS` trước khi query PostgreSQL. |
-| `filter:emails` | **Cuckoo Filter (CF)** | Bền vững | Kiểm tra nhanh email đã đăng ký hay chưa bằng lệnh Redis `CF.EXISTS`. |
-| `rate_limit:{targetKey}` | **Sorted Set (ZSet)** | Window + 2s | Triển khai thuật toán Sliding Window Log bằng Lua script để giới hạn tốc độ request. |
-| `idempotent:{key}:{idempotencyKey}` | **String** | 300 - 600 giây | Khóa lũy đẳng `@Idempotent` (Header `X-Idempotency-Key`) chống gọi lặp các tác vụ upload/kết bạn. |
+| `online_users` | **Sorted Set (ZSet)** | Persistent | Holds usernames of currently online users. `score` = Epoch timestamp of latest ping/connect. |
+| `online_users_count` | **Hash** | Persistent | Field: `username`, Value: integer count of active WebSocket tabs/sessions. |
+| `presence:offline_queue` | **Sorted Set (ZSet)** | Transient | Distributed debounce queue. `score` = Epoch timestamp deadline (`now + 5000ms`). Polled by `SessionCleanupScheduler`. |
+| `ws:routing:servers:{username}` | **Hash** | Persistent | Field: `serverId`, Value: active session count on that specific backend instance. |
+| `channel:server:{serverId}` | **Pub/Sub Channel** | N/A (Stream) | Dedicated channel for cross-server WebSocket frame forwarding. |
+| `ws:dedup:{sender}:{localId}` | **String** | **300 seconds** | Set via `SETNX`. Prevents duplicate STOMP message execution during network retries. |
+| `chat:recent:hash:{convId}` | **Hash** | **24 hours** | Caches full metadata of the most recent message for fast conversation list rendering. |
+| `chat:recent:zset:{convId}` | **Sorted Set (ZSet)** | **24 hours** | Stores recent message IDs with `score` = timestamp for fast message ID slicing. |
+| `read:receipt:{convId}:{username}`| **String** | **7 days** | Caches latest read watermark timestamp for fast frontend synchronization. |
+| `unread:counts:{username}` | **Hash / Key** | Evicted on read | Caches unread message counts per conversation. Evicted upon read receipt upsert. |
+| `blacklist:{token}` | **String** | Remaining JWT TTL | Set upon logout to immediately invalidate unexpired JWT Access Tokens. |
+| `rt:{token}` | **Serialized Object** | **7 days** | Stores `RefreshTokenData` (UUID, username, `tokenVersion`) for token rotation and validation. |
+| `register:{email}` | **Serialized Object** | **5 minutes** | Temporary registration cache storing pending user details and verification OTP. |
+| `filter:usernames` | **Cuckoo Filter** | Persistent | High-speed probabilistic filter checking if a username is already registered (`CF.EXISTS`). |
+| `filter:emails` | **Cuckoo Filter** | Persistent | High-speed probabilistic filter checking if an email address is registered (`CF.EXISTS`). |
+| `rate_limit:{key}` | **Sorted Set (ZSet)** | Window + 2s | Sliding Window Log rate limiter managed atomically via custom Lua scripts. |
+| `idempotent:{key}:{idempotencyKey}`| **String** | **300–600 seconds**| Distributed lock preventing duplicate execution of sensitive REST endpoints (e.g. file upload). |

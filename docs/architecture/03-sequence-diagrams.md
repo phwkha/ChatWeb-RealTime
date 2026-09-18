@@ -1,231 +1,278 @@
-# Sơ Đồ Tuần Tự Nghiệp Vụ Cốt Lõi (Sequence Diagrams)
+# Core Business Sequence Diagrams
 
-Tài liệu này cung cấp các sơ đồ tuần tự chi tiết mô tả sự tương tác giữa Client, Nginx, Spring Boot Backend, Redis, Kafka và Database cho 4 luồng nghiệp vụ quan trọng nhất của hệ thống ChatWeb.
+This document details the end-to-end communication flows across the Client, Nginx Ingress, Spring Boot Backend, Redis Stack, Apache Kafka, PostgreSQL, and MongoDB for the five most critical business operations in ChatWeb.
 
 ---
 
-## 1. Luồng Gửi và Nhận Tin Nhắn Thời Gian Thực (Real-time Chat Pipeline)
+## 1. Real-Time Chat Pipeline
 
-Sơ đồ thể hiện toàn bộ hành trình của một tin nhắn từ khi người gửi nhấn "Gửi" cho đến khi người nhận hiển thị tin nhắn trên màn hình và tin nhắn được lưu vĩnh viễn vào MongoDB.
+Traces the complete lifecycle of a private message from transmission by Client A to instant screen rendering for Client B and asynchronous bulk persistence into MongoDB.
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor Sender as 👤 Sender (Client A)
-    participant Nginx as 🛡️ Nginx Proxy
-    participant WSInterceptor as 🔍 ChannelInterceptor
-    participant Controller as 🎮 ChatController
-    participant Service as ⚙️ ChatServiceImpl
-    participant Redis as ⚡ Redis (Memory)
-    participant Kafka as 📨 Kafka (chat-messages)
-    participant ChatConsumer as 🚀 ChatConsumer (Fast Push)
-    participant WSRouting as 🧭 WebSocketRoutingService
-    participant SaveConsumer as 💾 DBWriteBehindConsumer
-    participant Mongo as 🍃 MongoDB
-    actor Recipient as 👥 Recipient (Client B)
+    actor Sender as Client A (Sender)
+    participant Nginx as Nginx Proxy
+    participant WSInterceptor as ChannelInterceptor
+    participant Controller as ChatController
+    participant Service as ChatServiceImpl
+    participant Redis as Redis Stack
+    participant Kafka as Kafka (chat-messages)
+    participant ChatConsumer as ChatConsumer (Fast-Push)
+    participant WSRouting as WebSocketRoutingService
+    participant SaveConsumer as DBWriteBehindConsumer
+    participant Mongo as MongoDB (messages)
+    actor Recipient as Client B (Recipient)
 
     Sender->>Nginx: SEND /app/chat/sendPrivateMessage (STOMP frame)
-    Nginx->>WSInterceptor: Chuyển tiếp kết nối WebSocket
-    WSInterceptor->>WSInterceptor: Kiểm tra JWT Token & Blacklist trong Redis
-    WSInterceptor->>Controller: Chuyển tiếp message hợp lệ
+    Nginx->>WSInterceptor: Forward WebSocket frame
+    WSInterceptor->>WSInterceptor: Validate JWT, Check Redis Blacklist & Token Version
+    WSInterceptor->>Controller: Forward authenticated message
     Controller->>Service: sendPrivateMessage(sender, request)
     
     rect rgb(240, 248, 255)
-        note over Service, Redis: Bước 1: Khử trùng lặp & Giới hạn tốc độ
+        note over Service, Redis: Phase 1: Deduplication & Validation
         Service->>Redis: SETNX ws:dedup:{sender}:{localId} (TTL=300s)
-        alt Đã tồn tại key (Duplicate packet do lag)
+        alt Key Already Exists (Client retry caused by network lag)
             Redis-->>Service: Return FALSE
-            Service-->>Sender: Âm thầm bỏ qua
-        else Key mới hợp lệ
+            Service-->>Sender: Silently acknowledge / suppress duplicate
+        else Key Created Successfully
             Redis-->>Service: Return TRUE
         end
-        Service->>Service: Kiểm tra quan hệ bạn bè & trạng thái tài khoản
+        Service->>Service: Verify friendship & recipient existence
     end
 
     rect rgb(255, 250, 240)
-        note over Service, Redis: Bước 2: Caching tin nhắn gần nhất
-        Service->>Redis: Lưu vào chat:recent:hash & chat:recent:zset
+        note over Service, Redis: Phase 2: Cache Most Recent Conversation Snapshot
+        Service->>Redis: Update chat:recent:hash:{convId} & chat:recent:zset:{convId}
     end
 
     rect rgb(240, 255, 240)
-        note over Service, Kafka: Bước 3: Phát tán sự kiện nhị phân
-        Service->>Kafka: Publish ChatMessageAvro vào topic "chat-messages"
+        note over Service, Kafka: Phase 3: Binary Event Publication
+        Service->>Kafka: Publish ChatMessageAvro to topic "chat-messages"
     end
 
-    par Nhánh 1: Fast-Push (Độ trễ thấp tới người nhận)
-        Kafka->>ChatConsumer: Consume Avro payload
+    par Branch 1: Fast-Push Stream (<10ms latency)
+        Kafka->>ChatConsumer: Consume ChatMessageAvro payload
         ChatConsumer->>WSRouting: routeMessage(recipient, /queue/messages)
-        WSRouting->>Redis: Tra cứu Node ID tại ws:routing:servers:{recipient}
-        alt Recipient cùng Node
-            WSRouting->>Recipient: Đẩy STOMP frame trực tiếp
-        else Recipient ở Node khác
-            WSRouting->>Redis: Publish channel:server:{targetServerId}
-            Redis->>Recipient: Node đích nhận Pub/Sub và đẩy tới Client B
+        WSRouting->>Redis: Lookup target server node at ws:routing:servers:{recipient}
+        alt Recipient is on Current Node
+            WSRouting->>Recipient: Push STOMP frame directly to local session
+        else Recipient is on Different Node
+            WSRouting->>Redis: Publish to channel:server:{targetServerId}
+            Redis->>Recipient: Target node receives Pub/Sub & delivers to Client B
         end
-        ChatConsumer->>WSRouting: routeMessage(sender, /queue/messages) [Báo ACK gửi thành công]
-        WSRouting->>Sender: Nhận ACK cập nhật trạng thái tin nhắn
-    and Nhánh 2: Write-Behind (Ghi gom lô xuống CSDL)
-        Kafka->>SaveConsumer: Consume danh sách tin nhắn theo batch
-        SaveConsumer->>Mongo: Bulk Write (insert không tuần tự vào messages)
-        alt Gặp lỗi DuplicateKeyException
-            Mongo-->>SaveConsumer: Warning (Tự động bỏ qua - Idempotent)
-        else Gặp lỗi hệ thống nghiêm trọng
-            SaveConsumer->>Kafka: Chuyển bản ghi sang topic "chat-messages-save-dlt"
+        ChatConsumer->>WSRouting: routeMessage(sender, /queue/messages) [Delivery ACK]
+        WSRouting->>Sender: Receive ACK with localId to update UI message status
+    and Branch 2: Write-Behind Stream (Batch Persistence)
+        Kafka->>SaveConsumer: Poll batch of up to 200 records
+        SaveConsumer->>Mongo: Bulk unordered insert into "messages" collection
+        alt DuplicateKeyException Encountered
+            Mongo-->>SaveConsumer: Safely ignored (Idempotent write)
+        else Unrecoverable Storage Exception
+            SaveConsumer->>Kafka: Publish failed records to "chat-messages-save-dlt"
         end
     end
 ```
 
 ---
 
-## 2. Luồng Xác Thực, Cấp Phát Token & Single Sign-Out (`token_version`)
+## 2. Authentication, Token Rotation, and Single Sign-Out
 
-Sơ đồ mô tả quy trình đăng nhập, cấp phát Cookie bảo mật và cơ chế thu hồi phiên tức thì trên toàn bộ thiết bị.
+Illustrates user login, access token issuance in headers, refresh token storage in HttpOnly cookies, token rotation, and instant global revocation via `token_version`.
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor User as 👤 Người dùng
-    participant Nginx as 🛡️ Nginx Ingress
-    participant AuthCtrl as 🎮 AuthController
-    participant AuthSvc as ⚙️ AuthenticationService
-    participant Cuckoo as 🔍 CuckooFilterService
-    participant DB as 🐘 PostgreSQL
-    participant Redis as ⚡ Redis
-    participant JWT as 🔑 JwtService
+    actor User as User Client
+    participant Nginx as Nginx Ingress
+    participant AuthCtrl as AuthController
+    participant AuthSvc as AuthenticationServiceImpl
+    participant Cuckoo as CuckooFilterService
+    participant DB as PostgreSQL
+    participant Redis as Redis Stack
+    participant JWT as JwtService
 
     User->>Nginx: POST /api/auth/login { username, password }
     Nginx->>AuthCtrl: Forward request
-    AuthCtrl->>AuthSvc: authenticate(request)
+    AuthCtrl->>AuthSvc: login(loginRequest)
     
-    AuthSvc->>Cuckoo: exists("filter:usernames", username)
-    alt Không tồn tại trong Cuckoo Filter
-        Cuckoo-->>AuthSvc: False (Tài khoản không tồn tại, chặn ngay)
-        AuthSvc-->>User: 404 Not Found
-    else Có thể tồn tại
-        Cuckoo-->>AuthSvc: True
-        AuthSvc->>DB: Truy vấn UserEntity theo username
+    rect rgb(240, 248, 255)
+        note over AuthSvc, Cuckoo: Sub-millisecond Preflight Existence Check
+        AuthSvc->>Cuckoo: exists("filter:usernames", username)
+        alt Not Found in Cuckoo Filter (Zero False Negatives)
+            Cuckoo-->>AuthSvc: False (Account definitely does not exist)
+            AuthSvc-->>User: 404 / 401 Rejection without querying PostgreSQL
+        else Might Exist in System
+            Cuckoo-->>AuthSvc: True
+            AuthSvc->>DB: Query UserEntity by username
+        end
     end
 
-    AuthSvc->>AuthSvc: Đối chiếu mật khẩu BCrypt
-    AuthSvc->>JWT: Sinh Access Token (claim v = user.token_version, exp = 15m)
-    AuthSvc->>JWT: Sinh Opaque Refresh Token (UUID)
-    JWT->>Redis: Lưu RefreshTokenData vào rt:{uuid} (TTL = 7 ngày)
+    AuthSvc->>AuthSvc: Verify password against BCrypt hash
+    AuthSvc->>JWT: Generate Access Token (claim v = user.token_version, exp = 15m)
+    AuthSvc->>JWT: Generate Opaque Refresh Token (UUID)
+    JWT->>Redis: Save RefreshTokenData to rt:{uuid} (TTL = 7 days)
     
-    AuthSvc-->>AuthCtrl: Trả về Token Pair
-    AuthCtrl-->>User: Set-Cookie: accessToken (Path=/), refreshToken (Path=/api/auth)
+    AuthSvc-->>AuthCtrl: Return LoginResponse (Tokens + UserDTO)
+    AuthCtrl-->>User: Response 200 OK<br/>Header: Authorization: Bearer <accessToken><br/>Set-Cookie: refreshToken=<UUID>; Path=/api/auth; HttpOnly; SameSite=Strict
 
-    note over User, DB: Khi client thực hiện Refresh Token (Token Rotation)
+    note over User, DB: Token Rotation Flow
     User->>AuthCtrl: POST /api/auth/refresh-token (Cookie: refreshToken)
     AuthCtrl->>AuthSvc: refreshToken(refreshToken)
-    AuthSvc->>Redis: GET rt:{token} (Lấy RefreshTokenData)
-    AuthSvc->>DB: Đối chiếu tokenData.tokenVersion == user.tokenVersion
-    AuthSvc->>Redis: DEL rt:{token} (Xóa token cũ ngay trước khi cấp mới)
-    AuthSvc->>JWT: Sinh Access Token mới + Opaque Refresh Token mới
-    JWT->>Redis: SET rt:{newToken} -> RefreshTokenData (TTL 7 ngày)
-    AuthCtrl-->>User: Trả về Access Token mới và cập nhật Cookies
+    AuthSvc->>Redis: GET rt:{token} (Fetch RefreshTokenData)
+    AuthSvc->>DB: Verify tokenData.tokenVersion == user.tokenVersion
+    AuthSvc->>Redis: DEL rt:{token} (Revoke old refresh token immediately)
+    AuthSvc->>JWT: Issue new Access Token + new Opaque Refresh Token
+    JWT->>Redis: SET rt:{newToken} -> RefreshTokenData (TTL 7 days)
+    AuthCtrl-->>User: Return new tokens (Authorization Header + new Cookie)
 
-    note over User, DB: Khi người dùng chọn "Đăng xuất" (Phiên hiện tại)
-    User->>AuthCtrl: POST /api/auth/logout (Cookie: accessToken, refreshToken)
-    AuthCtrl->>AuthSvc: logout(accessToken, refreshToken)
-    AuthSvc->>Redis: DEL rt:{refreshToken} (Hủy Refresh Token tức thì)
-    AuthSvc->>Redis: SET blacklist:{accessToken} (với TTL còn lại của JWT)
-    AuthCtrl-->>User: Xóa cookies (Max-Age=0)
-
-    note over User, DB: Khi người dùng chọn "Đăng xuất khỏi tất cả thiết bị"
+    note over User, DB: Single Sign-Out Across All Devices (O(1) Revocation)
     User->>AuthCtrl: POST /api/auth/logout-all-devices
     AuthCtrl->>AuthSvc: logoutAllDevices(username)
-    AuthSvc->>DB: UPDATE users SET token_version = token_version + 1 WHERE id = ?
-    AuthSvc->>Redis: Evict cache "user_details" & đưa Access Token hiện tại vào blacklist
-    AuthCtrl-->>User: 200 OK (Toàn bộ token mang version cũ lập tức bị vô hiệu hóa)
+    AuthSvc->>DB: UPDATE users SET token_version = token_version + 1 WHERE username = ?
+    AuthSvc->>Redis: Evict cached user details & Blacklist current Access Token
+    AuthCtrl-->>User: 200 OK (All tokens with old token_version are instantly rejected)
 ```
 
 ---
 
-## 3. Luồng Quản Lý Trạng Thái Hiện Diện (Presence Lifecycle & Debouncing)
+## 3. Distributed Presence Lifecycle & 5-Second Debounce Queue
 
-Cơ chế chống nhiễu Flapping khi người dùng reload trình duyệt hoặc mạng chuyển tiếp nhanh.
+Demonstrates connection tracking and the elimination of presence flapping when users refresh pages or experience transient disconnections.
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor Client as 👤 Client Trình Duyệt
-    participant WS as 🔌 WebSocketListener
-    participant Redis as ⚡ Redis
-    participant DB as 🐘 PostgreSQL
-    participant Scheduler as ⏱️ ScheduledExecutorService
+    actor Client as Browser Client
+    participant WS as WebSocketListener
+    participant Redis as Redis Stack
+    participant DB as PostgreSQL
+    participant Scheduler as SessionCleanupScheduler
+    actor Friends as Connected Friends
 
-    note over Client, Redis: Giai đoạn 1: Kết nối mở mới (CONNECT)
-    Client->>WS: Frame CONNECT thành công
-    WS->>Redis: HINCRBY online_users_count {username} 1
-    WS->>Redis: ZADD online_users {score = timestamp} {username}
-    alt count == 1 (Lần đầu mở ứng dụng)
+    note over Client, Redis: Phase 1: Connection Established (CONNECT)
+    Client->>WS: STOMP CONNECT frame established
+    WS->>Redis: ZREM presence:offline_queue {username} (Cancel any pending offline tasks)
+    WS->>Redis: HINCRBY online_users_count {username} +1
+    WS->>Redis: ZADD online_users {score = currentTimestamp} {username}
+    alt Initial Connection (count == 1)
         WS->>DB: UPDATE users SET is_online = true WHERE username = ?
-        WS->>WS: Broadcast thông báo bạn bè: User Online
-    else count > 1 (Mở thêm tab mới)
-        WS->>WS: Giữ nguyên trạng thái (Không phát lặp thông báo)
+        WS->>Friends: Broadcast User Online notification
+    else Additional Tab Opened (count > 1)
+        WS->>WS: Maintain online state (Suppress redundant broadcast)
     end
 
-    note over Client, Redis: Giai đoạn 2: Ngắt kết nối (F5 Reload trang)
-    Client->>WS: Frame DISCONNECT (Tab cũ đóng lại)
+    note over Client, Redis: Phase 2: Connection Dropped (Tab Closed or Page Reload)
+    Client->>WS: STOMP DISCONNECT event
     WS->>Redis: HINCRBY online_users_count {username} -1
-    alt count <= 0 (Không còn tab nào mở)
-        WS->>Scheduler: Lên lịch hẹn kiểm tra lại sau 5 giây: processOfflineDebounce()
+    alt No Remaining Sessions (count <= 0)
+        WS->>Redis: ZADD presence:offline_queue {score = now + 5000ms} {username}
+        note over WS, Redis: User queued in distributed debounce with 5-second deadline
     end
 
-    note over Client, Redis: Giai đoạn 3: Kết nối lại trước khi hết 5 giây (F5 xong)
-    Client->>WS: Frame CONNECT mới (Trang web load xong)
-    WS->>Redis: HINCRBY online_users_count {username} 1 (count trở lại >= 1)
+    note over Client, Redis: Phase 3a: Reconnection Within 5 Seconds (Page Refresh Complete)
+    Client->>WS: STOMP CONNECT from new page
+    WS->>Redis: ZREM presence:offline_queue {username}
+    WS->>Redis: HINCRBY online_users_count {username} +1
+    note over WS, Friends: Pending offline transition canceled! Friends see zero presence flapping.
 
-    note over Scheduler, DB: Hết 5 giây: Bộ đếm thực thi
+    note over Scheduler, Friends: Phase 3b: 5-Second Timeout Expired (User Genuinely Offline)
+    Scheduler->>Redis: ZRANGEBYSCORE presence:offline_queue 0 {now}
     Scheduler->>Redis: HGET online_users_count {username}
-    alt count > 0 (Người dùng đã quay trở lại!)
-        Scheduler->>Scheduler: Hủy bỏ sự kiện Offline (Triệt tiêu rung lắc mạng)
-    else count <= 0 (Người dùng thực sự đã đóng ứng dụng)
+    alt User Session Count Still <= 0
         Scheduler->>DB: UPDATE users SET is_online = false WHERE username = ?
         Scheduler->>Redis: ZREM online_users {username}
-        Scheduler->>WS: Broadcast thông báo bạn bè: User Offline
+        Scheduler->>Friends: Broadcast User Offline notification
     end
+    Scheduler->>Redis: ZREM presence:offline_queue {username}
 ```
 
 ---
 
-## 4. Luồng Lời Mời Kết Bạn & Thông Báo Thời Gian Thực (Friend Request & Notification Pipeline)
+## 4. Friend Request & Real-Time Notification Pipeline
 
-Sơ đồ mô tả quy trình gửi và chấp nhận lời mời kết bạn với cơ chế bảo đảm tính lũy đẳng (Idempotency) và thông báo đẩy thời gian thực qua Kafka và WebSocket.
+Illustrates sending and accepting friend requests with idempotency protection and push notification routing.
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor Alice as 👤 Alice (Sender)
-    participant FriendCtrl as 🎮 FriendController
-    participant FriendSvc as ⚙️ FriendServiceImpl
-    participant Redis as ⚡ Redis (Idempotency & Cache)
-    participant DB as 🐘 PostgreSQL
-    participant Kafka as 📨 Kafka (friend-notifications)
-    participant FriendConsumer as 🚀 FriendConsumer
-    participant WSRouting as 🧭 WebSocketRoutingService
-    actor Bob as 👥 Bob (Recipient)
+    actor Alice as Alice (Requester)
+    participant FriendCtrl as FriendController
+    participant FriendSvc as FriendServiceImpl
+    participant Redis as Redis Stack
+    participant DB as PostgreSQL
+    participant Kafka as Kafka (friend-notifications)
+    participant FriendConsumer as FriendConsumer
+    participant WSRouting as WebSocketRoutingService
+    actor Bob as Bob (Addressee)
 
     Alice->>FriendCtrl: POST /api/friends/request { targetUsername: "bob" }
     FriendCtrl->>FriendSvc: sendFriendRequest("alice", "bob")
-    FriendSvc->>DB: Kiểm tra chưa bị block và chưa tồn tại quan hệ
-    FriendSvc->>DB: INSERT INTO friendships (requester, addressee, status='PENDING')
-    FriendSvc->>Kafka: Publish FriendNotificationPayload vào topic "friend-notifications"
-    FriendSvc-->>Alice: 200 OK (Gửi lời mời thành công)
+    FriendSvc->>DB: Check neither user is blocked & relationship doesn't exist
+    FriendSvc->>DB: INSERT INTO friendships (requester_id, addressee_id, status='PENDING')
+    FriendSvc->>Kafka: Publish FriendNotificationPayload to "friend-notifications"
+    FriendSvc-->>Alice: 200 OK (Request sent)
 
-    Kafka->>FriendConsumer: Consume friend notification
+    Kafka->>FriendConsumer: Consume notification event
     FriendConsumer->>WSRouting: routeMessage("bob", "/queue/notifications", payload)
-    WSRouting->>Bob: Gửi STOMP frame tới /user/queue/notifications (Bob thấy thông báo đỏ ngay)
+    WSRouting->>Bob: Deliver STOMP frame to /user/queue/notifications (Unread badge increments)
 
-    note over Bob, Alice: Bob nhấn "Đồng ý kết bạn" (Kèm X-Idempotency-Key)
+    note over Bob, Alice: Bob Accepts Friend Request with Idempotency Key
     Bob->>FriendCtrl: POST /api/friends/accept { targetUsername: "alice" }<br/>Header: X-Idempotency-Key: <UUID>
-    FriendCtrl->>Redis: Kiểm tra & khóa idempotent:friend_accept:<UUID> (TTL 300s)
+    FriendCtrl->>Redis: SETNX idempotent:friend_accept:<UUID> (TTL 300s)
     FriendCtrl->>FriendSvc: acceptFriendRequest("bob", "alice")
-    FriendSvc->>DB: UPDATE friendships SET status='ACCEPTED'
-    FriendSvc->>Kafka: Publish sự kiện ACCEPTED vào topic "friend-notifications"
-    FriendCtrl-->>Bob: 200 OK
+    FriendSvc->>DB: UPDATE friendships SET status = 'ACCEPTED' WHERE ...
+    FriendSvc->>Kafka: Publish ACCEPTED event to "friend-notifications"
+    FriendCtrl-->>Bob: 200 OK (Friendship established)
 
-    Kafka->>FriendConsumer: Consume friend notification
+    Kafka->>FriendConsumer: Consume notification event
     FriendConsumer->>WSRouting: routeMessage("alice", "/queue/notifications", payload)
-    WSRouting->>Alice: Gửi STOMP frame báo Alice: Bob đã đồng ý kết bạn!
+    WSRouting->>Alice: Deliver STOMP frame: "Bob accepted your friend request!"
+```
+
+---
+
+## 5. Watermark-Based Read Receipt Lifecycle
+
+Illustrates atomic read receipt tracking, Redis TTL caching, and real-time read receipt updates sent back to the message author.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Bob as Bob (Reader)
+    participant MsgCtrl as MessageController
+    participant MsgSvc as MessageServiceImpl
+    participant Mongo as MongoDB (read_receipts)
+    participant Redis as Redis Stack
+    participant Kafka as Kafka (message-update)
+    participant UpdateConsumer as UpdateMessageConsumer
+    participant WSRouting as WebSocketRoutingService
+    actor Alice as Alice (Original Sender)
+
+    Bob->>MsgCtrl: POST /api/messages/mark-as-read { sender: "alice", conversationId: "alice_bob" }
+    MsgCtrl->>MsgSvc: markMessagesAsRead("bob", request)
+    MsgSvc->>MsgSvc: Validate friendship & generate receipt ID: "alice_bob:bob"
+    
+    rect rgb(240, 248, 255)
+        note over MsgSvc, Mongo: Atomic Monotonic Watermark Upsert ($max)
+        MsgSvc->>Mongo: upsert({ _id: "alice_bob:bob" }, { $max: { lastReadTimestamp: now } })
+    end
+
+    rect rgb(255, 250, 240)
+        note over MsgSvc, Redis: Cache Watermark & Invalidate Unread Counters
+        MsgSvc->>Redis: SET read:receipt:alice_bob:bob = now (TTL = 7 days)
+        MsgSvc->>Redis: DEL unread:counts:bob
+    end
+
+    rect rgb(240, 255, 240)
+        note over MsgSvc, Kafka: Fanout Event over Kafka
+        MsgSvc->>Kafka: Publish ReadReceiptResponse to topic "message-update"
+    end
+    MsgSvc-->>Bob: 200 OK
+
+    Kafka->>UpdateConsumer: Consume update event (ReadReceiptResponse)
+    UpdateConsumer->>WSRouting: routeMessage("alice", "/queue/notifications", receiptNotification)
+    WSRouting->>Alice: Deliver STOMP frame to /user/queue/notifications
+    note over Alice: Alice's client marks all messages up to "now" as READ with blue checkmarks
 ```
