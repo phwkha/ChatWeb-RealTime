@@ -39,6 +39,7 @@ export const CHAT_TRANSLATIONS = {
     settings: 'Cài đặt', adminConsole: 'Trang quản trị', save: 'Lưu', editMessage: 'Sửa', revokeMessage: 'Thu hồi',
     accountMenu: 'Menu tài khoản', addressSettings: 'Địa chỉ', contactSettings: 'Email & điện thoại', securitySettings: 'Bảo mật',
     messageEdited: 'Đã sửa tin nhắn.', editedLabel: 'Đã chỉnh sửa', editHistoryTitle: 'Lịch sử chỉnh sửa', previousVersion: 'Phiên bản trước', editHistoryUnavailable: 'Không có nội dung phiên bản cũ trên thiết bị này.', messageRevoked: 'Đã thu hồi tin nhắn.', revokeMessageTitle: 'Thu hồi tin nhắn?', revokeMessageBody: 'Tin nhắn sẽ bị xóa khỏi cuộc trò chuyện của cả hai người.', revokingMessage: 'Đang thu hồi...',
+    reply: 'Trả lời', replyingTo: 'Đang trả lời', cancelReply: 'Hủy trả lời', originalMessageNotFound: 'Không tìm thấy tin nhắn gốc trong danh sách hiện tại.', photo: 'Ảnh', video: 'Video', attachment: 'Tệp đính kèm',
   },
   en: {
     appName: 'ChatWeb', search: 'Search', searchPeople: 'Find new people...', searchConversations: 'Search conversations...', conversations: 'Conversations',
@@ -80,5 +81,6 @@ export const CHAT_TRANSLATIONS = {
     settings: 'Settings', adminConsole: 'Admin console', save: 'Save', editMessage: 'Edit', revokeMessage: 'Revoke',
     accountMenu: 'Account menu', addressSettings: 'Addresses', contactSettings: 'Email & phone', securitySettings: 'Security',
     messageEdited: 'Message updated.', editedLabel: 'edited', editHistoryTitle: 'Edit history', previousVersion: 'Previous version', editHistoryUnavailable: 'Previous content is not available on this device.', messageRevoked: 'Message revoked.', revokeMessageTitle: 'Revoke this message?', revokeMessageBody: 'This message will be removed from the conversation for both people.', revokingMessage: 'Revoking...',
+    reply: 'Reply', replyingTo: 'Replying to', cancelReply: 'Cancel reply', originalMessageNotFound: 'Original message is not in the current list.', photo: 'Photo', video: 'Video', attachment: 'Attachment',
   },
 }

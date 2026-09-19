@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import AppRail from '../components/chat/AppRail.jsx'
 import ChatSidebar from '../components/chat/ChatSidebar.jsx'
 import ChatArea from '../components/chat/ChatArea.jsx'
@@ -28,10 +29,13 @@ import {
 } from '../components/chat/chatUtils.js'
 import '../styles/chat.css'
 
+export const ACTIVE_CONVERSATION_STORAGE_KEY = 'chatweb-active-conversation'
+
 function ChatPage() {
   const { user: currentUser } = useAuth()
   const { language, t } = useLanguage()
   const { playNotificationSound, playInboxSound } = useChatAudio()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [selectedUser, setSelectedUser] = useState(null)
   const [activeSection, setActiveSection] = useState(initialChatSection)
   const [conversationQuery, setConversationQuery] = useState('')
@@ -65,18 +69,28 @@ function ChatPage() {
   const removeConversationLocally = useCallback((username) => {
     connectionsRef.current?.setFriends((cur) => cur.filter((f) => f.username !== username))
     messagesStateRef.current?.setMessagesByUser((cur) => { const next = { ...cur }; delete next[username]; return next })
-    selectedRef.current = null
-    setSelectedUser(null)
+    if (selectedRef.current?.username === username) {
+      selectedRef.current = null
+      setSelectedUser(null)
+      try {
+        localStorage.removeItem(ACTIVE_CONVERSATION_STORAGE_KEY)
+      } catch {}
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev)
+        next.delete('user')
+        return next
+      }, { replace: true })
+    }
     setConversationMenuOpen(false)
     setConfirmConversationAction(null)
-  }, [])
+  }, [setSearchParams])
 
   const connections = useChatConnections({
     currentUser, showToast, t, onAfterRemoveConversation: removeConversationLocally,
   })
 
   const {
-    friends, setFriends, friendRequests, sentRequests, blockedUsers,
+    friends, setFriends, connectionsLoaded, friendRequests, sentRequests, blockedUsers,
     blockedMessageIntervals, actionPending, addFriend, acceptFriend,
     removeFriendRelation, unblockServerUser, performConversationAction,
     unblockSelectedConversation, scheduleConnectionSync,
@@ -115,13 +129,13 @@ function ChatPage() {
   const {
     connectionState, sendPrivateMessage, sendWorldMessage, unreadCounts,
     typingUsers, worldMessages, worldCursor, worldHasMore, worldNotifications,
-    loadWorldHistory, sendTypingStatus, sendReactionControl,
+    loadWorldHistory, sendTypingStatus, sendReactionControl, markAsRead, sendRealtimeReceipt,
   } = realtime
 
   const selectedUserIsTyping = Boolean(typingUsers[selectedUsername])
 
   const messagesState = useConversationMessages({
-    user: currentUser, selectedUser, connectionState, blockedMessageIntervals,
+    user: currentUser, selectedUser, activeSection, connectionState, blockedMessageIntervals,
     sendPrivateMessage, sendTypingStatus, sendReactionControl, showToast, t,
     selectedUserIsTyping,
   })
@@ -170,7 +184,85 @@ function ChatPage() {
     messagesState.setReactionPickerMessageId(null); messagesState.setDetailMessageId(null)
     messagesState.setEditHistoryMessageId(null); closeContextMenu()
     selectedRef.current = friend; setSelectedUser(friend); setActiveSection('chat'); setWorldOpen(false)
-  }, [closeContextMenu, messagesState])
+    if (friend?.username) {
+      markAsRead(friend.username, true)
+      sendRealtimeReceipt(friend.username, 'READ')
+      messagesState.scrollToBottom(true)
+      try {
+        localStorage.setItem(ACTIVE_CONVERSATION_STORAGE_KEY, friend.username)
+      } catch {}
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev)
+        if (next.get('user') !== friend.username) {
+          next.set('user', friend.username)
+        }
+        return next
+      }, { replace: true })
+    }
+  }, [closeContextMenu, markAsRead, messagesState, sendRealtimeReceipt, setSearchParams])
+
+  const clearActiveConversation = useCallback(() => {
+    selectedRef.current = null
+    setSelectedUser(null)
+    try {
+      localStorage.removeItem(ACTIVE_CONVERSATION_STORAGE_KEY)
+    } catch {}
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.delete('user')
+      return next
+    }, { replace: true })
+  }, [setSearchParams])
+
+  const restoredRef = useRef(false)
+
+  useEffect(() => {
+    if (!connectionsLoaded) return
+
+    const queryUser = searchParams.get('user')?.trim()
+    const storedUser = (() => {
+      try {
+        return localStorage.getItem(ACTIVE_CONVERSATION_STORAGE_KEY)?.trim()
+      } catch {
+        return null
+      }
+    })()
+
+    // If no queryUser in URL on initial mount, check if localStorage has one
+    if (!queryUser && !restoredRef.current && storedUser) {
+      restoredRef.current = true
+      const match = friends.find((f) => (
+        String(f.username || '').toLocaleLowerCase('en-US') === storedUser.toLocaleLowerCase('en-US')
+      ))
+      if (match) {
+        selectFriend(match)
+        return
+      } else {
+        try { localStorage.removeItem(ACTIVE_CONVERSATION_STORAGE_KEY) } catch {}
+      }
+    }
+
+    restoredRef.current = true
+
+    if (queryUser) {
+      if (selectedUser?.username?.toLocaleLowerCase('en-US') === queryUser.toLocaleLowerCase('en-US')) {
+        return
+      }
+      const match = friends.find((f) => (
+        String(f.username || '').toLocaleLowerCase('en-US') === queryUser.toLocaleLowerCase('en-US')
+      ))
+      if (match) {
+        selectFriend(match)
+      } else {
+        try { localStorage.removeItem(ACTIVE_CONVERSATION_STORAGE_KEY) } catch {}
+        setSearchParams((prev) => {
+          const next = new URLSearchParams(prev)
+          next.delete('user')
+          return next
+        }, { replace: true })
+      }
+    }
+  }, [connectionsLoaded, friends, searchParams, selectFriend, selectedUser?.username, setSearchParams])
 
   const latestWorldMessage = worldMessages.length ? worldMessages[worldMessages.length - 1] : null
 
@@ -199,7 +291,7 @@ function ChatPage() {
         selectedUserIsTyping={selectedUserIsTyping} conversationMenuOpen={conversationMenuOpen}
         conversationMenuRef={conversationMenuRef} latestWorldMessage={latestWorldMessage}
         language={language} t={t} onOpenWorld={() => setWorldOpen(true)}
-        onBack={() => { selectedRef.current = null; setSelectedUser(null) }}
+        onBack={clearActiveConversation}
         onToggleMenu={() => setConversationMenuOpen((cur) => !cur)}
         onOpenSearch={() => { setConversationMenuOpen(false); openMessageSearch() }}
         onUnblockConversation={() => { void unblockSelectedConversation(selectedUser); setConversationMenuOpen(false) }}

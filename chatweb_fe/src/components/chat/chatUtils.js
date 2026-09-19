@@ -101,7 +101,8 @@ export function upsertMessage(list, incoming) {
   const status = (STATUS_RANK[currentStatus] || 0) > (STATUS_RANK[incomingStatus] || 0)
     ? currentStatus
     : incomingStatus
-  const mergedMessage = { ...next[matchIndex], ...incoming, status, clientFailed: false }
+  const replyToId = incoming.replyToId !== undefined ? incoming.replyToId : next[matchIndex].replyToId
+  const mergedMessage = { ...next[matchIndex], ...incoming, replyToId, status, clientFailed: false }
   if (isMessageEdited(next[matchIndex]) && !isMessageEdited(mergedMessage)) {
     mergedMessage.edited = true
     mergedMessage.isEdited = true
@@ -217,4 +218,34 @@ export function initialChatSection() {
   if (typeof window === 'undefined') return 'chat'
   const section = new URLSearchParams(window.location.search).get('section')
   return ['chat', 'friends', 'notifications'].includes(section) ? section : 'chat'
+}
+
+export function getQuotedSenderName(message, currentUser, selectedUser, t) {
+  if (!message) return ''
+  if (currentUser?.username && message.sender === currentUser.username) {
+    return t ? t('you') : 'You'
+  }
+  if (selectedUser?.username && message.sender === selectedUser.username) {
+    const fullName = [selectedUser.firstName, selectedUser.lastName].filter(Boolean).join(' ').trim()
+    return fullName || selectedUser.nickname || selectedUser.fullName || selectedUser.username || ''
+  }
+  return message.sender || ''
+}
+
+export function getQuotedMessagePreview(message, t) {
+  if (!message) return ''
+  if (message.notFound) {
+    return t ? t('originalMessageNotFound') : 'Original message not found'
+  }
+  if (isMessageDeleted(message)) {
+    return t ? t('deletedMessage') : 'Message deleted'
+  }
+  const contentType = String(message.contentType || 'TEXT').toUpperCase()
+  if (contentType === 'IMAGE') {
+    return message.fileName || (t ? t('sharedImage') : 'Shared image')
+  }
+  if (contentType === 'VIDEO') {
+    return message.fileName || (t ? t('video') : 'Video')
+  }
+  return message.content || ''
 }

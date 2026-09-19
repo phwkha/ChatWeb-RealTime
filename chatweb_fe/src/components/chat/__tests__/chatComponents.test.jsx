@@ -123,7 +123,7 @@ describe('Extracted Chat Components', () => {
     )
 
     expect(screen.getByText('Hello world')).toBeInTheDocument()
-    expect(screen.getByText('👍')).toBeInTheDocument()
+    expect(screen.getAllByText('👍')[0]).toBeInTheDocument()
   })
 
   it('renders MessageComposer with input and submit', () => {

@@ -8,6 +8,8 @@ import {
   isMessageEdited,
   summarizeReactions,
   REACTION_OPTIONS,
+  getQuotedMessagePreview,
+  getQuotedSenderName,
 } from './chatUtils.js'
 
 function areMessagePropsEqual(prevProps, nextProps) {
@@ -24,16 +26,22 @@ function areMessagePropsEqual(prevProps, nextProps) {
       prevProps.message?.isDeleted !== nextProps.message?.isDeleted ||
       prevProps.message?.failureAttempt !== nextProps.message?.failureAttempt ||
       prevProps.message?.fileUrl !== nextProps.message?.fileUrl ||
-      prevProps.message?.reactions !== nextProps.message?.reactions
+      prevProps.message?.reactions !== nextProps.message?.reactions ||
+      String(prevProps.message?.replyToId || '') !== String(nextProps.message?.replyToId || '')
     ) {
       return false
     }
+  }
+
+  if (prevProps.quotedMessage !== nextProps.quotedMessage) {
+    return false
   }
 
   return (
     prevProps.isMine === nextProps.isMine &&
     prevProps.isGrouped === nextProps.isGrouped &&
     prevProps.isSearchTarget === nextProps.isSearchTarget &&
+    prevProps.isHighlighted === nextProps.isHighlighted &&
     prevProps.showActions === nextProps.showActions &&
     prevProps.showDetails === nextProps.showDetails &&
     prevProps.isReactionPickerOpen === nextProps.isReactionPickerOpen &&
@@ -44,8 +52,11 @@ function areMessagePropsEqual(prevProps, nextProps) {
     prevProps.messageActionPending === nextProps.messageActionPending &&
     prevProps.connectionState === nextProps.connectionState &&
     prevProps.language === nextProps.language &&
+    prevProps.user?.username === nextProps.user?.username &&
     prevProps.selectedUser?.username === nextProps.selectedUser?.username &&
-    prevProps.selectedUser?.avatar === nextProps.selectedUser?.avatar
+    prevProps.selectedUser?.avatar === nextProps.selectedUser?.avatar &&
+    prevProps.selectedUser?.firstName === nextProps.selectedUser?.firstName &&
+    prevProps.selectedUser?.lastName === nextProps.selectedUser?.lastName
   )
 }
 
@@ -57,6 +68,7 @@ export const MessageItem = React.memo(function MessageItem({
   isMine,
   isGrouped,
   isSearchTarget,
+  isHighlighted = false,
   showActions,
   showDetails,
   isReactionPickerOpen,
@@ -68,6 +80,7 @@ export const MessageItem = React.memo(function MessageItem({
   connectionState,
   language,
   editHistory = [],
+  quotedMessage = null,
   t,
   onContextMenu,
   onBubbleClick,
@@ -81,16 +94,25 @@ export const MessageItem = React.memo(function MessageItem({
   onCancelEdit,
   onChangeEditContent,
   onRevokeClick,
+  onReply,
+  onQuoteClick,
+  onFetchReplyMessage,
 }) {
   const reactionSummary = summarizeReactions(message.reactions)
   const currentUserReaction = message.reactions?.[user?.username]
   const deleted = isMessageDeleted(message)
   const edited = isMessageEdited(message)
 
+  React.useEffect(() => {
+    if (message.replyToId && !quotedMessage && onFetchReplyMessage) {
+      onFetchReplyMessage(message.replyToId)
+    }
+  }, [message.replyToId, quotedMessage, onFetchReplyMessage])
+
   return (
     <div
       id={message.id ? `chat-message-${message.id}` : undefined}
-      className={`message-row${isMine ? ' is-mine' : ''}${isGrouped ? ' is-grouped' : ''}${isSearchTarget ? ' is-search-target' : ''}`}
+      className={`message-row${isMine ? ' is-mine' : ''}${isGrouped ? ' is-grouped' : ''}${isSearchTarget ? ' is-search-target' : ''}${isHighlighted ? ' is-highlighted' : ''}`}
       onContextMenu={(event) => onContextMenu(event, message, messageKey)}
     >
       {!isMine && !isGrouped && <Avatar person={selectedUser} size="tiny" />}
@@ -135,6 +157,49 @@ export const MessageItem = React.memo(function MessageItem({
             t('deletedMessage')
           ) : (
             <>
+              {Boolean(message.replyToId && String(message.replyToId).trim()) && (
+                <div
+                  className={`message-quoted${isMine ? ' is-mine' : ''}`}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={t('replyingTo')}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onQuoteClick?.(message.replyToId)
+                  }}
+                  onKeyDown={(event) => {
+                    if (['Enter', ' '].includes(event.key)) {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      onQuoteClick?.(message.replyToId)
+                    }
+                  }}
+                >
+                  <div className="message-quoted__content">
+                    <span className="message-quoted__sender">
+                      {getQuotedSenderName(quotedMessage, user, selectedUser, t) || t('replyingTo')}
+                    </span>
+                    <div className="message-quoted__preview">
+                      {quotedMessage ? (
+                        isMessageDeleted(quotedMessage) ? (
+                          <em className="message-quoted__deleted">{t('deletedMessage')}</em>
+                        ) : quotedMessage.notFound ? (
+                          <em className="message-quoted__not-found">{t('originalMessageNotFound')}</em>
+                        ) : (
+                          <>
+                            {['IMAGE', 'VIDEO'].includes(String(quotedMessage.contentType || '').toUpperCase()) && (
+                              <ChatIcon name="image" size={12} />
+                            )}
+                            <span>{getQuotedMessagePreview(quotedMessage, t)}</span>
+                          </>
+                        )
+                      ) : (
+                        <span className="message-quoted__loading">...</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
               {String(message.contentType || '').toUpperCase() === 'IMAGE' && message.fileUrl && (
                 <img
                   className="message-media message-media--image"
@@ -171,14 +236,17 @@ export const MessageItem = React.memo(function MessageItem({
           </button>
         )}
 
-        {isReactionPickerOpen && (
-          <div className="reaction-picker" role="menu" aria-label={t('reactToMessage')}>
+        {!deleted && Boolean(message.id) && (
+          <div
+            className={`reaction-picker${isReactionPickerOpen ? ' is-open' : ''}`}
+            role="toolbar"
+            aria-label={t('reactToMessage')}
+          >
             {REACTION_OPTIONS.map((reaction) => (
               <button
                 key={reaction.type}
                 className={currentUserReaction === reaction.type ? 'is-active' : ''}
                 type="button"
-                role="menuitem"
                 disabled={reactionSubmitting}
                 aria-label={reaction.type}
                 onClick={() => onSelectReaction(message, reaction.type)}
@@ -186,6 +254,19 @@ export const MessageItem = React.memo(function MessageItem({
                 {reaction.emoji}
               </button>
             ))}
+            <span className="reaction-picker__divider" />
+            <button
+              type="button"
+              className="reaction-picker__reply"
+              aria-label={t('reply')}
+              title={t('reply')}
+              onClick={(event) => {
+                event.stopPropagation()
+                onReply?.(message)
+              }}
+            >
+              <ChatIcon name="reply" size={15} />
+            </button>
           </div>
         )}
 
@@ -218,13 +299,21 @@ export const MessageItem = React.memo(function MessageItem({
           </div>
         )}
 
-        {showActions && !deleted && (
+        {showActions && !deleted && isMine && (
           isEditing ? (
-            <form className="message-edit-form" onSubmit={(event) => onSaveEdit(event, message)}>
+            <form
+              className="message-edit-form"
+              onSubmit={(event) => {
+                event.preventDefault()
+                onSaveEdit(message)
+              }}
+            >
               <input
-                autoFocus
-                maxLength="10000"
                 value={editingContent}
+                maxLength={2000}
+                autoFocus
+                disabled={messageActionPending}
+                aria-label={t('editMessage')}
                 onChange={(event) => onChangeEditContent(event.target.value)}
               />
               <button
@@ -239,7 +328,7 @@ export const MessageItem = React.memo(function MessageItem({
             </form>
           ) : (
             <div className="message-actions">
-              {isMine && String(message.contentType || 'TEXT').toUpperCase() === 'TEXT' && (
+              {String(message.contentType || 'TEXT').toUpperCase() === 'TEXT' && (
                 <button
                   type="button"
                   disabled={messageActionPending}
@@ -248,16 +337,14 @@ export const MessageItem = React.memo(function MessageItem({
                   {t('editMessage')}
                 </button>
               )}
-              {isMine && (
-                <button
-                  className="is-danger"
-                  type="button"
-                  disabled={messageActionPending}
-                  onClick={() => onRevokeClick(message)}
-                >
-                  {t('revokeMessage')}
-                </button>
-              )}
+              <button
+                className="is-danger"
+                type="button"
+                disabled={messageActionPending}
+                onClick={() => onRevokeClick(message)}
+              >
+                {t('revokeMessage')}
+              </button>
             </div>
           )
         )}
