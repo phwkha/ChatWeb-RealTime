@@ -135,4 +135,53 @@ describe('useConversationMessages', () => {
 
     expect(apiClient.apiRequest).toHaveBeenCalledTimes(1)
   })
+
+  it('provides scrollToBottom function and does not trigger loadOlderConversation during initial load', async () => {
+    const user = { username: 'alice' }
+    const selectedUser = { username: 'bob' }
+
+    const { result } = renderHook(() =>
+      useConversationMessages({
+        user,
+        selectedUser,
+        activeSection: 'chat',
+        connectionState: 'connected',
+        blockedMessageIntervals: {},
+        sendPrivateMessage: vi.fn(),
+        sendTypingStatus: vi.fn(),
+        sendReactionControl: vi.fn(),
+        showToast: vi.fn(),
+        t: (k) => k,
+        selectedUserIsTyping: false,
+      })
+    )
+
+    expect(typeof result.current.scrollToBottom).toBe('function')
+
+    const mockStream = {
+      scrollHeight: 1000,
+      scrollTop: 0,
+      clientHeight: 400,
+      scrollTo: vi.fn(),
+    }
+    result.current.messageStreamRef.current = mockStream
+
+    result.current.scrollToBottom(true)
+    expect(mockStream.scrollTop).toBe(1000)
+
+    // Simulate scroll event near top while initial load is still flagged
+    result.current.initialLoadScrollRef.current = true
+    result.current.handleMessageStreamScroll({ currentTarget: { scrollTop: 10 } })
+
+    // Initial load fetch was called once
+    expect(apiClient.apiRequest).toHaveBeenCalledTimes(1)
+    expect(apiClient.apiRequest).toHaveBeenCalledWith(
+      expect.stringContaining('/api/messages/private?user2=bob')
+    )
+
+    // Should NOT call loadOlderConversation API (no cursor query param)
+    expect(apiClient.apiRequest).not.toHaveBeenCalledWith(
+      expect.stringContaining('cursor=')
+    )
+  })
 })

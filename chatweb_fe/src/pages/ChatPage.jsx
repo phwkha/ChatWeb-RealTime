@@ -173,6 +173,7 @@ function ChatPage() {
     if (friend?.username) {
       markAsRead(friend.username, true)
       sendRealtimeReceipt(friend.username, 'READ')
+      messagesState.scrollToBottom(true)
     }
   }, [closeContextMenu, markAsRead, messagesState, sendRealtimeReceipt])
 

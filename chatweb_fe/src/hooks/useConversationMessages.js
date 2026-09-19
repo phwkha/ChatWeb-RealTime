@@ -101,9 +101,30 @@ export function useConversationMessages({
     })
   }, [currentUsernameKey])
 
+  const scrollToBottom = useCallback((instant = true) => {
+    const stream = messageStreamRef.current
+    if (!stream) return
+    if (instant) {
+      stream.scrollTop = stream.scrollHeight
+    } else {
+      stream.scrollTo({ top: stream.scrollHeight, behavior: 'smooth' })
+    }
+    window.requestAnimationFrame(() => {
+      if (messageStreamRef.current) {
+        messageStreamRef.current.scrollTop = messageStreamRef.current.scrollHeight
+      }
+    })
+    window.setTimeout(() => {
+      if (messageStreamRef.current) {
+        messageStreamRef.current.scrollTop = messageStreamRef.current.scrollHeight
+      }
+    }, 60)
+  }, [])
+
   const loadConversation = useCallback(async (person, silent = false, cursor = null) => {
     if (!person || !user) return
-    if (!cursor) initialLoadScrollRef.current = true
+    const isInitialLoad = !cursor
+    if (isInitialLoad) initialLoadScrollRef.current = true
     if (!silent) setLoadingConversation(true)
     try {
       const fetchConversationPage = async (size) => {
@@ -134,6 +155,7 @@ export function useConversationMessages({
       }))
       return visibleHistory.length
     } catch (error) {
+      if (isInitialLoad) initialLoadScrollRef.current = false
       if (!silent || cursor) showToast(getErrorMessage(error, t('errorGeneric')), 'error')
       return -1
     } finally {
@@ -142,13 +164,13 @@ export function useConversationMessages({
   }, [blockedMessageIntervals, showToast, t, user])
 
   useEffect(() => {
-    if (!selectedUser?.username) {
+    if (!selectedUser?.username || (activeSection && activeSection !== 'chat')) {
       lastLoadedUsernameRef.current = null
       scrolledToBottomForUserRef.current = null
       initialLoadScrollRef.current = false
       preserveScrollHeightRef.current = null
     }
-  }, [selectedUser?.username])
+  }, [activeSection, selectedUser?.username])
 
   useEffect(() => {
     const targetUsername = selectedUser?.username
@@ -186,7 +208,7 @@ export function useConversationMessages({
 
   const handleMessageStreamScroll = useCallback((event) => {
     if (scrolledToBottomForUserRef.current !== selectedRef.current?.username) return
-    if (loadingConversation || loadingOlderMessagesRef.current) return
+    if (loadingConversation || loadingOlderMessagesRef.current || initialLoadScrollRef.current) return
     if (event.currentTarget.scrollTop <= 80) void loadOlderConversation()
   }, [loadingConversation, loadOlderConversation])
 
@@ -203,24 +225,25 @@ export function useConversationMessages({
       return
     }
 
-    if (scrolledToBottomForUserRef.current !== targetUsername) {
+    const needsScrollToBottom = scrolledToBottomForUserRef.current !== targetUsername || initialLoadScrollRef.current
+
+    if (needsScrollToBottom) {
       const hasMessages = activeMessages.length > 0
       const isDoneLoading = !loadingConversation && conversationPages[targetUsername] !== undefined
       if (hasMessages || isDoneLoading) {
         stream.scrollTop = stream.scrollHeight
-        if (messagesEndRef.current) {
-          messagesEndRef.current.scrollIntoView({ behavior: 'instant' })
-        }
         window.requestAnimationFrame(() => {
-          if (stream) {
-            stream.scrollTop = stream.scrollHeight
-          }
-          if (messagesEndRef.current) {
-            messagesEndRef.current.scrollIntoView({ behavior: 'instant' })
+          if (messageStreamRef.current) {
+            messageStreamRef.current.scrollTop = messageStreamRef.current.scrollHeight
           }
           scrolledToBottomForUserRef.current = targetUsername
           initialLoadScrollRef.current = false
         })
+        window.setTimeout(() => {
+          if (messageStreamRef.current && selectedRef.current?.username === targetUsername) {
+            messageStreamRef.current.scrollTop = messageStreamRef.current.scrollHeight
+          }
+        }, 60)
       }
       return
     }
@@ -310,6 +333,7 @@ export function useConversationMessages({
       [selectedUser.username]: upsertMessage(current[selectedUser.username] || [], optimisticMessage),
     }))
     setMessageDraft('')
+    scrollToBottom(true)
     const sent = sendPrivateMessage({
       recipient: selectedUser.username, content, contentType: 'TEXT', messageType: 'CHAT', localId,
     })
@@ -625,6 +649,7 @@ export function useConversationMessages({
     messageInputRef,
     messagesByUserRef,
     initialLoadScrollRef,
+    scrollToBottom,
     loadConversation,
     loadOlderConversation,
     handleMessageStreamScroll,
