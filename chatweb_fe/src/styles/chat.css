@@ -299,7 +299,7 @@ body:has(.chat-app) { overflow: hidden; background: var(--cw-canvas); }
 .connection-pill i { width: 6px; height: 6px; border-radius: 50%; background: #f1a15f; }
 .connection-pill--connected i { background: var(--cw-green); }
 .connection-pill--disconnected i { background: #f06767; }
-.message-stream { min-height: 0; padding: 28px max(28px, 7vw) 88px; overflow-y: auto; flex: 1; scroll-behavior: smooth; }
+.message-stream { min-height: 0; padding: 28px max(28px, 7vw) 88px; overflow-y: auto; flex: 1; }
 .message-row { display: flex; margin-top: 14px; align-items: flex-end; gap: 8px; }
 .message-row.is-mine { justify-content: flex-end; }
 .message-row.is-grouped { margin-top: 4px; padding-left: 35px; }

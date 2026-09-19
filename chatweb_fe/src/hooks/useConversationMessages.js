@@ -16,6 +16,7 @@ import {
 export function useConversationMessages({
   user,
   selectedUser,
+  activeSection = 'chat',
   connectionState,
   blockedMessageIntervals,
   sendPrivateMessage,
@@ -57,6 +58,8 @@ export function useConversationMessages({
   const messageInputRef = useRef(null)
   const typingPublishTimersRef = useRef(new Map())
   const typingLastSentRef = useRef(new Map())
+  const lastLoadedUsernameRef = useRef(null)
+  const scrolledToBottomForUserRef = useRef(null)
 
   const currentUsernameKey = String(user?.username || '').trim().toLocaleLowerCase('en-US')
   const selectedUsername = selectedUser?.username || ''
@@ -138,6 +141,31 @@ export function useConversationMessages({
     }
   }, [blockedMessageIntervals, showToast, t, user])
 
+  useEffect(() => {
+    if (!selectedUser?.username) {
+      lastLoadedUsernameRef.current = null
+      scrolledToBottomForUserRef.current = null
+      initialLoadScrollRef.current = false
+      preserveScrollHeightRef.current = null
+    }
+  }, [selectedUser?.username])
+
+  useEffect(() => {
+    const targetUsername = selectedUser?.username
+    if (!targetUsername || !user?.username) return
+    if (activeSection && activeSection !== 'chat') return
+
+    if (lastLoadedUsernameRef.current === targetUsername) return
+    lastLoadedUsernameRef.current = targetUsername
+
+    preserveScrollHeightRef.current = null
+    scrolledToBottomForUserRef.current = null
+    initialLoadScrollRef.current = true
+
+    const hasCached = Boolean(messagesByUserRef.current[targetUsername]?.length)
+    void loadConversation(selectedUser, hasCached)
+  }, [activeSection, loadConversation, selectedUser, selectedUser?.username, user?.username])
+
   const loadOlderConversation = useCallback(async () => {
     const person = selectedRef.current
     const page = conversationPages[person?.username]
@@ -157,32 +185,51 @@ export function useConversationMessages({
   }, [conversationPages, loadConversation])
 
   const handleMessageStreamScroll = useCallback((event) => {
-    if (initialLoadScrollRef.current) return
+    if (scrolledToBottomForUserRef.current !== selectedRef.current?.username) return
+    if (loadingConversation || loadingOlderMessagesRef.current) return
     if (event.currentTarget.scrollTop <= 80) void loadOlderConversation()
-  }, [loadOlderConversation])
+  }, [loadingConversation, loadOlderConversation])
 
   useEffect(() => {
+    const stream = messageStreamRef.current
+    if (!stream) return
+    const targetUsername = selectedUser?.username
+    if (!targetUsername) return
+
     const preserved = preserveScrollHeightRef.current
-    if (preserved && messageStreamRef.current) {
-      messageStreamRef.current.scrollTop = preserved.top
-        + messageStreamRef.current.scrollHeight - preserved.height
+    if (preserved) {
+      stream.scrollTop = preserved.top + stream.scrollHeight - preserved.height
       preserveScrollHeightRef.current = null
       return
     }
-    const isInitialLoad = initialLoadScrollRef.current
-    const stream = messageStreamRef.current
-    if (stream) {
-      stream.scrollTo({ top: stream.scrollHeight, behavior: isInitialLoad ? 'instant' : 'smooth' })
-    }
-    if (isInitialLoad) {
-      initialLoadScrollRef.current = false
+
+    if (scrolledToBottomForUserRef.current !== targetUsername) {
+      const hasMessages = activeMessages.length > 0
+      const isDoneLoading = !loadingConversation && conversationPages[targetUsername] !== undefined
+      if (hasMessages || isDoneLoading) {
+        stream.scrollTop = stream.scrollHeight
+        if (messagesEndRef.current) {
+          messagesEndRef.current.scrollIntoView({ behavior: 'instant' })
+        }
+        window.requestAnimationFrame(() => {
+          if (stream) {
+            stream.scrollTop = stream.scrollHeight
+          }
+          if (messagesEndRef.current) {
+            messagesEndRef.current.scrollIntoView({ behavior: 'instant' })
+          }
+          scrolledToBottomForUserRef.current = targetUsername
+          initialLoadScrollRef.current = false
+        })
+      }
       return
     }
-    if (messageStreamRef.current?.scrollHeight <= messageStreamRef.current?.clientHeight
-      && conversationPages[selectedUser?.username]?.hasMore) {
-      void loadOlderConversation()
+
+    const isNearBottom = stream.scrollHeight - stream.scrollTop - stream.clientHeight < 250
+    if (isNearBottom) {
+      stream.scrollTo({ top: stream.scrollHeight, behavior: 'smooth' })
     }
-  }, [activeMessages.length, conversationPages, loadOlderConversation, selectedUser?.username, selectedUserIsTyping])
+  }, [activeMessages.length, conversationPages, loadingConversation, selectedUser?.username, selectedUserIsTyping])
 
   useEffect(() => {
     if (!reactionPickerMessageId && !detailMessageId && !editHistoryMessageId && !emojiPickerOpen) return undefined

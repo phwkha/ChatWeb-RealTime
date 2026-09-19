@@ -309,7 +309,7 @@ export function useChatRealtime({
   }, [loadWorldHistory])
 
   useEffect(() => {
-    const selected = selectedRef.current
+    const selected = selectedUser
     const username = selected?.username
     if (activeSection !== 'chat' || !selected || !username) return
     const blocked = isIncomingMessageBlocked(blockedMessageIntervals, currentUser?.username, username)
@@ -317,7 +317,7 @@ export function useChatRealtime({
       markAsRead(username)
       sendRealtimeReceipt(username, 'READ')
     }
-  }, [activeSection, blockedMessageIntervals, currentUser?.username, isActivelyViewingConversation, markAsRead, sendRealtimeReceipt])
+  }, [activeSection, blockedMessageIntervals, currentUser?.username, isActivelyViewingConversation, markAsRead, selectedUser, selectedUser?.username, sendRealtimeReceipt])
 
   useEffect(() => {
     const markVisibleAsRead = () => {

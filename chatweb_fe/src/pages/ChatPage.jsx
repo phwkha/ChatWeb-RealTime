@@ -121,7 +121,7 @@ function ChatPage() {
   const selectedUserIsTyping = Boolean(typingUsers[selectedUsername])
 
   const messagesState = useConversationMessages({
-    user: currentUser, selectedUser, connectionState, blockedMessageIntervals,
+    user: currentUser, selectedUser, activeSection, connectionState, blockedMessageIntervals,
     sendPrivateMessage, sendTypingStatus, sendReactionControl, showToast, t,
     selectedUserIsTyping,
   })
