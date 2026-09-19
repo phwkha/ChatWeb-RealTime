@@ -54,4 +54,4 @@ The documentation suite is structured into three specialized domains:
 | **Ingress & Security** | Nginx Alpine, Upstream TLS (Private CA `rootCA.crt`), IP Rate Limiting, API Idempotency |
 | **Frontend SPA** | React 19, Vite 8, Modular CSS, STOMP.js |
 | **Observability** | ELK Stack (Filebeat, Logstash, Elasticsearch, Kibana), Prometheus, Grafana |
-| **Containerization & CI/CD**| Docker, Docker Compose, Google Jib, Jenkins Pipeline |
+| **Containerization & CI/CD**| Docker, Docker Compose, Google Jib, GitHub Actions |
