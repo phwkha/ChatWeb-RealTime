@@ -258,7 +258,7 @@ body:has(.chat-app) { overflow: hidden; background: var(--cw-canvas); }
   border-bottom: 1px solid #e9e7f8;
   background: linear-gradient(90deg, #f0edff, #f9f8ff 60%, #f0edff);
   color: #615778;
-  cursor: pointer;
+  cursor: default;
   text-align: left;
   overflow: hidden;
   flex: 0 0 46px;

@@ -74,7 +74,7 @@ export const ChatArea = React.memo(function ChatArea({
 
   return (
     <section className={`chat-main${activeSection !== 'chat' ? ' is-section-hidden' : ''}`}>
-      <button className="world-ticker" type="button" onClick={onOpenWorld}>
+      <div className="world-ticker" role="region" aria-label={t('worldShort')}>
         <span className="world-ticker__icon">
           <ChatIcon name="globe" size={17} />
         </span>
@@ -88,8 +88,7 @@ export const ChatArea = React.memo(function ChatArea({
             <span>{latestWorldMessage?.content || t('worldEmpty')}</span>
           </span>
         </span>
-        <ChatIcon name="history" size={17} />
-      </button>
+      </div>
 
       {selectedUser ? (
         <>
