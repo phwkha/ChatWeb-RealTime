@@ -18,6 +18,7 @@ export function useChatConnections({
   const [blockedUsers, setBlockedUsers] = useState([])
   const [blockedMessageIntervals, setBlockedMessageIntervals] = useState(readBlockedMessageIntervals)
   const [actionPending, setActionPending] = useState(false)
+  const [connectionsLoaded, setConnectionsLoaded] = useState(false)
 
   const friendSyncTimersRef = useRef([])
   const currentUsernameKey = String(currentUser?.username || '').trim().toLocaleLowerCase('en-US')
@@ -28,16 +29,20 @@ export function useChatConnections({
   }, [])
 
   const loadConnections = useCallback(async () => {
-    const [friendsRes, requestsRes, sentRes, blockedRes] = await Promise.allSettled([
-      apiRequest('/api/friends?size=100'),
-      apiRequest('/api/friends/requests?size=100'),
-      apiRequest('/api/friends/sent?size=100'),
-      apiRequest('/api/friends/blocked?size=100'),
-    ])
-    if (friendsRes.status === 'fulfilled') setFriends(friendsRes.value?.data?.content || [])
-    if (requestsRes.status === 'fulfilled') setFriendRequests(requestsRes.value?.data?.content || [])
-    if (sentRes.status === 'fulfilled') setSentRequests(sentRes.value?.data?.content || [])
-    if (blockedRes.status === 'fulfilled') setBlockedUsers(blockedRes.value?.data?.content || [])
+    try {
+      const [friendsRes, requestsRes, sentRes, blockedRes] = await Promise.allSettled([
+        apiRequest('/api/friends?size=100'),
+        apiRequest('/api/friends/requests?size=100'),
+        apiRequest('/api/friends/sent?size=100'),
+        apiRequest('/api/friends/blocked?size=100'),
+      ])
+      if (friendsRes.status === 'fulfilled') setFriends(friendsRes.value?.data?.content || [])
+      if (requestsRes.status === 'fulfilled') setFriendRequests(requestsRes.value?.data?.content || [])
+      if (sentRes.status === 'fulfilled') setSentRequests(sentRes.value?.data?.content || [])
+      if (blockedRes.status === 'fulfilled') setBlockedUsers(blockedRes.value?.data?.content || [])
+    } finally {
+      setConnectionsLoaded(true)
+    }
   }, [])
 
   const scheduleConnectionSync = useCallback(() => {
@@ -175,6 +180,7 @@ export function useChatConnections({
   return {
     friends,
     setFriends,
+    connectionsLoaded,
     friendRequests,
     setFriendRequests,
     sentRequests,
