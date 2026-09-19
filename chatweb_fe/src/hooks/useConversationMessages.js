@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { apiRequest, generateUUID, getErrorMessage } from '../services/apiClient.js'
 import {
   getMediaContentType,
+  isMessageDeleted,
   mergeMessageLists,
   messageEditHistoryKey,
   readMessageEditHistory,
@@ -43,6 +44,9 @@ export function useConversationMessages({
   const [editingMessageContent, setEditingMessageContent] = useState('')
   const [messageActionPending, setMessageActionPending] = useState(false)
   const [revokeTargetMessage, setRevokeTargetMessage] = useState(null)
+  const [replyingToMessage, setReplyingToMessage] = useState(null)
+  const [replyMessageCache, setReplyMessageCache] = useState({})
+  const [highlightedMessageId, setHighlightedMessageId] = useState(null)
 
   const selectedRef = useRef(selectedUser)
   const messagesByUserRef = useRef({})
@@ -60,6 +64,9 @@ export function useConversationMessages({
   const typingLastSentRef = useRef(new Map())
   const lastLoadedUsernameRef = useRef(null)
   const scrolledToBottomForUserRef = useRef(null)
+  const replyCacheRef = useRef(new Map())
+  const fetchingReplyIdsRef = useRef(new Set())
+  const highlightTimeoutRef = useRef(null)
 
   const currentUsernameKey = String(user?.username || '').trim().toLocaleLowerCase('en-US')
   const selectedUsername = selectedUser?.username || ''
@@ -120,6 +127,125 @@ export function useConversationMessages({
       }
     }, 60)
   }, [])
+
+  const beginReply = useCallback((message) => {
+    if (!message || !message.id || isMessageDeleted(message)) return
+    setReplyingToMessage(message)
+    window.requestAnimationFrame(() => {
+      messageInputRef.current?.focus()
+    })
+  }, [])
+
+  const cancelReply = useCallback(() => {
+    setReplyingToMessage(null)
+  }, [])
+
+  useEffect(() => {
+    if (replyingToMessage) {
+      window.requestAnimationFrame(() => {
+        messageInputRef.current?.focus()
+      })
+    }
+  }, [replyingToMessage])
+
+  useEffect(() => {
+    setReplyingToMessage(null)
+  }, [selectedUser?.username])
+
+  const fetchReplyMessage = useCallback(async (replyToId) => {
+    if (!replyToId) return null
+    const cacheKey = String(replyToId)
+    if (replyCacheRef.current.has(cacheKey)) {
+      return replyCacheRef.current.get(cacheKey)
+    }
+    const targetUsername = selectedRef.current?.username
+    const foundInActive = targetUsername
+      ? messagesByUserRef.current[targetUsername]?.find((m) => String(m.id) === cacheKey)
+      : null
+    if (foundInActive) {
+      replyCacheRef.current.set(cacheKey, foundInActive)
+      setReplyMessageCache((prev) => ({ ...prev, [cacheKey]: foundInActive }))
+      return foundInActive
+    }
+    if (fetchingReplyIdsRef.current.has(cacheKey)) {
+      return null
+    }
+    fetchingReplyIdsRef.current.add(cacheKey)
+    try {
+      const response = await apiRequest(`/api/messages/${cacheKey}`)
+      const fetched = response?.data || null
+      if (fetched) {
+        if (replyCacheRef.current.size >= 500) {
+          const oldest = replyCacheRef.current.keys().next().value
+          if (oldest) replyCacheRef.current.delete(oldest)
+        }
+        replyCacheRef.current.set(cacheKey, fetched)
+        setReplyMessageCache((prev) => ({ ...prev, [cacheKey]: fetched }))
+        return fetched
+      } else {
+        const placeholder = { id: cacheKey, notFound: true }
+        replyCacheRef.current.set(cacheKey, placeholder)
+        setReplyMessageCache((prev) => ({ ...prev, [cacheKey]: placeholder }))
+        return placeholder
+      }
+    } catch {
+      const placeholder = { id: cacheKey, notFound: true }
+      replyCacheRef.current.set(cacheKey, placeholder)
+      setReplyMessageCache((prev) => ({ ...prev, [cacheKey]: placeholder }))
+      return placeholder
+    } finally {
+      fetchingReplyIdsRef.current.delete(cacheKey)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!activeMessages.length) return
+    const existingIds = new Set(activeMessages.map((m) => m.id ? String(m.id) : null).filter(Boolean))
+    const missingIds = activeMessages
+      .map((m) => m.replyToId ? String(m.replyToId) : null)
+      .filter((id) => (
+        Boolean(id) &&
+        !existingIds.has(id) &&
+        !replyCacheRef.current.has(id) &&
+        !fetchingReplyIdsRef.current.has(id)
+      ))
+
+    if (!missingIds.length) return
+    const uniqueMissing = [...new Set(missingIds)]
+    uniqueMissing.forEach((id) => {
+      void fetchReplyMessage(id)
+    })
+  }, [activeMessages, fetchReplyMessage])
+
+  useEffect(() => {
+    if (!activeMessages.length) return
+    activeMessages.forEach((msg) => {
+      if (msg.id && replyCacheRef.current.has(String(msg.id))) {
+        const key = String(msg.id)
+        const cached = replyCacheRef.current.get(key)
+        if (cached && (cached.content !== msg.content || isMessageDeleted(cached) !== isMessageDeleted(msg))) {
+          replyCacheRef.current.set(key, msg)
+          setReplyMessageCache((prev) => ({ ...prev, [key]: msg }))
+        }
+      }
+    })
+  }, [activeMessages])
+
+  const scrollToQuotedMessage = useCallback((replyToId) => {
+    if (!replyToId) return
+    const targetId = String(replyToId)
+    const el = document.getElementById(`chat-message-${targetId}`)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      window.clearTimeout(highlightTimeoutRef.current)
+      setHighlightedMessageId(targetId)
+      highlightTimeoutRef.current = window.setTimeout(() => {
+        setHighlightedMessageId(null)
+      }, 1800)
+    } else {
+      showToast(t('originalMessageNotFound'))
+    }
+  }, [showToast, t])
 
   const loadConversation = useCallback(async (person, silent = false, cursor = null) => {
     if (!person || !user) return
@@ -255,7 +381,7 @@ export function useConversationMessages({
   }, [activeMessages.length, conversationPages, loadingConversation, selectedUser?.username, selectedUserIsTyping])
 
   useEffect(() => {
-    if (!reactionPickerMessageId && !detailMessageId && !editHistoryMessageId && !emojiPickerOpen) return undefined
+    if (!reactionPickerMessageId && !detailMessageId && !editHistoryMessageId && !emojiPickerOpen && !replyingToMessage) return undefined
     const closePicker = (event) => {
       if (!event.target.closest('.message-reaction-anchor')) {
         setReactionPickerMessageId(null)
@@ -266,10 +392,19 @@ export function useConversationMessages({
     }
     const closeOnEscape = (event) => {
       if (event.key === 'Escape') {
-        setReactionPickerMessageId(null)
-        setDetailMessageId(null)
-        setEditHistoryMessageId(null)
-        setEmojiPickerOpen(false)
+        if (emojiPickerOpen) {
+          setEmojiPickerOpen(false)
+          return
+        }
+        if (reactionPickerMessageId || detailMessageId || editHistoryMessageId) {
+          setReactionPickerMessageId(null)
+          setDetailMessageId(null)
+          setEditHistoryMessageId(null)
+          return
+        }
+        if (replyingToMessage) {
+          setReplyingToMessage(null)
+        }
       }
     }
     document.addEventListener('pointerdown', closePicker)
@@ -278,7 +413,7 @@ export function useConversationMessages({
       document.removeEventListener('pointerdown', closePicker)
       document.removeEventListener('keydown', closeOnEscape)
     }
-  }, [detailMessageId, editHistoryMessageId, emojiPickerOpen, reactionPickerMessageId])
+  }, [detailMessageId, editHistoryMessageId, emojiPickerOpen, reactionPickerMessageId, replyingToMessage])
 
   const trackOutgoingMessage = useCallback((recipient, localId) => {
     const cutoff = Date.now() - 15000
@@ -324,18 +459,27 @@ export function useConversationMessages({
     typingLastSentRef.current.delete(selectedUser.username)
     sendTypingStatus(selectedUser.username, false)
     const localId = generateUUID()
+    const replyToId = replyingToMessage?.id ? String(replyingToMessage.id) : null
+    if (replyingToMessage?.id) {
+      const key = String(replyingToMessage.id)
+      replyCacheRef.current.set(key, replyingToMessage)
+      setReplyMessageCache((prev) => ({ ...prev, [key]: replyingToMessage }))
+    }
     const optimisticMessage = {
       localId, sender: user.username, recipient: selectedUser.username, content,
       contentType: 'TEXT', messageType: 'CHAT', timestamp: new Date().toISOString(), status: 'SENDING',
+      replyToId,
     }
     setMessagesByUser((current) => ({
       ...current,
       [selectedUser.username]: upsertMessage(current[selectedUser.username] || [], optimisticMessage),
     }))
     setMessageDraft('')
+    setReplyingToMessage(null)
     scrollToBottom(true)
     const sent = sendPrivateMessage({
       recipient: selectedUser.username, content, contentType: 'TEXT', messageType: 'CHAT', localId,
+      replyToId,
     })
     if (sent) trackOutgoingMessage(selectedUser.username, localId)
     if (!sent) {
@@ -377,6 +521,7 @@ export function useConversationMessages({
       fileName: message.fileName || null,
       fileSize: message.fileSize || null,
       localId: retryLocalId,
+      replyToId: message.replyToId || null,
     })
     if (sent) trackOutgoingMessage(selectedUser.username, retryLocalId)
     setMessagesByUser((current) => ({
@@ -422,6 +567,13 @@ export function useConversationMessages({
       if (!fileUrl) throw new Error(t('uploadFailed'))
 
       const localId = generateUUID()
+      const replyToId = replyingToMessage?.id ? String(replyingToMessage.id) : null
+      if (replyingToMessage?.id) {
+        const key = String(replyingToMessage.id)
+        replyCacheRef.current.set(key, replyingToMessage)
+        setReplyMessageCache((prev) => ({ ...prev, [key]: replyingToMessage }))
+      }
+      setReplyingToMessage(null)
       const mediaMessage = {
         localId,
         sender: user.username,
@@ -434,6 +586,7 @@ export function useConversationMessages({
         fileSize: file.size,
         timestamp: new Date().toISOString(),
         status: 'SENDING',
+        replyToId,
       }
       setMessagesByUser((current) => ({
         ...current,
@@ -449,6 +602,7 @@ export function useConversationMessages({
         fileName: file.name,
         fileSize: file.size,
         localId,
+        replyToId,
       })
       if (sent) trackOutgoingMessage(targetUser.username, localId)
       setMessagesByUser((current) => ({
@@ -571,6 +725,13 @@ export function useConversationMessages({
         ...current,
         [selectedUser.username]: upsertMessage(current[selectedUser.username] || [], updated),
       }))
+      if (message.id) {
+        const idKey = String(message.id)
+        if (replyCacheRef.current.has(idKey)) {
+          replyCacheRef.current.set(idKey, updated)
+          setReplyMessageCache((prev) => ({ ...prev, [idKey]: updated }))
+        }
+      }
       setEditingMessageId(null)
       setEditingMessageContent('')
       showToast(response?.message || t('messageEdited'))
@@ -590,6 +751,13 @@ export function useConversationMessages({
         method: 'DELETE', body: { messageId: message.id, recipient: selectedUser.username },
       })
       const revoked = { ...message, content: '', fileUrl: null, fileName: null, deleted: true, isDeleted: true, reactions: null }
+      if (message.id) {
+        const idKey = String(message.id)
+        if (replyCacheRef.current.has(idKey)) {
+          replyCacheRef.current.set(idKey, revoked)
+          setReplyMessageCache((prev) => ({ ...prev, [idKey]: revoked }))
+        }
+      }
       setMessagesByUser((current) => ({
         ...current,
         [selectedUser.username]: upsertMessage(current[selectedUser.username] || [], revoked),
@@ -611,6 +779,7 @@ export function useConversationMessages({
       rateLimitResetTimers.forEach((timer) => window.clearTimeout(timer))
       typingPublishTimers.forEach((timer) => window.clearTimeout(timer))
       typingLastSent.clear()
+      window.clearTimeout(highlightTimeoutRef.current)
     }
   }, [])
 
@@ -643,6 +812,14 @@ export function useConversationMessages({
     messageActionPending,
     revokeTargetMessage,
     setRevokeTargetMessage,
+    replyingToMessage,
+    setReplyingToMessage,
+    beginReply,
+    cancelReply,
+    replyMessageCache,
+    fetchReplyMessage,
+    highlightedMessageId,
+    scrollToQuotedMessage,
     messageStreamRef,
     messagesEndRef,
     mediaInputRef,

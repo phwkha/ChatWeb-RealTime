@@ -1,6 +1,6 @@
 import React from 'react'
 import ChatIcon from './ChatIcon.jsx'
-import { REACTION_OPTIONS } from './chatUtils.js'
+import { REACTION_OPTIONS, isMessageDeleted } from './chatUtils.js'
 
 export const MessageContextMenu = React.memo(function MessageContextMenu({
   menu,
@@ -12,6 +12,7 @@ export const MessageContextMenu = React.memo(function MessageContextMenu({
   onClose,
   onToggleReaction,
   onCopy,
+  onReply,
   onBeginEdit,
   onRevoke,
 }) {
@@ -49,6 +50,19 @@ export const MessageContextMenu = React.memo(function MessageContextMenu({
         ))}
       </div>
       <span className="message-context-menu__divider" />
+      {!isMessageDeleted(message) && Boolean(message.id) && (
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => {
+            onClose()
+            onReply?.(message)
+          }}
+        >
+          <ChatIcon name="reply" size={16} />
+          <span>{t('reply')}</span>
+        </button>
+      )}
       {Boolean(message.content) && (
         <button type="button" role="menuitem" onClick={() => void onCopy(message)}>
           <ChatIcon name="copy" size={16} />

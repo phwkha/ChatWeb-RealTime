@@ -39,8 +39,22 @@ export const MessageStream = React.memo(function MessageStream({
   onBeginEdit,
   onSaveEdit,
   onRevokeMessage,
+  onReply,
+  onQuoteClick,
+  replyMessageCache = {},
+  highlightedMessageId = null,
+  onFetchReplyMessage,
   children,
 }) {
+  const messagesById = React.useMemo(() => {
+    const map = new Map()
+    for (let i = 0; i < activeMessages.length; i++) {
+      const m = activeMessages[i]
+      if (m.id) map.set(String(m.id), m)
+    }
+    return map
+  }, [activeMessages])
+
   return (
     <div className="message-stream" ref={messageStreamRef} onScroll={onScroll}>
       {loadingConversation && (
@@ -79,6 +93,10 @@ export const MessageStream = React.memo(function MessageStream({
         const editHistory = message.id
           ? (messageEditHistory[messageEditHistoryKey(user?.username, message.id)] || [])
           : []
+        const replyKey = message.replyToId ? String(message.replyToId) : null
+        const quotedMessage = replyKey
+          ? (messagesById.get(replyKey) || replyMessageCache[replyKey] || null)
+          : null
 
         return (
           <MessageItem
@@ -89,7 +107,8 @@ export const MessageStream = React.memo(function MessageStream({
             user={user}
             isMine={isMine}
             isGrouped={isGrouped}
-            isSearchTarget={searchTargetMessageId === message.id}
+            isSearchTarget={Boolean(searchTargetMessageId && String(searchTargetMessageId) === String(message.id))}
+            isHighlighted={Boolean(highlightedMessageId && String(highlightedMessageId) === String(message.id))}
             showActions={showActions}
             showDetails={showDetails}
             isReactionPickerOpen={reactionPickerMessageId === messageKey}
@@ -101,8 +120,12 @@ export const MessageStream = React.memo(function MessageStream({
             connectionState={connectionState}
             language={language}
             editHistory={editHistory}
+            quotedMessage={quotedMessage}
             t={t}
             onContextMenu={onContextMenu}
+            onReply={onReply}
+            onQuoteClick={onQuoteClick}
+            onFetchReplyMessage={onFetchReplyMessage}
             onBubbleClick={(key) => {
               setReactionPickerMessageId((current) => current === key ? null : key)
               setDetailMessageId((current) => current === key ? null : key)

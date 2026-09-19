@@ -56,6 +56,13 @@ export const ChatArea = React.memo(function ChatArea({
     setEditingMessageContent,
     messageActionPending,
     setRevokeTargetMessage,
+    replyingToMessage,
+    beginReply,
+    cancelReply,
+    replyMessageCache,
+    fetchReplyMessage,
+    highlightedMessageId,
+    scrollToQuotedMessage,
     messageStreamRef,
     messagesEndRef,
     mediaInputRef,
@@ -143,6 +150,11 @@ export const ChatArea = React.memo(function ChatArea({
             onBeginEdit={beginMessageEdit}
             onSaveEdit={saveMessageEdit}
             onRevokeMessage={setRevokeTargetMessage}
+            onReply={beginReply}
+            onQuoteClick={scrollToQuotedMessage}
+            replyMessageCache={replyMessageCache}
+            highlightedMessageId={highlightedMessageId}
+            onFetchReplyMessage={fetchReplyMessage}
           >
             <MessageContextMenu
               menu={contextMenu}
@@ -152,6 +164,7 @@ export const ChatArea = React.memo(function ChatArea({
               messageActionPending={messageActionPending}
               onClose={closeContextMenu}
               onToggleReaction={toggleReaction}
+              onReply={beginReply}
               onCopy={async (m) => {
                 try {
                   if (!m?.content || !navigator.clipboard) throw new Error()
@@ -175,6 +188,10 @@ export const ChatArea = React.memo(function ChatArea({
             emojiPickerOpen={emojiPickerOpen}
             mediaInputRef={mediaInputRef}
             messageInputRef={messageInputRef}
+            replyingToMessage={replyingToMessage}
+            currentUser={currentUser}
+            selectedUser={selectedUser}
+            onCancelReply={cancelReply}
             t={t}
             onSubmit={submitMessage}
             onDraftChange={handleDraftChange}

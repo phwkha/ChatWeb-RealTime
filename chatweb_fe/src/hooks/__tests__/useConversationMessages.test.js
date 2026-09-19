@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from '@testing-library/react'
+import { renderHook, waitFor, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { useConversationMessages } from '../useConversationMessages.js'
 import * as apiClient from '../../services/apiClient.js'
@@ -183,5 +183,180 @@ describe('useConversationMessages', () => {
     expect(apiClient.apiRequest).not.toHaveBeenCalledWith(
       expect.stringContaining('cursor=')
     )
+  })
+
+  it('manages reply state and sends replyToId on submit', async () => {
+    const user = { username: 'alice' }
+    const selectedUser = { username: 'bob' }
+    const sendPrivateMessage = vi.fn().mockReturnValue(true)
+
+    const { result } = renderHook(() =>
+      useConversationMessages({
+        user,
+        selectedUser,
+        activeSection: 'chat',
+        connectionState: 'connected',
+        blockedMessageIntervals: {},
+        sendPrivateMessage,
+        sendTypingStatus: vi.fn(),
+        sendReactionControl: vi.fn(),
+        showToast: vi.fn(),
+        t: (k) => k,
+        selectedUserIsTyping: false,
+      })
+    )
+
+    const parentMessage = { id: 'msg-parent', sender: 'bob', content: 'What time?' }
+    act(() => {
+      result.current.beginReply(parentMessage)
+    })
+    expect(result.current.replyingToMessage).toEqual(parentMessage)
+
+    // Draft a message
+    act(() => {
+      result.current.setMessageDraft('At 3 PM')
+    })
+
+    // Submit the message
+    await act(async () => {
+      await result.current.submitMessage({ preventDefault: () => {} })
+    })
+
+    expect(sendPrivateMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: 'At 3 PM',
+        recipient: 'bob',
+        replyToId: 'msg-parent',
+      })
+    )
+    expect(result.current.replyingToMessage).toBeNull()
+  })
+
+  it('cancels reply via cancelReply', () => {
+    const user = { username: 'alice' }
+    const selectedUser = { username: 'bob' }
+
+    const { result } = renderHook(() =>
+      useConversationMessages({
+        user,
+        selectedUser,
+        activeSection: 'chat',
+        connectionState: 'connected',
+        blockedMessageIntervals: {},
+        sendPrivateMessage: vi.fn(),
+        sendTypingStatus: vi.fn(),
+        sendReactionControl: vi.fn(),
+        showToast: vi.fn(),
+        t: (k) => k,
+        selectedUserIsTyping: false,
+      })
+    )
+
+    act(() => {
+      result.current.beginReply({ id: 'msg-1', content: 'Hello' })
+    })
+    expect(result.current.replyingToMessage).not.toBeNull()
+
+    act(() => {
+      result.current.cancelReply()
+    })
+    expect(result.current.replyingToMessage).toBeNull()
+  })
+
+  it('fetches missing reply message from GET /api/messages/{id} and caches it', async () => {
+    vi.mocked(apiClient.apiRequest).mockImplementation((url) => {
+      if (url.includes('/api/messages/private')) {
+        return Promise.resolve({
+          data: {
+            content: [
+              { id: 'msg-2', sender: 'bob', recipient: 'alice', content: 'Reply content', replyToId: 'msg-old', timestamp: '2026-09-19T10:00:00Z' },
+            ],
+            nextCursor: null,
+            hasMore: false,
+          },
+        })
+      }
+      if (url === '/api/messages/msg-old') {
+        return Promise.resolve({
+          data: { id: 'msg-old', sender: 'alice', recipient: 'bob', content: 'Original older message' },
+        })
+      }
+      return Promise.resolve({ data: null })
+    })
+
+    const user = { username: 'alice' }
+    const selectedUser = { username: 'bob' }
+
+    const { result } = renderHook(() =>
+      useConversationMessages({
+        user,
+        selectedUser,
+        activeSection: 'chat',
+        connectionState: 'connected',
+        blockedMessageIntervals: {},
+        sendPrivateMessage: vi.fn(),
+        sendTypingStatus: vi.fn(),
+        sendReactionControl: vi.fn(),
+        showToast: vi.fn(),
+        t: (k) => k,
+        selectedUserIsTyping: false,
+      })
+    )
+
+    await waitFor(() => {
+      expect(apiClient.apiRequest).toHaveBeenCalledWith('/api/messages/msg-old')
+    })
+
+    await waitFor(() => {
+      expect(result.current.replyMessageCache['msg-old']).toBeDefined()
+      expect(result.current.replyMessageCache['msg-old'].content).toBe('Original older message')
+    })
+
+    const callCountBefore = vi.mocked(apiClient.apiRequest).mock.calls.filter((c) => c[0] === '/api/messages/msg-old').length
+    await act(async () => {
+      await result.current.fetchReplyMessage('msg-old')
+    })
+    const callCountAfter = vi.mocked(apiClient.apiRequest).mock.calls.filter((c) => c[0] === '/api/messages/msg-old').length
+    expect(callCountAfter).toBe(callCountBefore)
+  })
+
+  it('scrollToQuotedMessage scrolls and highlights if element exists, or shows toast if not found', () => {
+    const user = { username: 'alice' }
+    const selectedUser = { username: 'bob' }
+    const showToast = vi.fn()
+
+    const { result } = renderHook(() =>
+      useConversationMessages({
+        user,
+        selectedUser,
+        activeSection: 'chat',
+        connectionState: 'connected',
+        blockedMessageIntervals: {},
+        sendPrivateMessage: vi.fn(),
+        sendTypingStatus: vi.fn(),
+        sendReactionControl: vi.fn(),
+        showToast,
+        t: (k) => k,
+        selectedUserIsTyping: false,
+      })
+    )
+
+    act(() => {
+      result.current.scrollToQuotedMessage('msg-nonexistent')
+    })
+    expect(showToast).toHaveBeenCalledWith('originalMessageNotFound')
+
+    const mockEl = document.createElement('div')
+    mockEl.id = 'chat-message-msg-existing'
+    mockEl.scrollIntoView = vi.fn()
+    document.body.appendChild(mockEl)
+
+    act(() => {
+      result.current.scrollToQuotedMessage('msg-existing')
+    })
+    expect(mockEl.scrollIntoView).toHaveBeenCalled()
+    expect(result.current.highlightedMessageId).toBe('msg-existing')
+
+    document.body.removeChild(mockEl)
   })
 })
