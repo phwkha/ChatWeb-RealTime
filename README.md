@@ -20,6 +20,7 @@ ChatWeb is an enterprise-grade, real-time messaging web application engineered w
 
 ```text
 .
+├── .github/workflows/      # GitHub Actions CI/CD workflows (backend & frontend CI/CD)
 ├── chatweb_be/             # Spring Boot 3.5.x Backend (Java 21 LTS, JPA, MongoDB, Kafka, Redis)
 │   ├── initdb.sql          # PostgreSQL schema initialization script
 │   ├── init-mongo.js       # MongoDB collection and compound index setup
@@ -32,8 +33,7 @@ ChatWeb is an enterprise-grade, real-time messaging web application engineered w
 │   └── api/                # WebSocket/STOMP specs, Kafka Avro catalog, and REST API guide
 ├── nginx/                  # Nginx configuration (reverse proxy, TLS, edge rate-limiting)
 ├── ssl/                    # Private CA, backend PKCS12 keystore, and Nginx certificates
-├── docker-compose.yml      # Multi-container orchestration (App, DBs, Kafka, ELK, Prometheus)
-└── Jenkinsfile             # Declarative CI/CD pipeline definition
+└── docker-compose.yml      # Multi-container orchestration (App, DBs, Kafka, ELK, Prometheus)
 ```
 
 👉 **[Browse Full Technical Documentation](docs/README.md)**
@@ -50,7 +50,7 @@ ChatWeb is an enterprise-grade, real-time messaging web application engineered w
 | **Databases & Cache** | PostgreSQL 16+, MongoDB 7+, Redis Stack (RedisBloom, Lua Scripts) |
 | **Proxy & Ingress** | Nginx Alpine, Upstream TLS (`rootCA.crt`), IP Rate Limiting |
 | **Observability** | Elasticsearch, Logstash, Kibana (ELK), Filebeat, Prometheus, Grafana |
-| **DevOps & Cloud** | Docker, Docker Compose, Google Jib, Jenkins, Cloudinary Media Cloud |
+| **DevOps & Cloud** | Docker, Docker Compose, Google Jib, GitHub Actions, Cloudinary Media Cloud |
 
 ---
 
