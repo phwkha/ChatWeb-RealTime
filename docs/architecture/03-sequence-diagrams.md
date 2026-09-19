@@ -115,7 +115,7 @@ sequenceDiagram
     JWT->>Redis: Save RefreshTokenData to rt:{uuid} (TTL = 7 days)
     
     AuthSvc-->>AuthCtrl: Return LoginResponse (Tokens + UserDTO)
-    AuthCtrl-->>User: Response 200 OK<br/>Header: Authorization: Bearer <accessToken><br/>Set-Cookie: refreshToken=<UUID>; Path=/api/auth; HttpOnly; SameSite=Strict
+    AuthCtrl-->>User: Response 200 OK<br/>Header: Authorization: Bearer <accessToken><br/>Set-Cookie: refreshToken=<UUID>#59; Path=/api/auth#59; HttpOnly#59; SameSite=Strict
 
     note over User, DB: Token Rotation Flow
     User->>AuthCtrl: POST /api/auth/refresh-token (Cookie: refreshToken)
