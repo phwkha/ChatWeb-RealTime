@@ -313,11 +313,11 @@ export function useChatRealtime({
     const username = selected?.username
     if (activeSection !== 'chat' || !selected || !username) return
     const blocked = isIncomingMessageBlocked(blockedMessageIntervals, currentUser?.username, username)
-    if (!blocked && isActivelyViewingConversation(username)) {
-      markAsRead(username)
+    if (!blocked) {
+      markAsRead(username, true)
       sendRealtimeReceipt(username, 'READ')
     }
-  }, [activeSection, blockedMessageIntervals, currentUser?.username, isActivelyViewingConversation, markAsRead, selectedUser, selectedUser?.username, sendRealtimeReceipt])
+  }, [activeSection, blockedMessageIntervals, currentUser?.username, markAsRead, selectedUser, selectedUser?.username, sendRealtimeReceipt])
 
   useEffect(() => {
     const markVisibleAsRead = () => {

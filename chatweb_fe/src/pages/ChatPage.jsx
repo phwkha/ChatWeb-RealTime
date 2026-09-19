@@ -115,7 +115,7 @@ function ChatPage() {
   const {
     connectionState, sendPrivateMessage, sendWorldMessage, unreadCounts,
     typingUsers, worldMessages, worldCursor, worldHasMore, worldNotifications,
-    loadWorldHistory, sendTypingStatus, sendReactionControl,
+    loadWorldHistory, sendTypingStatus, sendReactionControl, markAsRead, sendRealtimeReceipt,
   } = realtime
 
   const selectedUserIsTyping = Boolean(typingUsers[selectedUsername])
@@ -170,7 +170,11 @@ function ChatPage() {
     messagesState.setReactionPickerMessageId(null); messagesState.setDetailMessageId(null)
     messagesState.setEditHistoryMessageId(null); closeContextMenu()
     selectedRef.current = friend; setSelectedUser(friend); setActiveSection('chat'); setWorldOpen(false)
-  }, [closeContextMenu, messagesState])
+    if (friend?.username) {
+      markAsRead(friend.username, true)
+      sendRealtimeReceipt(friend.username, 'READ')
+    }
+  }, [closeContextMenu, markAsRead, messagesState, sendRealtimeReceipt])
 
   const latestWorldMessage = worldMessages.length ? worldMessages[worldMessages.length - 1] : null
 
