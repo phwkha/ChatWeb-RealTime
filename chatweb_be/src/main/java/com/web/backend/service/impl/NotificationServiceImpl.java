@@ -11,6 +11,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.web.backend.common.NotificationTargetType;
 import com.web.backend.common.NotificationsType;
 import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.response.CursorResponse;
@@ -46,19 +47,27 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     @Transactional
     public void createNotification(String senderUsername, String recipientUsername, NotificationsType type,
-            String content) {
-        UserEntity sender = userRepository.findByUsername(senderUsername).orElse(null);
+            NotificationTargetType targetType, String targetId, String content) {
         UserEntity recipient = userRepository.findByUsername(recipientUsername).orElse(null);
-
         if (recipient == null) {
             log.warn("Cannot create notification: recipient '{}' not found", recipientUsername);
             return;
+        }
+
+        UserEntity sender = null;
+        if (senderUsername != null && !senderUsername.isBlank()) {
+            sender = userRepository.findByUsername(senderUsername).orElse(null);
+            if (sender == null) {
+                log.warn("Notification sender '{}' not found, proceeding as system sender", senderUsername);
+            }
         }
 
         NotificationEntity entity = NotificationEntity.builder()
                 .sender(sender)
                 .recipient(recipient)
                 .type(type)
+                .targetType(targetType)
+                .targetId(targetId)
                 .content(content)
                 .isRead(false)
                 .build();
@@ -67,7 +76,7 @@ public class NotificationServiceImpl implements NotificationService {
         try {
             redisTemplate.delete(NOTIF_UNREAD_PREFIX + recipientUsername);
         } catch (Exception e) {
-            log.warn("Failed to evict unread notification cache create for user {}", recipientUsername, e);
+            log.warn("createNotification Failed to evict unread notification cache for user {}", recipientUsername, e);
         }
     }
 
@@ -92,17 +101,27 @@ public class NotificationServiceImpl implements NotificationService {
         int pageSize = (size <= 0 || size > MAX_PAGE_SIZE) ? DEFAULT_PAGE_SIZE : size;
 
         Instant cursorTime = null;
+        Long cursorId = null;
         if (cursorStr != null && !cursorStr.isBlank()) {
             try {
-                cursorTime = Instant.parse(cursorStr);
+                if (cursorStr.contains("_")) {
+                    String[] parts = cursorStr.split("_", 2);
+                    cursorTime = Instant.parse(parts[0]);
+                    cursorId = Long.parseLong(parts[1]);
+                } else {
+                    cursorTime = Instant.parse(cursorStr);
+                    cursorId = Long.MAX_VALUE;
+                }
             } catch (Exception e) {
                 log.warn("Invalid cursor format: {}, defaulting to first page", cursorStr);
+                cursorTime = null;
+                cursorId = null;
             }
         }
 
         Pageable pageable = PageRequest.of(0, pageSize + 1);
         List<NotificationResponse> notifications = new ArrayList<>(
-                notificationRepository.findNotificationsByCursor(user.getId(), cursorTime, pageable));
+                notificationRepository.findNotificationsByCursor(user.getId(), cursorTime, cursorId, pageable));
 
         boolean hasMore = false;
         if (notifications.size() > pageSize) {
@@ -112,9 +131,9 @@ public class NotificationServiceImpl implements NotificationService {
 
         String nextCursor = null;
         if (!notifications.isEmpty() && hasMore) {
-            Instant lastCreatedAt = notifications.get(notifications.size() - 1).getCreatedAt();
-            if (lastCreatedAt != null) {
-                nextCursor = lastCreatedAt.toString();
+            NotificationResponse last = notifications.get(notifications.size() - 1);
+            if (last.getCreatedAt() != null && last.getId() != null) {
+                nextCursor = last.getCreatedAt().toString() + "_" + last.getId();
             }
         }
 

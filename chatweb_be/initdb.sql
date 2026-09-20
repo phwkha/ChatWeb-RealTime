@@ -98,8 +98,10 @@ CREATE INDEX IF NOT EXISTS idx_friendship_addressee_status ON friendships(addres
 CREATE TABLE IF NOT EXISTS notifications (
     id BIGSERIAL PRIMARY KEY,
     recipient_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    sender_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    sender_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
     type VARCHAR(50) NOT NULL,
+    target_type VARCHAR(50),
+    target_id VARCHAR(255),
     is_read BOOLEAN NOT NULL DEFAULT FALSE,
     content TEXT NOT NULL,
     create_at TIMESTAMP WITH TIME ZONE,
@@ -107,8 +109,8 @@ CREATE TABLE IF NOT EXISTS notifications (
     version BIGINT NOT NULL DEFAULT 0
 );
 
-CREATE INDEX IF NOT EXISTS idx_notifications_recipient_create_at 
-ON notifications(recipient_id, create_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_recipient_create_at_id 
+ON notifications(recipient_id, create_at DESC, id DESC);
 
 CREATE INDEX IF NOT EXISTS idx_notifications_recipient_unread 
 ON notifications(recipient_id) WHERE is_read = false;

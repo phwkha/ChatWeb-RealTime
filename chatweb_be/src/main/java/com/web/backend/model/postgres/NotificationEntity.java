@@ -1,5 +1,6 @@
 package com.web.backend.model.postgres;
 
+import com.web.backend.common.NotificationTargetType;
 import com.web.backend.common.NotificationsType;
 
 import jakarta.persistence.Column;
@@ -19,7 +20,7 @@ import lombok.Setter;
 
 @Entity
 @Table(name = "notifications", indexes = {
-        @Index(name = "idx_notifications_recipient_create_at", columnList = "recipient_id, create_at DESC")
+        @Index(name = "idx_notifications_recipient_create_at_id", columnList = "recipient_id, create_at DESC, id DESC")
 })
 @Getter
 @Setter
@@ -33,15 +34,23 @@ public class NotificationEntity extends AbstractEntity<Long> {
     private UserEntity recipient;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "sender_id", nullable = false)
+    @JoinColumn(name = "sender_id")
     private UserEntity sender;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private NotificationsType type;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "target_type", length = 50)
+    private NotificationTargetType targetType;
+
+    @Column(name = "target_id", length = 255)
+    private String targetId;
+
+    @Builder.Default
     @Column(nullable = false)
-    private Boolean isRead;
+    private Boolean isRead = false;
 
     @Column(nullable = false)
     private String content;

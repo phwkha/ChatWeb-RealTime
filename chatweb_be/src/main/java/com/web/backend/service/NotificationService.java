@@ -1,5 +1,6 @@
 package com.web.backend.service;
 
+import com.web.backend.common.NotificationTargetType;
 import com.web.backend.common.NotificationsType;
 import com.web.backend.controller.response.CursorResponse;
 import com.web.backend.controller.response.NotificationResponse;
@@ -17,6 +18,6 @@ public interface NotificationService {
     int markAllNotificationsAsRead(UserEntity user);
 
     void createNotification(String senderUsername, String recipientUsername, NotificationsType type,
-            String content);
+            NotificationTargetType targetType, String targetId, String content);
 
 }

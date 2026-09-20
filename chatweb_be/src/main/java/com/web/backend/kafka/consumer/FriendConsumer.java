@@ -7,6 +7,7 @@ import org.springframework.kafka.retrytopic.DltStrategy;
 import org.springframework.kafka.retrytopic.SameIntervalTopicReuseStrategy;
 import org.springframework.stereotype.Component;
 
+import com.web.backend.common.NotificationTargetType;
 import com.web.backend.common.NotificationsType;
 import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.response.SocketNotificationResponse;
@@ -57,6 +58,8 @@ public class FriendConsumer {
                     friendEvent.senderUsername(),
                     friendEvent.recipientUsername(),
                     type,
+                    NotificationTargetType.USER,
+                    friendEvent.senderUsername(),
                     content);
         }
 

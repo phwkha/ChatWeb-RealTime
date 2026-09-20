@@ -28,6 +28,7 @@ import org.springframework.stereotype.Service;
 import com.web.backend.common.ActionType;
 import com.web.backend.common.MessageStatus;
 import com.web.backend.common.MessageType;
+import com.web.backend.common.NotificationTargetType;
 import com.web.backend.common.NotificationsType;
 import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.service.NotificationService;
@@ -410,6 +411,8 @@ public class MessageServiceImpl implements MessageService {
                     senderUsername,
                     messageAuthor,
                     NotificationsType.REACT_MESSAGE,
+                    NotificationTargetType.MESSAGE,
+                    msg.getId(),
                     content);
         }
 
