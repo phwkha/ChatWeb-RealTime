@@ -101,7 +101,7 @@ class UserControllerTest {
         UserResponse mockResponse = new UserResponse();
         mockResponse.setUsername("testuser");
 
-        when(userService.getMe("testuser")).thenReturn(mockResponse);
+        when(userService.getMe(mockUser)).thenReturn(mockResponse);
 
         mockMvc.perform(get("/api/users/me")
                 .principal(mockAuth)
@@ -117,7 +117,7 @@ class UserControllerTest {
         mockResponse.setUsername("testuser");
         mockResponse.setEmail("test@gmail.com");
 
-        when(userService.getProfileUser("testuser")).thenReturn(mockResponse);
+        when(userService.getProfileUser(mockUser)).thenReturn(mockResponse);
 
         mockMvc.perform(get("/api/users/profile")
                 .principal(mockAuth)
@@ -152,7 +152,7 @@ class UserControllerTest {
     @Test
     void testUpdateAvatar_Success() throws Exception {
         MockMultipartFile file = new MockMultipartFile("file", "avatar.png", "image/png", "image data".getBytes());
-        when(userService.updateAvatar(eq("testuser"), any())).thenReturn("https://s3.amazonaws.com/avatar.png");
+        when(userService.updateAvatar(eq(mockUser), any())).thenReturn("https://s3.amazonaws.com/avatar.png");
 
         mockMvc.perform(multipart("/api/users/avatar")
                 .file(file)
@@ -178,7 +178,7 @@ class UserControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
 
-        verify(userService).changePassword("testuser", "oldPass123!", "newPass123!");
+        verify(userService).changePassword(eq(mockUser), eq("oldPass123!"), eq("newPass123!"));
     }
 
     @Test
@@ -202,7 +202,7 @@ class UserControllerTest {
         AddressResponse response = new AddressResponse();
         response.setCity("Hanoi");
 
-        when(userService.addAddress(eq("testuser"), any(AddressRequest.class))).thenReturn(response);
+        when(userService.addAddress(eq(mockUser), any(AddressRequest.class))).thenReturn(response);
 
         mockMvc.perform(post("/api/users/address")
                 .principal(mockAuth)
@@ -277,7 +277,7 @@ class UserControllerTest {
                 .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk());
 
-        verify(userService).initiateEmailChange("testuser", "new@gmail.com", "pass123!");
+        verify(userService).initiateEmailChange(mockUser, "new@gmail.com", "pass123!");
     }
 
     @Test
@@ -292,7 +292,7 @@ class UserControllerTest {
                 .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk());
 
-        verify(userService).verifyEmailChange("testuser", "123456");
+        verify(userService).verifyEmailChange(mockUser, "123456");
     }
 
     @Test
@@ -316,7 +316,7 @@ class UserControllerTest {
                 .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk());
 
-        verify(userService).initiatePhoneChange("testuser", "0123456789", "pass123!");
+        verify(userService).initiatePhoneChange(mockUser, "0123456789", "pass123!");
     }
 
     @Test
@@ -340,6 +340,6 @@ class UserControllerTest {
                 .principal(mockAuth))
                 .andExpect(status().isOk());
 
-        verify(userService).resendPhoneChangeOtp("testuser");
+        verify(userService).resendPhoneChangeOtp(mockUser);
     }
 }

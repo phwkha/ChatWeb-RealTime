@@ -20,6 +20,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import com.web.backend.config.localresolverconfig.Translator;
@@ -231,9 +232,9 @@ public class GlobalExceptionHandler {
                 Translator.tolocale(ERROR_STORAGE_FILE_TOO_LARGE_STRING, STR_20_STRING));
     }
 
-    @ExceptionHandler(ConstraintViolationException.class)
+    @ExceptionHandler({ ConstraintViolationException.class, HandlerMethodValidationException.class })
     @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public ApiResponse<Void> handleConstraintViolationException(ConstraintViolationException ex) {
+    public ApiResponse<Void> handleConstraintViolationException(Exception ex) {
         log.warn("Validation constraint violated: {}", ex.getMessage());
         return ApiResponse.error(HttpStatus.BAD_REQUEST.value(), Translator.tolocale(ERROR_SYS_INVALID_INPUT_STRING));
     }

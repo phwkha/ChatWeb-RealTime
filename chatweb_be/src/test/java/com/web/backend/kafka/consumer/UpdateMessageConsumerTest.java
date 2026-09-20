@@ -22,7 +22,7 @@ import org.springframework.context.support.ResourceBundleMessageSource;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.web.backend.common.UpdateMessageType;
 import com.web.backend.config.localresolverconfig.Translator;
-import com.web.backend.controller.response.NotificationResponse;
+import com.web.backend.controller.response.SocketNotificationResponse;
 import com.web.backend.controller.response.ReadReceiptResponse;
 import com.web.backend.kafka.payload.UpdateMessagePayload;
 import com.web.backend.service.WebSocketRoutingService;
@@ -69,8 +69,8 @@ class UpdateMessageConsumerTest {
         updateMessageConsumer.handleMessageUpdates(payload);
 
         verify(webSocketRoutingService).routeMessage(eq("sender1"), eq("/queue/notifications"),
-                ArgumentMatchers.<NotificationResponse<?>>any());
+                ArgumentMatchers.<SocketNotificationResponse<?>>any());
         verify(webSocketRoutingService).routeMessage(eq("recipient1"), eq("/queue/notifications"),
-                ArgumentMatchers.<NotificationResponse<?>>any());
+                ArgumentMatchers.<SocketNotificationResponse<?>>any());
     }
 }

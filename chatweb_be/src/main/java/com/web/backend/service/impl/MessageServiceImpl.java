@@ -28,7 +28,10 @@ import org.springframework.stereotype.Service;
 import com.web.backend.common.ActionType;
 import com.web.backend.common.MessageStatus;
 import com.web.backend.common.MessageType;
+import com.web.backend.common.NotificationTargetType;
+import com.web.backend.common.NotificationsType;
 import com.web.backend.config.localresolverconfig.Translator;
+import com.web.backend.service.NotificationService;
 import com.web.backend.controller.request.EditMessageRequest;
 import com.web.backend.controller.request.MarkReadRequest;
 import com.web.backend.controller.request.ReactionRequest;
@@ -72,11 +75,13 @@ public class MessageServiceImpl implements MessageService {
     private final MessageMapper messageMapper;
     private final ApplicationEventPublisher eventPublisher;
     private final ChatProducer chatProducer;
+    private final NotificationService notificationService;
 
     private static final String TIMESTAMP_STRING = "timestamp";
     private static final String EMPTY_STRING = "";
     private static final String DELIMITER_COLON_STRING = ":";
     private static final String DELIMITER_UNDERSCORE_STRING = "_";
+    private static final String SYS_MSG_REACT_MESSAGE_STRING = "sys.msg.react_message";
 
     private static final String FIELD_ID_STRING = "id";
     private static final String FIELD_CONVERSATION_ID_STRING = "conversationId";
@@ -387,7 +392,8 @@ public class MessageServiceImpl implements MessageService {
             msg.setReactions(reactions);
         }
 
-        if (request.getReactionType() != null) {
+        boolean isNewReaction = (request.getReactionType() != null);
+        if (isNewReaction) {
             reactions.put(senderUsername, request.getReactionType().toString());
             msg.setReacted(true);
         } else {
@@ -397,6 +403,18 @@ public class MessageServiceImpl implements MessageService {
         msg.setStatus(resolveCurrentStatus(msg));
 
         putMessageIfCached(convId, msg);
+
+        String messageAuthor = msg.getSender();
+        if (isNewReaction && messageAuthor != null && !messageAuthor.equals(senderUsername)) {
+            String content = Translator.tolocale(SYS_MSG_REACT_MESSAGE_STRING);
+            notificationService.createNotification(
+                    senderUsername,
+                    messageAuthor,
+                    NotificationsType.REACT_MESSAGE,
+                    NotificationTargetType.MESSAGE,
+                    msg.getId(),
+                    content);
+        }
 
         ChatMessageAvro payload = messageMapper.toAvro(msg);
         payload.setActionType(ActionType.REACT.name());

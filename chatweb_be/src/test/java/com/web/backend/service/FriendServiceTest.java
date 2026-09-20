@@ -81,26 +81,24 @@ class FriendServiceTest {
     // =====================================
     @Test
     void testSendFriendRequest_SelfAdd() {
-        assertThrows(InvalidDataException.class, () -> friendService.sendFriendRequest("userA", "userA"));
+        assertThrows(InvalidDataException.class, () -> friendService.sendFriendRequest(userA, "userA"));
     }
 
     @Test
     void testSendFriendRequest_TargetLocked() {
         userB.setUserStatus(UserStatus.LOCKED);
-        when(userRepository.findByUsername("userA")).thenReturn(Optional.of(userA));
         when(userRepository.findByUsername("userB")).thenReturn(Optional.of(userB));
 
-        assertThrows(AccessForbiddenException.class, () -> friendService.sendFriendRequest("userA", "userB"));
+        assertThrows(AccessForbiddenException.class, () -> friendService.sendFriendRequest(userA, "userB"));
     }
 
     @Test
     void testSendFriendRequest_Success() {
-        when(userRepository.findByUsername("userA")).thenReturn(Optional.of(userA));
         when(userRepository.findByUsername("userB")).thenReturn(Optional.of(userB));
         when(friendshipRepository.findByUsers(userA, userB)).thenReturn(Optional.empty());
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
 
-        friendService.sendFriendRequest("userA", "userB");
+        friendService.sendFriendRequest(userA, "userB");
 
         verify(friendshipRepository).save(any(FriendshipEntity.class));
         verify(valueOperations).set(eq("relation:userA:userB"), eq("PENDING:userA"), eq(Duration.ofDays(1)));
@@ -109,13 +107,12 @@ class FriendServiceTest {
 
     @Test
     void testSendFriendRequest_DataIntegrityViolation() {
-        when(userRepository.findByUsername("userA")).thenReturn(Optional.of(userA));
         when(userRepository.findByUsername("userB")).thenReturn(Optional.of(userB));
         when(friendshipRepository.findByUsers(userA, userB)).thenReturn(Optional.empty());
         when(friendshipRepository.save(any(FriendshipEntity.class)))
                 .thenThrow(new org.springframework.dao.DataIntegrityViolationException("Duplicate key"));
 
-        assertThrows(ResourceConflictException.class, () -> friendService.sendFriendRequest("userA", "userB"));
+        assertThrows(ResourceConflictException.class, () -> friendService.sendFriendRequest(userA, "userB"));
     }
 
     // =====================================
@@ -123,7 +120,6 @@ class FriendServiceTest {
     // =====================================
     @Test
     void testAcceptFriendRequest_Success() {
-        when(userRepository.findByUsername("userA")).thenReturn(Optional.of(userA));
         when(userRepository.findByUsername("userB")).thenReturn(Optional.of(userB));
 
         FriendshipEntity pendingReq = new FriendshipEntity();
@@ -132,7 +128,7 @@ class FriendServiceTest {
 
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
 
-        friendService.acceptFriendRequest("userA", "userB");
+        friendService.acceptFriendRequest(userA, "userB");
 
         assertEquals(FriendshipStatus.ACCEPTED, pendingReq.getStatus());
         verify(friendshipRepository).save(pendingReq);
@@ -142,14 +138,13 @@ class FriendServiceTest {
 
     @Test
     void testAcceptFriendRequest_AlreadyFriends() {
-        when(userRepository.findByUsername("userA")).thenReturn(Optional.of(userA));
         when(userRepository.findByUsername("userB")).thenReturn(Optional.of(userB));
 
         FriendshipEntity acceptedReq = new FriendshipEntity();
         acceptedReq.setStatus(FriendshipStatus.ACCEPTED);
         when(friendshipRepository.findByUsers(userA, userB)).thenReturn(Optional.of(acceptedReq));
 
-        assertThrows(ResourceConflictException.class, () -> friendService.acceptFriendRequest("userA", "userB"));
+        assertThrows(ResourceConflictException.class, () -> friendService.acceptFriendRequest(userA, "userB"));
     }
 
     // =====================================
@@ -157,7 +152,6 @@ class FriendServiceTest {
     // =====================================
     @Test
     void testDeleteFriendship_Success_Unfriend() {
-        when(userRepository.findByUsername("userA")).thenReturn(Optional.of(userA));
         when(userRepository.findByUsername("userB")).thenReturn(Optional.of(userB));
 
         FriendshipEntity f = new FriendshipEntity();
@@ -168,7 +162,7 @@ class FriendServiceTest {
         when(friendshipRepository.findByUsers(userA, userB)).thenReturn(Optional.of(f));
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
 
-        friendService.deleteFriendship("userA", "userB");
+        friendService.deleteFriendship(userA, "userB");
 
         verify(friendshipRepository).delete(f);
         verify(valueOperations).set(eq("relation:userA:userB"), eq("NONE"), eq(Duration.ofHours(1)));
@@ -177,12 +171,11 @@ class FriendServiceTest {
 
     @Test
     void testBlockUser() {
-        when(userRepository.findByUsername("userA")).thenReturn(Optional.of(userA));
         when(userRepository.findByUsername("userB")).thenReturn(Optional.of(userB));
         when(friendshipRepository.findByUsers(userA, userB)).thenReturn(Optional.empty());
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
 
-        friendService.blockUser("userA", "userB");
+        friendService.blockUser(userA, "userB");
 
         verify(friendshipRepository).save(argThat(f -> f.getStatus() == FriendshipStatus.BLOCKED));
         verify(valueOperations).set(eq("relation:userA:userB"), eq("BLOCKED:userA"), eq(Duration.ofDays(7)));
@@ -215,14 +208,12 @@ class FriendServiceTest {
     // =====================================
     @Test
     void testGetFriendsList() {
-        when(userRepository.existsByUsername("userA")).thenReturn(true);
-
         UserSummaryResponse response = UserSummaryResponse.builder().username("userB").build();
         Page<UserSummaryResponse> page = new PageImpl<>(List.of(response));
 
         when(friendshipRepository.findFriendsSummaryByUsername(eq("userA"), any(Pageable.class))).thenReturn(page);
 
-        PageResponse<UserSummaryResponse> result = friendService.getFriendsList("userA", 0, 10, "asc");
+        PageResponse<UserSummaryResponse> result = friendService.getFriendsList(userA, 0, 10, "asc");
 
         assertEquals(1, result.getContent().size());
         assertEquals("userB", result.getContent().get(0).getUsername());
@@ -231,93 +222,83 @@ class FriendServiceTest {
     @Test
     void testSendFriendRequest_AddresseeInactive() {
         userB.setUserStatus(UserStatus.INACTIVE);
-        when(userRepository.findByUsername("userA")).thenReturn(Optional.of(userA));
         when(userRepository.findByUsername("userB")).thenReturn(Optional.of(userB));
-        assertThrows(AccessForbiddenException.class, () -> friendService.sendFriendRequest("userA", "userB"));
+        assertThrows(AccessForbiddenException.class, () -> friendService.sendFriendRequest(userA, "userB"));
     }
 
     @Test
     void testSendFriendRequest_ExistingRelation_Blocked() {
-        when(userRepository.findByUsername("userA")).thenReturn(Optional.of(userA));
         when(userRepository.findByUsername("userB")).thenReturn(Optional.of(userB));
         FriendshipEntity f = new FriendshipEntity();
         f.setStatus(FriendshipStatus.BLOCKED);
         when(friendshipRepository.findByUsers(userA, userB)).thenReturn(Optional.of(f));
 
-        assertThrows(AccessForbiddenException.class, () -> friendService.sendFriendRequest("userA", "userB"));
+        assertThrows(AccessForbiddenException.class, () -> friendService.sendFriendRequest(userA, "userB"));
     }
 
     @Test
     void testSendFriendRequest_ExistingRelation_PendingOrAccepted() {
-        when(userRepository.findByUsername("userA")).thenReturn(Optional.of(userA));
         when(userRepository.findByUsername("userB")).thenReturn(Optional.of(userB));
         FriendshipEntity f = new FriendshipEntity();
         f.setStatus(FriendshipStatus.PENDING);
         when(friendshipRepository.findByUsers(userA, userB)).thenReturn(Optional.of(f));
 
-        assertThrows(ResourceConflictException.class, () -> friendService.sendFriendRequest("userA", "userB"));
+        assertThrows(ResourceConflictException.class, () -> friendService.sendFriendRequest(userA, "userB"));
     }
 
     @Test
     void testAcceptFriendRequest_RequesterInactive() {
         userA.setUserStatus(UserStatus.INACTIVE);
-        when(userRepository.findByUsername("userB")).thenReturn(Optional.of(userB));
         when(userRepository.findByUsername("userA")).thenReturn(Optional.of(userA));
-        assertThrows(AccessForbiddenException.class, () -> friendService.acceptFriendRequest("userB", "userA"));
+        assertThrows(AccessForbiddenException.class, () -> friendService.acceptFriendRequest(userB, "userA"));
     }
 
     @Test
     void testAcceptFriendRequest_RequesterLocked() {
         userA.setUserStatus(UserStatus.LOCKED);
-        when(userRepository.findByUsername("userB")).thenReturn(Optional.of(userB));
         when(userRepository.findByUsername("userA")).thenReturn(Optional.of(userA));
-        assertThrows(AccessForbiddenException.class, () -> friendService.acceptFriendRequest("userB", "userA"));
+        assertThrows(AccessForbiddenException.class, () -> friendService.acceptFriendRequest(userB, "userA"));
     }
 
     @Test
     void testAcceptFriendRequest_NotFound() {
-        when(userRepository.findByUsername("userB")).thenReturn(Optional.of(userB));
         when(userRepository.findByUsername("userA")).thenReturn(Optional.of(userA));
         when(friendshipRepository.findByUsers(userB, userA)).thenReturn(Optional.empty());
 
-        assertThrows(ResourceNotFoundException.class, () -> friendService.acceptFriendRequest("userB", "userA"));
+        assertThrows(ResourceNotFoundException.class, () -> friendService.acceptFriendRequest(userB, "userA"));
     }
 
     @Test
     void testGetSentRequests() {
-        when(userRepository.findByUsername("userA")).thenReturn(Optional.of(userA));
         UserSummaryResponse summary = UserSummaryResponse.builder().username("userB").build();
         Page<UserSummaryResponse> page = new PageImpl<>(List.of(summary));
         when(friendshipRepository.findAddresseeSummaryByRequesterAndStatus(eq(userA), eq(FriendshipStatus.PENDING),
                 any(Pageable.class))).thenReturn(page);
 
-        PageResponse<UserSummaryResponse> res = friendService.getSentRequests("userA", 0, 10, "asc");
+        PageResponse<UserSummaryResponse> res = friendService.getSentRequests(userA, 0, 10, "asc");
         assertEquals(1, res.getTotalElements());
     }
 
     @Test
     void testGetPendingRequests() {
-        when(userRepository.findByUsername("userA")).thenReturn(Optional.of(userA));
         UserSummaryResponse summary = UserSummaryResponse.builder().username("userB").build();
         Page<UserSummaryResponse> page = new PageImpl<>(List.of(summary));
         when(friendshipRepository.findRequesterSummaryByAddresseeAndStatus(eq(userA), eq(FriendshipStatus.PENDING),
                 any(Pageable.class))).thenReturn(page);
 
-        PageResponse<UserSummaryResponse> res = friendService.getPendingRequests("userA", 0, 10, "desc");
+        PageResponse<UserSummaryResponse> res = friendService.getPendingRequests(userA, 0, 10, "desc");
         assertEquals(1, res.getTotalElements());
     }
 
     @Test
     void testDeleteFriendship_NotFound() {
-        when(userRepository.findByUsername("userA")).thenReturn(Optional.of(userA));
         when(userRepository.findByUsername("userB")).thenReturn(Optional.of(userB));
         when(friendshipRepository.findByUsers(userA, userB)).thenReturn(Optional.empty());
-        assertThrows(ResourceNotFoundException.class, () -> friendService.deleteFriendship("userA", "userB"));
+        assertThrows(ResourceNotFoundException.class, () -> friendService.deleteFriendship(userA, "userB"));
     }
 
     @Test
     void testDeleteFriendship_NotAccepted_IsRequester() {
-        when(userRepository.findByUsername("userA")).thenReturn(Optional.of(userA));
         when(userRepository.findByUsername("userB")).thenReturn(Optional.of(userB));
 
         FriendshipEntity f = new FriendshipEntity();
@@ -327,14 +308,13 @@ class FriendServiceTest {
         when(friendshipRepository.findByUsers(userA, userB)).thenReturn(Optional.of(f));
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
 
-        friendService.deleteFriendship("userA", "userB");
+        friendService.deleteFriendship(userA, "userB");
         verify(valueOperations).set(eq("relation:userA:userB"), eq("NONE"), eq(Duration.ofHours(1)));
         verify(eventPublisher).publishEvent(any(FriendPayload.class));
     }
 
     @Test
     void testDeleteFriendship_NotAccepted_NotRequester() {
-        when(userRepository.findByUsername("userB")).thenReturn(Optional.of(userB));
         when(userRepository.findByUsername("userA")).thenReturn(Optional.of(userA));
 
         FriendshipEntity f = new FriendshipEntity();
@@ -344,7 +324,7 @@ class FriendServiceTest {
         when(friendshipRepository.findByUsers(userB, userA)).thenReturn(Optional.of(f));
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
 
-        friendService.deleteFriendship("userB", "userA");
+        friendService.deleteFriendship(userB, "userA");
         verify(valueOperations).set(eq("relation:userA:userB"), eq("NONE"), eq(Duration.ofHours(1)));
         verify(eventPublisher).publishEvent(any(FriendPayload.class));
     }
@@ -403,7 +383,6 @@ class FriendServiceTest {
     // =====================================
     @Test
     void testUnblockUser_Success() {
-        when(userRepository.findByUsername("userA")).thenReturn(Optional.of(userA));
         when(userRepository.findByUsername("userB")).thenReturn(Optional.of(userB));
 
         FriendshipEntity f = new FriendshipEntity();
@@ -414,7 +393,7 @@ class FriendServiceTest {
         when(friendshipRepository.findByUsers(userA, userB)).thenReturn(Optional.of(f));
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
 
-        friendService.unblockUser("userA", "userB");
+        friendService.unblockUser(userA, "userB");
 
         verify(friendshipRepository).delete(f);
         verify(valueOperations).set(eq("relation:userA:userB"), eq("NONE"), eq(Duration.ofHours(1)));
@@ -422,16 +401,14 @@ class FriendServiceTest {
 
     @Test
     void testUnblockUser_RelationNotFound_ThrowsException() {
-        when(userRepository.findByUsername("userA")).thenReturn(Optional.of(userA));
         when(userRepository.findByUsername("userB")).thenReturn(Optional.of(userB));
         when(friendshipRepository.findByUsers(userA, userB)).thenReturn(Optional.empty());
 
-        assertThrows(ResourceNotFoundException.class, () -> friendService.unblockUser("userA", "userB"));
+        assertThrows(ResourceNotFoundException.class, () -> friendService.unblockUser(userA, "userB"));
     }
 
     @Test
     void testUnblockUser_NotBlocked_ThrowsException() {
-        when(userRepository.findByUsername("userA")).thenReturn(Optional.of(userA));
         when(userRepository.findByUsername("userB")).thenReturn(Optional.of(userB));
 
         FriendshipEntity f = new FriendshipEntity();
@@ -441,12 +418,11 @@ class FriendServiceTest {
 
         when(friendshipRepository.findByUsers(userA, userB)).thenReturn(Optional.of(f));
 
-        assertThrows(InvalidDataException.class, () -> friendService.unblockUser("userA", "userB"));
+        assertThrows(InvalidDataException.class, () -> friendService.unblockUser(userA, "userB"));
     }
 
     @Test
     void testUnblockUser_NotBlocker_ThrowsException() {
-        when(userRepository.findByUsername("userA")).thenReturn(Optional.of(userA));
         when(userRepository.findByUsername("userB")).thenReturn(Optional.of(userB));
 
         FriendshipEntity f = new FriendshipEntity();
@@ -456,19 +432,17 @@ class FriendServiceTest {
 
         when(friendshipRepository.findByUsers(userA, userB)).thenReturn(Optional.of(f));
 
-        assertThrows(InvalidDataException.class, () -> friendService.unblockUser("userA", "userB"));
+        assertThrows(InvalidDataException.class, () -> friendService.unblockUser(userA, "userB"));
     }
 
     @Test
     void testGetBlockedList_Success() {
-        when(userRepository.findByUsername("userA")).thenReturn(Optional.of(userA));
-
         UserSummaryResponse summary = UserSummaryResponse.builder().username("userB").build();
         Page<UserSummaryResponse> page = new PageImpl<>(List.of(summary));
         when(friendshipRepository.findAddresseeSummaryByRequesterAndStatus(eq(userA), eq(FriendshipStatus.BLOCKED), any(Pageable.class)))
                 .thenReturn(page);
 
-        PageResponse<UserSummaryResponse> res = friendService.getBlockedList("userA", 0, 10, "desc");
+        PageResponse<UserSummaryResponse> res = friendService.getBlockedList(userA, 0, 10, "desc");
 
         assertNotNull(res);
         assertEquals(1, res.getTotalElements());

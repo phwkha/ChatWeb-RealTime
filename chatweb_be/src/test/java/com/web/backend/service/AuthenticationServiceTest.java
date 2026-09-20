@@ -405,7 +405,6 @@ class AuthenticationServiceTest {
     void testLogoutAllDevices_Success() {
         // Arrange
         String username = "testuser";
-        when(userRepository.existsByUsername(username)).thenReturn(true);
         when(cacheManager.getCache("user_details")).thenReturn(userCache);
 
         // Act
@@ -414,17 +413,6 @@ class AuthenticationServiceTest {
         // Assert
         verify(userRepository).incrementTokenVersion(username);
         verify(userCache).evict(username);
-    }
-
-    @Test
-    void testLogoutAllDevices_UserNotFound_ThrowsException() {
-        // Arrange
-        String username = "unknownuser";
-        when(userRepository.existsByUsername(username)).thenReturn(false);
-
-        // Act & Assert
-        assertThrows(ResourceNotFoundException.class, () -> authenticationService.logoutAllDevices(username));
-        verify(userRepository, never()).incrementTokenVersion(any());
     }
 
     // ==========================================

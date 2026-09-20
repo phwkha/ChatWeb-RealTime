@@ -1,42 +1,29 @@
 package com.web.backend.controller.response;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
+import java.time.Instant;
+
+import com.web.backend.common.NotificationTargetType;
 import com.web.backend.common.NotificationsType;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-@Data
 @Builder
-@NoArgsConstructor
+@Data
 @AllArgsConstructor
-@JsonInclude(JsonInclude.Include.NON_NULL)
-public class NotificationResponse<T> {
-
+@NoArgsConstructor
+public class NotificationResponse {
+    private Long id;
     private NotificationsType type;
-    private String relatedUsername;
-    private String message;
-    private T data;
-
-    public static <T> NotificationResponse<T> notificationData(NotificationsType type, String relatedUsername,
-            String message, T data) {
-        return NotificationResponse.<T>builder()
-                .type(type)
-                .relatedUsername(relatedUsername)
-                .message(message)
-                .data(data)
-                .build();
-    }
-
-    public static <T> NotificationResponse<T> notificationData(NotificationsType type, String relatedUsername,
-            String message) {
-        return NotificationResponse.<T>builder()
-                .type(type)
-                .relatedUsername(relatedUsername)
-                .message(message)
-                .data(null)
-                .build();
-    }
-
+    private NotificationTargetType targetType;
+    private String targetId;
+    private String content;
+    private Boolean isRead;
+    private Instant createdAt;
+    private String senderUsername;
+    private String senderFirstName;
+    private String senderLastName;
+    private String senderAvatar;
 }

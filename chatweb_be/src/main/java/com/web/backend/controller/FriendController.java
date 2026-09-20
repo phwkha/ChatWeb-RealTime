@@ -50,7 +50,7 @@ public class FriendController {
                 return ResponseEntity.ok(ApiResponse.success(
                                 HttpStatus.OK.value(),
                                 Translator.tolocale(SUCCESS_FRIEND_GET_INVITES_STRING),
-                                friendService.getPendingRequests(user.getUsername(), page, size, sortDir)));
+                                friendService.getPendingRequests(user, page, size, sortDir)));
         }
 
         @Operation(summary = "Get sent requests", description = "API endpoint for get sent requests")
@@ -65,7 +65,7 @@ public class FriendController {
                 return ResponseEntity.ok(ApiResponse.success(
                                 HttpStatus.OK.value(),
                                 Translator.tolocale(SUCCESS_FRIEND_GET_SENT_INVITES_STRING),
-                                friendService.getSentRequests(user.getUsername(), page, size, sortDir)));
+                                friendService.getSentRequests(user, page, size, sortDir)));
         }
 
         @Operation(summary = "Get friends list", description = "API endpoint for get friends list")
@@ -81,7 +81,7 @@ public class FriendController {
                 return ResponseEntity.ok(ApiResponse.success(
                                 HttpStatus.OK.value(),
                                 Translator.tolocale(SUCCESS_FRIEND_GET_FRIENDS_STRING),
-                                friendService.getFriendsList(user.getUsername(), page, size, sortDir)));
+                                friendService.getFriendsList(user, page, size, sortDir)));
         }
 
         @Operation(summary = "Delete friendship", description = "API endpoint for delete friendship")
@@ -92,7 +92,7 @@ public class FriendController {
                         @PathVariable String username) {
 
                 UserEntity user = (UserEntity) auth.getPrincipal();
-                friendService.deleteFriendship(user.getUsername(), username);
+                friendService.deleteFriendship(user, username);
 
                 return ResponseEntity.ok(ApiResponse.success(
                                 HttpStatus.OK.value(),
@@ -113,7 +113,7 @@ public class FriendController {
                 return ResponseEntity.ok(ApiResponse.success(
                                 HttpStatus.OK.value(),
                                 Translator.tolocale(SUCCESS_FRIEND_GET_BLOCKED_STRING),
-                                friendService.getBlockedList(user.getUsername(), page, size, sortDir)));
+                                friendService.getBlockedList(user, page, size, sortDir)));
         }
 
         @Operation(summary = "Block user", description = "API endpoint for block user")
@@ -121,7 +121,7 @@ public class FriendController {
         @PostMapping("/block/{username}")
         public ResponseEntity<ApiResponse<Void>> blockUser(Authentication auth, @PathVariable String username) {
                 UserEntity user = (UserEntity) auth.getPrincipal();
-                friendService.blockUser(user.getUsername(), username);
+                friendService.blockUser(user, username);
 
                 return ResponseEntity.ok(ApiResponse.success(
                                 HttpStatus.OK.value(),
@@ -134,7 +134,7 @@ public class FriendController {
         @PostMapping("/unblock/{username}")
         public ResponseEntity<ApiResponse<Void>> unblockUser(Authentication auth, @PathVariable String username) {
                 UserEntity user = (UserEntity) auth.getPrincipal();
-                friendService.unblockUser(user.getUsername(), username);
+                friendService.unblockUser(user, username);
 
                 return ResponseEntity.ok(ApiResponse.success(
                                 HttpStatus.OK.value(),
@@ -158,7 +158,7 @@ public class FriendController {
                 UserEntity user = (UserEntity) auth.getPrincipal();
                 log.debug("User '{}' sending friend request to '{}'", user.getUsername(), request.getTargetUsername());
 
-                friendService.sendFriendRequest(user.getUsername(), request.getTargetUsername());
+                friendService.sendFriendRequest(user, request.getTargetUsername());
 
                 return ResponseEntity.ok(ApiResponse.success(
                                 HttpStatus.OK.value(),
@@ -183,7 +183,7 @@ public class FriendController {
                 log.debug("User '{}' accepting friend request from '{}'", user.getUsername(),
                                 request.getTargetUsername());
 
-                friendService.acceptFriendRequest(user.getUsername(), request.getTargetUsername());
+                friendService.acceptFriendRequest(user, request.getTargetUsername());
 
                 return ResponseEntity.ok(ApiResponse.success(
                                 HttpStatus.OK.value(),

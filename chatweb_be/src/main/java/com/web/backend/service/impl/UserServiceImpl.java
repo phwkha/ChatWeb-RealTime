@@ -21,7 +21,6 @@ import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.repository.AddressRepository;
 import com.web.backend.repository.MessageRepository;
 import com.web.backend.repository.UserRepository;
-import com.web.backend.repository.projection.UserAvatarProjection;
 import com.web.backend.repository.FriendshipRepository;
 import com.web.backend.service.CuckooFilterService;
 import com.web.backend.service.EmailService;
@@ -80,6 +79,7 @@ public class UserServiceImpl implements UserService {
     private static final String EMAIL_FILTER_KEY = "filter:emails";
     private static final String USER_DETAILS_STRING = "user_details";
     private static final String USERNAME_STRING = "#username";
+    private static final String USER_USERNAME_STRING = "#user.username";
     private static final String AVATARS_STRING = "avatars";
     private static final String OTP_STRING = "otp:";
     private static final String COOLDOWN_RESEND_STRING = "cooldown:resend:";
@@ -112,30 +112,22 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional(readOnly = true)
-    public UserResponse getMe(String username) {
-        UserEntity user = userRepository.findWithAuthoritiesByUsername(username)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        Translator.tolocale(ERROR_USER_NOT_FOUND_WITH_STRING, username)));
-
+    public UserResponse getMe(UserEntity user) {
         if (user.getUserStatus() != UserStatus.ACTIVE) {
-            throw new ResourceNotFoundException(Translator.tolocale(ERROR_USER_NOT_FOUND_WITH_STRING, username));
+            throw new ResourceNotFoundException(Translator.tolocale(ERROR_USER_NOT_FOUND_STRING));
         }
-
         return userMapper.toUserResponse(user);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public UserDetailResponse getProfileUser(String username) {
-        UserEntity user = userRepository.findWithAuthoritiesByUsername(username)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        Translator.tolocale(ERROR_USER_NOT_FOUND_WITH_STRING, username)));
-
+    public UserDetailResponse getProfileUser(UserEntity user) {
         if (user.getUserStatus() != UserStatus.ACTIVE) {
-            throw new ResourceNotFoundException(Translator.tolocale(ERROR_USER_NOT_FOUND_WITH_STRING, username));
+            throw new ResourceNotFoundException(Translator.tolocale(ERROR_USER_NOT_FOUND_STRING));
         }
-
-        return userMapper.toUserDetailResponse(user);
+        UserDetailResponse response = userMapper.toUserDetailResponse(user);
+        response.setAddresses(addressRepository.findAddressResponsesByUsername(user.getUsername()));
+        return response;
     }
 
     @Override
@@ -147,29 +139,27 @@ public class UserServiceImpl implements UserService {
                         Translator.tolocale(ERROR_USER_NOT_FOUND_WITH_STRING, username)));
 
         userMapper.updateUserFromRequest(request, userEntity);
-
         UserEntity updatedUser = userRepository.save(Objects.requireNonNull(userEntity));
-        log.info("User '{}' updated profile", username);
+
         return userMapper.toUserDetailResponse(updatedUser);
     }
 
     @Override
-    @CacheEvict(value = USER_DETAILS_STRING, key = USERNAME_STRING)
+    @CacheEvict(value = USER_DETAILS_STRING, key = USER_USERNAME_STRING)
     @Transactional
-    public String updateAvatar(String username, MultipartFile avatarFile) {
-        UserAvatarProjection userAvatar = userRepository.findAvatarProjectionByUsername(username)
-                .orElseThrow(() -> new ResourceNotFoundException(Translator.tolocale(ERROR_USER_NOT_FOUND_STRING)));
+    public String updateAvatar(UserEntity user, MultipartFile avatarFile) {
+        String oldAvatar = user.getAvatar();
         String newUrl = storageService.uploadAvatar(avatarFile);
 
-        if (userAvatar.avatar() != null) {
+        if (oldAvatar != null) {
             try {
-                storageService.delete(userAvatar.avatar(), AVATARS_STRING);
+                storageService.delete(oldAvatar, AVATARS_STRING);
             } catch (Exception e) {
-                log.warn("Failed to delete old avatar image from storage: '{}'", userAvatar.avatar(), e);
+                log.warn("Failed to delete old avatar image from storage: '{}'", oldAvatar, e);
             }
         }
-        userRepository.updateAvatar(username, newUrl);
-        log.info("User '{}' updated avatar", username);
+        userRepository.updateAvatar(user.getUsername(), newUrl);
+        log.info("User '{}' updated avatar", user.getUsername());
         return newUrl;
     }
 
@@ -188,10 +178,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    public void initiateEmailChange(String username, String newEmail, String currentPassword) {
-        UserEntity user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new ResourceNotFoundException(Translator.tolocale(ERROR_USER_NOT_FOUND_STRING)));
-
+    public void initiateEmailChange(UserEntity user, String newEmail, String currentPassword) {
         if (user.getAuthProvider() != AuthProvider.LOCAL) {
             throw new AccessForbiddenException(Translator.tolocale(ERROR_USER_SOCIAL_ACCOUNT_NOT_ALLOWED_STRING));
         }
@@ -206,15 +193,12 @@ public class UserServiceImpl implements UserService {
 
         generateAndSenResponseToken(user, OtpType.EMAIL_CHANGE, newEmail, newEmail);
 
-        log.info("User '{}' initiated email change to '{}'", username, newEmail);
+        log.info("User '{}' initiated email change to '{}'", user.getUsername(), newEmail);
     }
 
     @Override
     @Transactional
-    public void initiatePhoneChange(String username, String newPhone, String currentPassword) {
-        UserEntity user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new ResourceNotFoundException(Translator.tolocale(ERROR_USER_NOT_FOUND_STRING)));
-
+    public void initiatePhoneChange(UserEntity user, String newPhone, String currentPassword) {
         if (user.getAuthProvider() != AuthProvider.LOCAL) {
             throw new AccessForbiddenException(Translator.tolocale(ERROR_USER_SOCIAL_ACCOUNT_NOT_ALLOWED_STRING));
         }
@@ -225,20 +209,16 @@ public class UserServiceImpl implements UserService {
 
         generateAndSenResponseToken(user, OtpType.PHONE_CHANGE, newPhone, user.getEmail());
 
-        log.info("User '{}' initiated phone change", username);
+        log.info("User '{}' initiated phone change", user.getUsername());
     }
 
     @Override
     @Transactional
-    public AddressResponse addAddress(String username, AddressRequest request) {
-        UserEntity user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        Translator.tolocale(ERROR_USER_NOT_FOUND_WITH_STRING, username)));
+    public AddressResponse addAddress(UserEntity user, AddressRequest request) {
         AddressEntity newAddress = userMapper.toAddressEntity(request);
-
-        user.addAddress(newAddress);
+        newAddress.setUser(user);
         addressRepository.save(newAddress);
-        log.info("User '{}' added new address", username);
+        log.info("User '{}' added new address", user.getUsername());
         return userMapper.toAddressResponse(newAddress);
     }
 
@@ -261,15 +241,10 @@ public class UserServiceImpl implements UserService {
     @Transactional
     @CacheEvict(value = USER_DETAILS_STRING, key = USERNAME_STRING)
     public void deleteAddress(String username, Long addressId) {
-        UserEntity user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        Translator.tolocale(ERROR_USER_NOT_FOUND_WITH_STRING, username)));
-
         AddressEntity addressToDelete = addressRepository.findByIdAndUser_Username(addressId, username)
                 .orElseThrow(
                         () -> new ResourceNotFoundException(Translator.tolocale(ERROR_USER_ADDRESS_NOT_FOUND_STRING)));
 
-        user.removeAddress(addressToDelete);
         addressRepository.delete(addressToDelete);
 
         log.info("User '{}' deleted address id={}", username, addressId);
@@ -278,22 +253,12 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional(readOnly = true)
     public List<AddressResponse> getAllAddresses(String username) {
-        if (!userRepository.existsByUsername(username)) {
-            throw new ResourceNotFoundException(
-                    Translator.tolocale(ERROR_USER_NOT_FOUND_WITH_STRING, username));
-        }
-
         return addressRepository.findAddressResponsesByUsername(username);
     }
 
     @Override
     @Transactional(readOnly = true)
     public AddressResponse getAddressById(String username, Long addressId) {
-        if (!userRepository.existsByUsername(username)) {
-            throw new ResourceNotFoundException(
-                    Translator.tolocale(ERROR_USER_NOT_FOUND_WITH_STRING, username));
-        }
-
         return addressRepository.findAddressResponseByIdAndUsername(addressId, username)
                 .orElseThrow(
                         () -> new AccessForbiddenException(Translator.tolocale(ERROR_USER_ADDRESS_NOT_OWNED_STRING)));
@@ -326,31 +291,27 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    @CacheEvict(value = USER_DETAILS_STRING, key = USERNAME_STRING)
-    public void changePassword(String username, String currentPassword, String newPassword) {
-        UserEntity userEntity = userRepository.findByUsername(username)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        Translator.tolocale(ERROR_USER_NOT_FOUND_WITH_STRING, username)));
-
-        if (userEntity.getAuthProvider() != AuthProvider.LOCAL) {
+    @CacheEvict(value = USER_DETAILS_STRING, key = USER_USERNAME_STRING)
+    public void changePassword(UserEntity user, String currentPassword, String newPassword) {
+        if (user.getAuthProvider() != AuthProvider.LOCAL) {
             throw new AccessForbiddenException(Translator.tolocale(ERROR_USER_SOCIAL_ACCOUNT_NOT_ALLOWED_STRING));
         }
 
-        if (!passwordEncoder.matches(currentPassword, userEntity.getPassword())) {
+        if (!passwordEncoder.matches(currentPassword, user.getPassword())) {
             throw new InvalidPasswordException(Translator.tolocale(ERROR_USER_CURRENT_PW_INCORRECT_STRING));
         }
 
-        if (passwordEncoder.matches(newPassword, userEntity.getPassword())) {
+        if (passwordEncoder.matches(newPassword, user.getPassword())) {
             throw new PasswordMismatchException(Translator.tolocale(ERROR_USER_NEW_PW_SAME_STRING));
         }
 
-        userEntity.setPassword(passwordEncoder.encode(newPassword));
+        user.setPassword(passwordEncoder.encode(newPassword));
 
-        int currentVersion = userEntity.getTokenVersion() == null ? 0 : userEntity.getTokenVersion();
-        userEntity.setTokenVersion(currentVersion + 1);
+        int currentVersion = user.getTokenVersion() == null ? 0 : user.getTokenVersion();
+        user.setTokenVersion(currentVersion + 1);
 
-        userRepository.save(userEntity);
-        log.info("User '{}' changed password successfully", username);
+        userRepository.save(user);
+        log.info("User '{}' changed password successfully", user.getUsername());
     }
 
     public boolean userExists(String username) {
@@ -379,30 +340,27 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    public void verifyEmailChange(String username, String otp) {
-        String oldEmail = userRepository.findEmailByUsername(username)
-                .orElseThrow(() -> new ResourceNotFoundException(Translator.tolocale(ERROR_USER_NOT_FOUND_STRING)));
+    public void verifyEmailChange(UserEntity user, String otp) {
+        String oldEmail = user.getEmail();
 
-        String newEmail = validateRedisOtp(username, OtpType.EMAIL_CHANGE, otp);
+        String newEmail = validateRedisOtp(user.getUsername(), OtpType.EMAIL_CHANGE, otp);
 
         if (newEmail == null || newEmail.isEmpty()) {
             throw new InvalidDataException(Translator.tolocale(ERROR_USER_INVALID_NEW_EMAIL_STRING));
         }
 
-        userRepository.updateEmail(username, newEmail);
+        userRepository.updateEmail(user.getUsername(), newEmail);
 
-        cuckooFilterService.delete(EMAIL_FILTER_KEY, oldEmail);
+        if (oldEmail != null) {
+            cuckooFilterService.delete(EMAIL_FILTER_KEY, oldEmail);
+        }
         cuckooFilterService.add(EMAIL_FILTER_KEY, newEmail);
-        log.info("User '{}' verified email change successfully", username);
+        log.info("User '{}' verified email change successfully", user.getUsername());
     }
 
     @Override
     @Transactional
     public void verifyPhoneChange(String username, String otp) {
-        if (!userRepository.existsByUsername(username)) {
-            throw new ResourceNotFoundException(Translator.tolocale(ERROR_USER_NOT_FOUND_STRING));
-        }
-
         String newPhone = validateRedisOtp(username, OtpType.PHONE_CHANGE, otp);
 
         if (newPhone == null || newPhone.isEmpty()) {
@@ -416,10 +374,6 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional
     public void resendEmailChangeOtp(String username) {
-        if (!userRepository.existsByUsername(username)) {
-            throw new ResourceNotFoundException(Translator.tolocale(ERROR_USER_NOT_FOUND_STRING));
-        }
-
         String redisKey = OTP_STRING + OtpType.EMAIL_CHANGE.name() + DELIMITER_COLON_STRING + username;
         String oldValue = (String) redisTemplate.opsForValue().get(redisKey);
         if (oldValue == null)
@@ -436,11 +390,14 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    public void resendPhoneChangeOtp(String username) {
-        String email = userRepository.findEmailByUsername(username)
-                .orElseThrow(() -> new ResourceNotFoundException(Translator.tolocale(ERROR_USER_NOT_FOUND_STRING)));
+    public void resendPhoneChangeOtp(UserEntity user) {
+        String email = user.getEmail();
+        if (email == null) {
+            email = userRepository.findEmailByUsername(user.getUsername())
+                    .orElseThrow(() -> new ResourceNotFoundException(Translator.tolocale(ERROR_USER_NOT_FOUND_STRING)));
+        }
 
-        resendRedisOtp(username, OtpType.PHONE_CHANGE, email);
+        resendRedisOtp(user.getUsername(), OtpType.PHONE_CHANGE, email);
     }
 
     private String validateRedisOtp(String identifier, OtpType type, String inputOtp) {

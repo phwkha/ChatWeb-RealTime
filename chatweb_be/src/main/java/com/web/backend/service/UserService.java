@@ -7,25 +7,27 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
+import com.web.backend.model.postgres.UserEntity;
+
 public interface UserService {
 
     void setUserOnlineStatus(String username, boolean isOnline);
 
     boolean userExists(String username);
 
-    UserResponse getMe(String username);
+    UserResponse getMe(UserEntity user);
 
-    UserDetailResponse getProfileUser(String username);
+    UserDetailResponse getProfileUser(UserEntity user);
 
     UserDetailResponse updateUser(String username, UpdateUserRequest request);
 
-    String updateAvatar(String username, MultipartFile avatarFile);
+    String updateAvatar(UserEntity user, MultipartFile avatarFile);
 
-    void initiateEmailChange(String username, String newEmail, String currentPassword);
+    void initiateEmailChange(UserEntity user, String newEmail, String currentPassword);
 
-    void initiatePhoneChange(String username, String newPhone, String currentPassword);
+    void initiatePhoneChange(UserEntity user, String newPhone, String currentPassword);
 
-    AddressResponse addAddress(String username, AddressRequest request);
+    AddressResponse addAddress(UserEntity user, AddressRequest request);
 
     AddressResponse updateAddress(String username, Long addressId, AddressRequest request);
 
@@ -37,13 +39,13 @@ public interface UserService {
 
     void deleteUser(String username);
 
-    void changePassword(String username, String currentPassword, String newPassword);
+    void changePassword(UserEntity user, String currentPassword, String newPassword);
 
     void verifyPhoneChange(String username, String otp);
 
-    void verifyEmailChange(String username, String otp);
+    void verifyEmailChange(UserEntity user, String otp);
 
-    void resendPhoneChangeOtp(String username);
+    void resendPhoneChangeOtp(UserEntity user);
 
     void resendEmailChangeOtp(String username);
 }
