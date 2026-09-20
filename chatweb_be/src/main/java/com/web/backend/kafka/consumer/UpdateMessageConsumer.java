@@ -11,7 +11,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.web.backend.common.NotificationsType;
 import com.web.backend.common.UpdateMessageType;
 import com.web.backend.config.localresolverconfig.Translator;
-import com.web.backend.controller.response.NotificationResponse;
+import com.web.backend.controller.response.SocketNotificationResponse;
 import com.web.backend.controller.response.ReadReceiptResponse;
 import com.web.backend.exception.custom.MessageProcessingException;
 import com.web.backend.kafka.payload.UpdateMessagePayload;
@@ -54,7 +54,8 @@ public class UpdateMessageConsumer {
         String sender = receiptData.getSender();
 
         try {
-            NotificationResponse<ReadReceiptResponse> notification = NotificationResponse.<ReadReceiptResponse>builder()
+            SocketNotificationResponse<ReadReceiptResponse> notification = SocketNotificationResponse
+                    .<ReadReceiptResponse>builder()
                     .type(NotificationsType.STATUS_MESSAGE)
                     .relatedUsername(reader)
                     .message(Translator.tolocale(SYS_MSG_STATUS_MESSAGE_STRING))

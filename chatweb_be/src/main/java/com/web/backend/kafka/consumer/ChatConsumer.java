@@ -15,7 +15,7 @@ import com.web.backend.common.NotificationsType;
 import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.response.ChatMessageResponse;
 import com.web.backend.controller.response.MessageSystemResponse;
-import com.web.backend.controller.response.NotificationResponse;
+import com.web.backend.controller.response.SocketNotificationResponse;
 import com.web.backend.exception.custom.MessageProcessingException;
 import com.web.backend.kafka.avro.ChatMessageAvro;
 import com.web.backend.mapper.MessageMapper;
@@ -69,7 +69,8 @@ public class ChatConsumer {
             } else {
                 UpdateMetadata metadata = resolveUpdateMetadata(action);
 
-                NotificationResponse<ChatMessageResponse> notification = NotificationResponse.<ChatMessageResponse>builder()
+                SocketNotificationResponse<ChatMessageResponse> notification = SocketNotificationResponse
+                        .<ChatMessageResponse>builder()
                         .type(metadata.type())
                         .relatedUsername(sender)
                         .message(Translator.tolocale(metadata.messageKey()))
@@ -107,7 +108,8 @@ public class ChatConsumer {
         };
     }
 
-    private record UpdateMetadata(NotificationsType type, String messageKey) {}
+    private record UpdateMetadata(NotificationsType type, String messageKey) {
+    }
 
     @RetryableTopic(attempts = "5", backoff = @Backoff(delay = 200), sameIntervalTopicReuseStrategy = SameIntervalTopicReuseStrategy.SINGLE_TOPIC, dltStrategy = DltStrategy.NO_DLT, autoCreateTopics = "true")
     @KafkaListener(topics = "${spring.kafka.topic.chat.system-messages}", groupId = "${spring.kafka.topic.chat.system-messages-group-id}-${random.uuid}", containerFactory = "jsonKafkaListenerContainerFactory")

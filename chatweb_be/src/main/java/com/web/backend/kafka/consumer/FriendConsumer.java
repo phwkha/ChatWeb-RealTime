@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 
 import com.web.backend.common.NotificationsType;
 import com.web.backend.config.localresolverconfig.Translator;
-import com.web.backend.controller.response.NotificationResponse;
+import com.web.backend.controller.response.SocketNotificationResponse;
 import com.web.backend.exception.custom.MessageProcessingException;
 import com.web.backend.kafka.payload.FriendPayload;
 import com.web.backend.service.WebSocketRoutingService;
@@ -53,9 +53,9 @@ public class FriendConsumer {
                 friendEvent.recipientType());
 
         try {
-            NotificationResponse<?> recipientResp = buildResponse(friendEvent.recipientType(),
+            SocketNotificationResponse<?> recipientResp = buildResponse(friendEvent.recipientType(),
                     friendEvent.senderDisplayName());
-            NotificationResponse<?> senderResp = buildResponse(friendEvent.senderType(),
+            SocketNotificationResponse<?> senderResp = buildResponse(friendEvent.senderType(),
                     friendEvent.recipientDisplayName());
 
             if (recipients != null && !recipients.isEmpty() && recipientResp != null) {
@@ -76,7 +76,7 @@ public class FriendConsumer {
         }
     }
 
-    private NotificationResponse<?> buildResponse(NotificationsType type,
+    private SocketNotificationResponse<?> buildResponse(NotificationsType type,
             String relatedUsername) {
         if (type == null) {
             return null;
@@ -115,7 +115,7 @@ public class FriendConsumer {
                 translationKey = EMPTY_STRING;
         }
 
-        return NotificationResponse.notificationData(type, relatedUsername, Translator.tolocale(translationKey));
+        return SocketNotificationResponse.notificationData(type, relatedUsername, Translator.tolocale(translationKey));
     }
 
 }
