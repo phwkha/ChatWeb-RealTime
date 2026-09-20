@@ -33,6 +33,7 @@ public interface UserRepository extends JpaRepository<UserEntity, Long>, JpaSpec
     @Query("SELECT u.email FROM UserEntity u WHERE u.username = :username")
     Optional<String> findEmailByUsername(@Param("username") String username);
 
+    @EntityGraph(attributePaths = { "role", "role.permissions" })
     Optional<UserEntity> findByProviderId(String providerId);
 
     @Query("""

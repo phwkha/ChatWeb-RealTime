@@ -1,19 +1,37 @@
 package com.web.backend.oauth2;
 
-import lombok.AllArgsConstructor;
+import lombok.Getter;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 
 import com.web.backend.model.postgres.UserEntity;
 
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Map;
+import java.util.Set;
 
-@AllArgsConstructor
 public class CustomOAuth2User implements OAuth2User {
 
-    private UserEntity userEntity;
-    private Map<String, Object> attributes;
+    @Getter
+    private final UserEntity userEntity;
+    private final Map<String, Object> attributes;
+    private final Set<? extends GrantedAuthority> authorities;
+
+    public CustomOAuth2User(UserEntity userEntity, Map<String, Object> attributes) {
+        this.userEntity = userEntity;
+        this.attributes = attributes;
+        this.authorities = (userEntity != null && userEntity.getAuthorities() != null)
+                ? Set.copyOf(userEntity.getAuthorities())
+                : Collections.emptySet();
+    }
+
+    public CustomOAuth2User(UserEntity userEntity, Map<String, Object> attributes,
+            Collection<? extends GrantedAuthority> authorities) {
+        this.userEntity = userEntity;
+        this.attributes = attributes;
+        this.authorities = authorities != null ? Set.copyOf(authorities) : Collections.emptySet();
+    }
 
     @Override
     public Map<String, Object> getAttributes() {
@@ -22,15 +40,11 @@ public class CustomOAuth2User implements OAuth2User {
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return userEntity.getAuthorities();
+        return authorities;
     }
 
     @Override
     public String getName() {
-        return userEntity.getEmail();
-    }
-
-    public UserEntity getUserEntity() {
-        return userEntity;
+        return userEntity != null ? userEntity.getEmail() : null;
     }
 }
