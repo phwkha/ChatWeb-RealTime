@@ -12,6 +12,7 @@ import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.response.SocketNotificationResponse;
 import com.web.backend.exception.custom.MessageProcessingException;
 import com.web.backend.kafka.payload.FriendPayload;
+import com.web.backend.service.NotificationService;
 import com.web.backend.service.WebSocketRoutingService;
 
 import java.util.List;
@@ -25,6 +26,8 @@ import lombok.extern.slf4j.Slf4j;
 public class FriendConsumer {
 
     private final WebSocketRoutingService webSocketRoutingService;
+
+    private final NotificationService notificationService;
 
     private static final String QUEUE_NOTIFICATIONS_STRING = "/queue/notifications";
 
@@ -44,6 +47,17 @@ public class FriendConsumer {
     public void listenFriendNotifications(FriendPayload friendEvent) {
         if (friendEvent == null) {
             return;
+        }
+
+        NotificationsType type = friendEvent.recipientType();
+
+        if (type == NotificationsType.FRIEND_REQUEST || type == NotificationsType.FRIEND_ACCEPTED) {
+            String content = buildResponse(type, friendEvent.senderDisplayName()).getMessage();
+            notificationService.createNotification(
+                    friendEvent.senderUsername(),
+                    friendEvent.recipientUsername(),
+                    type,
+                    content);
         }
 
         String recipient = friendEvent.recipientUsername();

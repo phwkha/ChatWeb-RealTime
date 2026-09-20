@@ -65,6 +65,7 @@ import com.web.backend.repository.MessageRepository;
 import com.web.backend.repository.ReadReceiptRepository;
 import com.web.backend.repository.SystemMessageRepository;
 import com.web.backend.repository.projection.UnreadCountProjection;
+import com.web.backend.service.NotificationService;
 import com.web.backend.service.impl.MessageServiceImpl;
 
 @ExtendWith(MockitoExtension.class)
@@ -98,6 +99,8 @@ class MessageServiceTest {
     private ZSetOperations<String, Object> zSetOperations;
     @Mock
     private ValueOperations<String, Object> valueOperations;
+    @Mock
+    private NotificationService notificationService;
 
     @InjectMocks
     private MessageServiceImpl messageService;

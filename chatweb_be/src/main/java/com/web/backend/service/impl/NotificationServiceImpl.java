@@ -11,12 +11,15 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.web.backend.common.NotificationsType;
 import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.response.CursorResponse;
 import com.web.backend.controller.response.NotificationResponse;
 import com.web.backend.exception.custom.ResourceNotFoundException;
+import com.web.backend.model.postgres.NotificationEntity;
 import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.repository.NotificationRepository;
+import com.web.backend.repository.UserRepository;
 import com.web.backend.service.NotificationService;
 
 import lombok.RequiredArgsConstructor;
@@ -29,6 +32,8 @@ public class NotificationServiceImpl implements NotificationService {
 
     private final NotificationRepository notificationRepository;
 
+    private final UserRepository userRepository;
+
     private final RedisTemplate<String, Object> redisTemplate;
 
     private static final String NOTIF_UNREAD_PREFIX = "notif:unread:";
@@ -37,6 +42,34 @@ public class NotificationServiceImpl implements NotificationService {
     private static final int MAX_PAGE_SIZE = 100;
 
     private static final String ERROR_NOTIFICATION_NOT_FOUND_STRING = "error.notification.not_found";
+
+    @Override
+    @Transactional
+    public void createNotification(String senderUsername, String recipientUsername, NotificationsType type,
+            String content) {
+        UserEntity sender = userRepository.findByUsername(senderUsername).orElse(null);
+        UserEntity recipient = userRepository.findByUsername(recipientUsername).orElse(null);
+
+        if (recipient == null) {
+            log.warn("Cannot create notification: recipient '{}' not found", recipientUsername);
+            return;
+        }
+
+        NotificationEntity entity = NotificationEntity.builder()
+                .sender(sender)
+                .recipient(recipient)
+                .type(type)
+                .content(content)
+                .isRead(false)
+                .build();
+        notificationRepository.save(entity);
+
+        try {
+            redisTemplate.delete(NOTIF_UNREAD_PREFIX + recipientUsername);
+        } catch (Exception e) {
+            log.warn("Failed to evict unread notification cache create for user {}", recipientUsername, e);
+        }
+    }
 
     @Override
     @Transactional
