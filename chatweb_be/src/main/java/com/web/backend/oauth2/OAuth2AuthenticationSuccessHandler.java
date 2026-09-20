@@ -6,6 +6,7 @@ import java.util.List;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.web.authentication.SimpleUrlAuthenticationSuccessHandler;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -41,8 +42,8 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
                 CustomOAuth2User oauthUser = (CustomOAuth2User) authentication.getPrincipal();
                 UserEntity user = oauthUser.getUserEntity();
 
-                List<String> authorities = user.getAuthorities().stream()
-                                .map(auth -> auth.getAuthority()).toList();
+                List<String> authorities = oauthUser.getAuthorities().stream()
+                                .map(GrantedAuthority::getAuthority).toList();
 
                 String accessToken = jwtService.generateAccessToken(user.getUsername(), authorities,
                                 user.getTokenVersion());

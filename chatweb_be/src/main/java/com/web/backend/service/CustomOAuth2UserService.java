@@ -124,7 +124,7 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
         }
         newUser.setUsername(username + DELIMITER_UNDERSCORE_STRING + System.currentTimeMillis());
 
-        newUser.setRole(roleRepository.findByName(USER_STRING)
+        newUser.setRole(roleRepository.findByNameOauth2(USER_STRING)
                 .orElseThrow(() -> {
                     log.error("Failed to assign default role: Role 'USER' not found in database");
                     return new OAuth2AuthenticationException(ERROR_ROLE_NOT_FOUND_STRING);
