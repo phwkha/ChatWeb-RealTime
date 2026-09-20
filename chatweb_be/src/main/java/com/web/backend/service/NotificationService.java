@@ -3,14 +3,16 @@ package com.web.backend.service;
 import com.web.backend.controller.response.CursorResponse;
 import com.web.backend.controller.response.NotificationResponse;
 
+import com.web.backend.model.postgres.UserEntity;
+
 public interface NotificationService {
 
-    CursorResponse<NotificationResponse> getNotifications(String username, String cursorStr, int size);
+    CursorResponse<NotificationResponse> getNotifications(UserEntity user, String cursorStr, int size);
 
-    Long getUnreadNotificationCounts(String username);
+    Long getUnreadNotificationCounts(UserEntity user);
 
-    void markNotificationAsRead(String username, Long notiId);
+    void markNotificationAsRead(UserEntity user, Long notiId);
 
-    int markAllNotificationsAsRead(String username);
+    int markAllNotificationsAsRead(UserEntity user);
 
 }

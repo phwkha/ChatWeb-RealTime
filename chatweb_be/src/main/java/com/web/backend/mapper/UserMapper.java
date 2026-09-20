@@ -35,6 +35,7 @@ public interface UserMapper {
 
     @Mapping(target = "role", source = "role.name")
     @Mapping(target = "permissions", source = "entity", qualifiedByName = "mapPermissionsToStrings")
+    @Mapping(target = "addresses", ignore = true)
     UserDetailResponse toUserDetailResponse(UserEntity entity);
 
     @Mapping(target = "userStatus", ignore = true)

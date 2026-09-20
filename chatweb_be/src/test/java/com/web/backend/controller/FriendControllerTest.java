@@ -103,7 +103,7 @@ class FriendControllerTest {
                                 .content(List.of(summary))
                                 .build();
 
-                when(friendService.getPendingRequests(eq("testuser"), eq(0), eq(10), eq("desc")))
+                when(friendService.getPendingRequests(eq(mockUser), eq(0), eq(10), eq("desc")))
                                 .thenReturn(pageResponse);
 
                 mockMvc.perform(get("/api/friends/requests")
@@ -125,7 +125,7 @@ class FriendControllerTest {
                                 .content(List.of(summary))
                                 .build();
 
-                when(friendService.getSentRequests(eq("testuser"), eq(0), eq(10), eq("desc")))
+                when(friendService.getSentRequests(eq(mockUser), eq(0), eq(10), eq("desc")))
                                 .thenReturn(pageResponse);
 
                 mockMvc.perform(get("/api/friends/sent")
@@ -147,7 +147,7 @@ class FriendControllerTest {
                                 .content(List.of(summary))
                                 .build();
 
-                when(friendService.getFriendsList(eq("testuser"), eq(0), eq(10), eq("desc")))
+                when(friendService.getFriendsList(eq(mockUser), eq(0), eq(10), eq("desc")))
                                 .thenReturn(pageResponse);
 
                 mockMvc.perform(get("/api/friends")
@@ -167,7 +167,7 @@ class FriendControllerTest {
                                 .andExpect(status().isOk())
                                 .andExpect(jsonPath("$.code").value(200));
 
-                verify(friendService).deleteFriendship("testuser", "otheruser");
+                verify(friendService).deleteFriendship(eq(mockUser), eq("otheruser"));
         }
 
         @Test
@@ -177,7 +177,7 @@ class FriendControllerTest {
                                 .andExpect(status().isOk())
                                 .andExpect(jsonPath("$.code").value(200));
 
-                verify(friendService).blockUser("testuser", "otheruser");
+                verify(friendService).blockUser(eq(mockUser), eq("otheruser"));
         }
 
         @Test
@@ -187,7 +187,7 @@ class FriendControllerTest {
                                 .andExpect(status().isOk())
                                 .andExpect(jsonPath("$.code").value(200));
 
-                verify(friendService).unblockUser("testuser", "otheruser");
+                verify(friendService).unblockUser(eq(mockUser), eq("otheruser"));
         }
 
         @Test
@@ -199,7 +199,7 @@ class FriendControllerTest {
                                 .content(List.of(summary))
                                 .build();
 
-                when(friendService.getBlockedList(eq("testuser"), eq(0), eq(10), eq("desc")))
+                when(friendService.getBlockedList(eq(mockUser), eq(0), eq(10), eq("desc")))
                                 .thenReturn(pageResponse);
 
                 mockMvc.perform(get("/api/friends/blocked")
@@ -225,7 +225,7 @@ class FriendControllerTest {
                                 .andExpect(status().isOk())
                                 .andExpect(jsonPath("$.code").value(200));
 
-                verify(friendService).sendFriendRequest("testuser", "otheruser");
+                verify(friendService).sendFriendRequest(eq(mockUser), eq("otheruser"));
         }
 
         @Test
@@ -241,6 +241,6 @@ class FriendControllerTest {
                                 .andExpect(status().isOk())
                                 .andExpect(jsonPath("$.code").value(200));
 
-                verify(friendService).acceptFriendRequest("testuser", "otheruser");
+                verify(friendService).acceptFriendRequest(eq(mockUser), eq("otheruser"));
         }
 }

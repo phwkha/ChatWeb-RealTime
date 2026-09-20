@@ -76,11 +76,11 @@ public class FriendServiceImpl implements FriendService {
 
         @Override
         @Transactional
-        public void sendFriendRequest(String requesterUsername, String addresseeUsername) {
+        public void sendFriendRequest(UserEntity requester, String addresseeUsername) {
+                String requesterUsername = requester.getUsername();
                 if (requesterUsername.equals(addresseeUsername))
                         throw new InvalidDataException(Translator.tolocale(ERROR_FRIEND_SELF_ADD_STRING));
 
-                UserEntity requester = getUser(requesterUsername);
                 UserEntity addressee = getUser(addresseeUsername);
 
                 if (addressee.getUserStatus() == UserStatus.INACTIVE) {
@@ -134,8 +134,8 @@ public class FriendServiceImpl implements FriendService {
 
         @Override
         @Transactional
-        public void acceptFriendRequest(String acceptorUsername, String requesterUsername) {
-                UserEntity acceptor = getUser(acceptorUsername);
+        public void acceptFriendRequest(UserEntity acceptor, String requesterUsername) {
+                String acceptorUsername = acceptor.getUsername();
                 UserEntity requester = getUser(requesterUsername);
 
                 if (requester.getUserStatus() == UserStatus.INACTIVE) {
@@ -174,10 +174,8 @@ public class FriendServiceImpl implements FriendService {
 
         @Override
         @Transactional(readOnly = true)
-        public PageResponse<UserSummaryResponse> getSentRequests(String currentUsername, int page, int size,
+        public PageResponse<UserSummaryResponse> getSentRequests(UserEntity currentUser, int page, int size,
                         String sortDir) {
-                UserEntity currentUser = getUser(currentUsername);
-
                 Pageable pageable = PageRequest.of(page, size,
                                 Sort.by((sortDir.equalsIgnoreCase(DESC_STRING)) ? Sort.Direction.DESC
                                                 : Sort.Direction.ASC,
@@ -191,9 +189,8 @@ public class FriendServiceImpl implements FriendService {
 
         @Override
         @Transactional(readOnly = true)
-        public PageResponse<UserSummaryResponse> getPendingRequests(String currentUsername, int page, int size,
+        public PageResponse<UserSummaryResponse> getPendingRequests(UserEntity currentUser, int page, int size,
                         String sortDir) {
-                UserEntity currentUser = getUser(currentUsername);
                 Pageable pageable = PageRequest.of(page, size,
                                 Sort.by((sortDir.equalsIgnoreCase(DESC_STRING)) ? Sort.Direction.DESC
                                                 : Sort.Direction.ASC,
@@ -207,27 +204,24 @@ public class FriendServiceImpl implements FriendService {
 
         @Override
         @Transactional(readOnly = true)
-        public PageResponse<UserSummaryResponse> getFriendsList(String currentUsername, int page, int size,
+        public PageResponse<UserSummaryResponse> getFriendsList(UserEntity currentUser, int page, int size,
                         String sortDir) {
-                if (!userRepository.existsByUsername(currentUsername)) {
-                        throw new ResourceNotFoundException(
-                                        Translator.tolocale(ERROR_USER_NOT_FOUND_STRING));
-                }
                 Pageable pageable = PageRequest.of(page, size,
                                 Sort.by((sortDir.equalsIgnoreCase(DESC_STRING)) ? Sort.Direction.DESC
                                                 : Sort.Direction.ASC,
                                                 CREATEAT_STRING));
 
                 Page<UserSummaryResponse> pageResult = friendshipRepository
-                                .findFriendsSummaryByUsername(currentUsername, pageable);
+                                .findFriendsSummaryByUsername(currentUser.getUsername(), pageable);
 
                 return buildPageResponse(pageResult, pageResult.getContent());
         }
 
         @Override
         @Transactional
-        public void deleteFriendship(String currentUsername, String targetUsername) {
-                UserEntity user1 = getUser(currentUsername);
+        public void deleteFriendship(UserEntity currentUser, String targetUsername) {
+                String currentUsername = currentUser.getUsername();
+                UserEntity user1 = currentUser;
                 UserEntity user2 = getUser(targetUsername);
 
                 FriendshipEntity friendship = friendshipRepository.findByUsers(user1, user2)
@@ -274,8 +268,8 @@ public class FriendServiceImpl implements FriendService {
 
         @Override
         @Transactional
-        public void blockUser(String blockerUsername, String targetUsername) {
-                UserEntity blocker = getUser(blockerUsername);
+        public void blockUser(UserEntity blocker, String targetUsername) {
+                String blockerUsername = blocker.getUsername();
                 UserEntity target = getUser(targetUsername);
 
                 FriendshipEntity friendship = friendshipRepository.findByUsers(blocker, target)
@@ -297,8 +291,8 @@ public class FriendServiceImpl implements FriendService {
 
         @Override
         @Transactional
-        public void unblockUser(String blockerUsername, String targetUsername) {
-                UserEntity blocker = getUser(blockerUsername);
+        public void unblockUser(UserEntity blocker, String targetUsername) {
+                String blockerUsername = blocker.getUsername();
                 UserEntity target = getUser(targetUsername);
 
                 FriendshipEntity friendship = friendshipRepository.findByUsers(blocker, target)
@@ -322,9 +316,8 @@ public class FriendServiceImpl implements FriendService {
 
         @Override
         @Transactional(readOnly = true)
-        public PageResponse<UserSummaryResponse> getBlockedList(String currentUsername, int page, int size,
+        public PageResponse<UserSummaryResponse> getBlockedList(UserEntity currentUser, int page, int size,
                         String sortDir) {
-                UserEntity currentUser = getUser(currentUsername);
                 Pageable pageable = PageRequest.of(page, size,
                                 Sort.by((sortDir.equalsIgnoreCase(DESC_STRING)) ? Sort.Direction.DESC
                                                 : Sort.Direction.ASC,

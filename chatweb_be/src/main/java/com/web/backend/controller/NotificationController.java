@@ -56,7 +56,7 @@ public class NotificationController {
                         @RequestParam(defaultValue = "20") @Min(value = 1, message = "{valid.size_min}") @Max(value = 100, message = "{valid.size_max}") int size) {
                 UserEntity user = (UserEntity) auth.getPrincipal();
                 CursorResponse<NotificationResponse> response = notificationService.getNotifications(
-                                user.getUsername(), cursor, size);
+                                user, cursor, size);
                 return ResponseEntity.ok(ApiResponse.success(
                                 HttpStatus.OK.value(),
                                 Translator.tolocale(SUCCESS_SYS_OPERATION_STRING),
@@ -73,7 +73,7 @@ public class NotificationController {
         @GetMapping("/unread-counts")
         public ResponseEntity<ApiResponse<Long>> getUnreadNotificationCounts(Authentication auth) {
                 UserEntity user = (UserEntity) auth.getPrincipal();
-                Long count = notificationService.getUnreadNotificationCounts(user.getUsername());
+                Long count = notificationService.getUnreadNotificationCounts(user);
                 return ResponseEntity.ok(ApiResponse.success(
                                 HttpStatus.OK.value(),
                                 Translator.tolocale(SUCCESS_SYS_OPERATION_STRING),
@@ -94,7 +94,7 @@ public class NotificationController {
                         Authentication auth,
                         @PathVariable @Positive(message = "{valid.id_positive}") Long id) {
                 UserEntity user = (UserEntity) auth.getPrincipal();
-                notificationService.markNotificationAsRead(user.getUsername(), id);
+                notificationService.markNotificationAsRead(user, id);
                 return ResponseEntity.ok(ApiResponse.success(
                                 HttpStatus.OK.value(),
                                 Translator.tolocale(SUCCESS_SYS_OPERATION_STRING),
@@ -111,7 +111,7 @@ public class NotificationController {
         @PatchMapping("/read-all")
         public ResponseEntity<ApiResponse<Integer>> markAllAsRead(Authentication auth) {
                 UserEntity user = (UserEntity) auth.getPrincipal();
-                int updatedCount = notificationService.markAllNotificationsAsRead(user.getUsername());
+                int updatedCount = notificationService.markAllNotificationsAsRead(user);
                 return ResponseEntity.ok(ApiResponse.success(
                                 HttpStatus.OK.value(),
                                 Translator.tolocale(SUCCESS_SYS_OPERATION_STRING),

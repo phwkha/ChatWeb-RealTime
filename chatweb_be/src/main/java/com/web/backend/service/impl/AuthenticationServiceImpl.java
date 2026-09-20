@@ -236,10 +236,6 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     @Override
     @Transactional
     public void logoutAllDevices(String username) {
-        if (!userRepository.existsByUsername(username)) {
-            throw new ResourceNotFoundException(Translator.tolocale(ERROR_USER_NOT_FOUND_STRING));
-        }
-
         userRepository.incrementTokenVersion(username);
 
         Cache userCache = cacheManager.getCache(USER_DETAILS_STRING);
