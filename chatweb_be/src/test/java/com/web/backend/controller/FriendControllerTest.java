@@ -33,7 +33,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.Collections;
 import java.util.List;
 
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -103,7 +102,7 @@ class FriendControllerTest {
                                 .content(List.of(summary))
                                 .build();
 
-                when(friendService.getPendingRequests(eq(mockUser), eq(0), eq(10), eq("desc")))
+                when(friendService.getPendingRequests(mockUser, 0, 10, "desc"))
                                 .thenReturn(pageResponse);
 
                 mockMvc.perform(get("/api/friends/requests")
@@ -125,7 +124,7 @@ class FriendControllerTest {
                                 .content(List.of(summary))
                                 .build();
 
-                when(friendService.getSentRequests(eq(mockUser), eq(0), eq(10), eq("desc")))
+                when(friendService.getSentRequests(mockUser, 0, 10, "desc"))
                                 .thenReturn(pageResponse);
 
                 mockMvc.perform(get("/api/friends/sent")
@@ -147,7 +146,7 @@ class FriendControllerTest {
                                 .content(List.of(summary))
                                 .build();
 
-                when(friendService.getFriendsList(eq(mockUser), eq(0), eq(10), eq("desc")))
+                when(friendService.getFriendsList(mockUser, 0, 10, "desc"))
                                 .thenReturn(pageResponse);
 
                 mockMvc.perform(get("/api/friends")
@@ -167,7 +166,7 @@ class FriendControllerTest {
                                 .andExpect(status().isOk())
                                 .andExpect(jsonPath("$.code").value(200));
 
-                verify(friendService).deleteFriendship(eq(mockUser), eq("otheruser"));
+                verify(friendService).deleteFriendship(mockUser, "otheruser");
         }
 
         @Test
@@ -177,7 +176,7 @@ class FriendControllerTest {
                                 .andExpect(status().isOk())
                                 .andExpect(jsonPath("$.code").value(200));
 
-                verify(friendService).blockUser(eq(mockUser), eq("otheruser"));
+                verify(friendService).blockUser(mockUser, "otheruser");
         }
 
         @Test
@@ -187,7 +186,7 @@ class FriendControllerTest {
                                 .andExpect(status().isOk())
                                 .andExpect(jsonPath("$.code").value(200));
 
-                verify(friendService).unblockUser(eq(mockUser), eq("otheruser"));
+                verify(friendService).unblockUser(mockUser, "otheruser");
         }
 
         @Test
@@ -199,7 +198,7 @@ class FriendControllerTest {
                                 .content(List.of(summary))
                                 .build();
 
-                when(friendService.getBlockedList(eq(mockUser), eq(0), eq(10), eq("desc")))
+                when(friendService.getBlockedList(mockUser, 0, 10, "desc"))
                                 .thenReturn(pageResponse);
 
                 mockMvc.perform(get("/api/friends/blocked")
@@ -225,7 +224,7 @@ class FriendControllerTest {
                                 .andExpect(status().isOk())
                                 .andExpect(jsonPath("$.code").value(200));
 
-                verify(friendService).sendFriendRequest(eq(mockUser), eq("otheruser"));
+                verify(friendService).sendFriendRequest(mockUser, "otheruser");
         }
 
         @Test
@@ -241,6 +240,6 @@ class FriendControllerTest {
                                 .andExpect(status().isOk())
                                 .andExpect(jsonPath("$.code").value(200));
 
-                verify(friendService).acceptFriendRequest(eq(mockUser), eq("otheruser"));
+                verify(friendService).acceptFriendRequest(mockUser, "otheruser");
         }
 }

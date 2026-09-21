@@ -101,7 +101,7 @@ class FriendServiceTest {
         friendService.sendFriendRequest(userA, "userB");
 
         verify(friendshipRepository).save(any(FriendshipEntity.class));
-        verify(valueOperations).set(eq("relation:userA:userB"), eq("PENDING:userA"), eq(Duration.ofDays(1)));
+        verify(valueOperations).set("relation:userA:userB", "PENDING:userA", Duration.ofDays(1));
         verify(eventPublisher).publishEvent(any(FriendPayload.class));
     }
 
@@ -132,7 +132,7 @@ class FriendServiceTest {
 
         assertEquals(FriendshipStatus.ACCEPTED, pendingReq.getStatus());
         verify(friendshipRepository).save(pendingReq);
-        verify(valueOperations).set(eq("relation:userA:userB"), eq("ACCEPTED"), eq(Duration.ofDays(7)));
+        verify(valueOperations).set("relation:userA:userB", "ACCEPTED", Duration.ofDays(7));
         verify(eventPublisher).publishEvent(any(FriendPayload.class));
     }
 
@@ -165,7 +165,7 @@ class FriendServiceTest {
         friendService.deleteFriendship(userA, "userB");
 
         verify(friendshipRepository).delete(f);
-        verify(valueOperations).set(eq("relation:userA:userB"), eq("NONE"), eq(Duration.ofHours(1)));
+        verify(valueOperations).set("relation:userA:userB", "NONE", Duration.ofHours(1));
         verify(eventPublisher).publishEvent(any(FriendPayload.class));
     }
 
@@ -178,7 +178,7 @@ class FriendServiceTest {
         friendService.blockUser(userA, "userB");
 
         verify(friendshipRepository).save(argThat(f -> f.getStatus() == FriendshipStatus.BLOCKED));
-        verify(valueOperations).set(eq("relation:userA:userB"), eq("BLOCKED:userA"), eq(Duration.ofDays(7)));
+        verify(valueOperations).set("relation:userA:userB", "BLOCKED:userA", Duration.ofDays(7));
     }
 
     @Test
@@ -200,7 +200,7 @@ class FriendServiceTest {
         when(friendshipRepository.findByUsernames("userA", "userB")).thenReturn(Optional.of(f));
 
         assertTrue(friendService.isFriend("userA", "userB"));
-        verify(valueOperations).set(eq("relation:userA:userB"), eq("ACCEPTED"), eq(Duration.ofDays(7)));
+        verify(valueOperations).set("relation:userA:userB", "ACCEPTED", Duration.ofDays(7));
     }
 
     // =====================================
@@ -309,7 +309,7 @@ class FriendServiceTest {
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
 
         friendService.deleteFriendship(userA, "userB");
-        verify(valueOperations).set(eq("relation:userA:userB"), eq("NONE"), eq(Duration.ofHours(1)));
+        verify(valueOperations).set("relation:userA:userB", "NONE", Duration.ofHours(1));
         verify(eventPublisher).publishEvent(any(FriendPayload.class));
     }
 
@@ -325,7 +325,7 @@ class FriendServiceTest {
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
 
         friendService.deleteFriendship(userB, "userA");
-        verify(valueOperations).set(eq("relation:userA:userB"), eq("NONE"), eq(Duration.ofHours(1)));
+        verify(valueOperations).set("relation:userA:userB", "NONE", Duration.ofHours(1));
         verify(eventPublisher).publishEvent(any(FriendPayload.class));
     }
 
@@ -350,7 +350,7 @@ class FriendServiceTest {
         when(friendshipRepository.findByUsernames("userA", "userB")).thenReturn(Optional.of(f));
 
         assertFalse(friendService.isFriend("userA", "userB"));
-        verify(valueOperations).set(eq("relation:userA:userB"), eq("PENDING:userA"), eq(Duration.ofDays(1)));
+        verify(valueOperations).set("relation:userA:userB", "PENDING:userA", Duration.ofDays(1));
     }
 
     @Test
@@ -365,7 +365,7 @@ class FriendServiceTest {
         when(friendshipRepository.findByUsernames("userA", "userB")).thenReturn(Optional.of(f));
 
         assertFalse(friendService.isFriend("userA", "userB"));
-        verify(valueOperations).set(eq("relation:userA:userB"), eq("BLOCKED:userA"), eq(Duration.ofDays(7)));
+        verify(valueOperations).set("relation:userA:userB", "BLOCKED:userA", Duration.ofDays(7));
     }
 
     @Test
@@ -375,7 +375,7 @@ class FriendServiceTest {
         when(friendshipRepository.findByUsernames("userA", "userB")).thenReturn(Optional.empty());
 
         assertFalse(friendService.isFriend("userA", "userB"));
-        verify(valueOperations).set(eq("relation:userA:userB"), eq("NONE"), eq(Duration.ofHours(1)));
+        verify(valueOperations).set("relation:userA:userB", "NONE", Duration.ofHours(1));
     }
 
     // =====================================
@@ -396,7 +396,7 @@ class FriendServiceTest {
         friendService.unblockUser(userA, "userB");
 
         verify(friendshipRepository).delete(f);
-        verify(valueOperations).set(eq("relation:userA:userB"), eq("NONE"), eq(Duration.ofHours(1)));
+        verify(valueOperations).set("relation:userA:userB", "NONE", Duration.ofHours(1));
     }
 
     @Test
