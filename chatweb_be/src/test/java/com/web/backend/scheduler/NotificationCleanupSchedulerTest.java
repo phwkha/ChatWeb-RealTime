@@ -14,6 +14,7 @@ import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentMatchers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -51,7 +52,7 @@ class NotificationCleanupSchedulerTest {
         notificationCleanupScheduler.cleanupOldReadNotifications();
 
         verify(notificationRepository, never()).deleteReadNotificationsBefore(any());
-        verify(redisTemplate, never()).execute(any(RedisScript.class), anyList(), any());
+        verify(redisTemplate, never()).execute(ArgumentMatchers.<RedisScript<Long>>any(), anyList(), any());
     }
 
     @Test
@@ -63,7 +64,7 @@ class NotificationCleanupSchedulerTest {
         notificationCleanupScheduler.cleanupOldReadNotifications();
 
         verify(notificationRepository).deleteReadNotificationsBefore(any(Instant.class));
-        verify(redisTemplate).execute(any(RedisScript.class), anyList(), any());
+        verify(redisTemplate).execute(ArgumentMatchers.<RedisScript<Long>>any(), anyList(), any());
     }
 
     @Test
@@ -75,6 +76,6 @@ class NotificationCleanupSchedulerTest {
 
         notificationCleanupScheduler.cleanupOldReadNotifications();
 
-        verify(redisTemplate).execute(any(RedisScript.class), anyList(), any());
+        verify(redisTemplate).execute(ArgumentMatchers.<RedisScript<Long>>any(), anyList(), any());
     }
 }

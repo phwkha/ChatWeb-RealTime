@@ -185,7 +185,7 @@ class AuthenticationServiceTest {
         loginRequest.setUsername("unknownuser");
         loginRequest.setPassword("password123");
 
-        when(cuckooFilterService.exists(eq("filter:usernames"), eq("unknownuser"))).thenReturn(false);
+        when(cuckooFilterService.exists("filter:usernames", "unknownuser")).thenReturn(false);
 
         // Act & Assert
         assertThrows(AuthenticationFailedException.class, () -> authenticationService.login(loginRequest));
@@ -293,7 +293,7 @@ class AuthenticationServiceTest {
 
         mockUser.setUserStatus(UserStatus.ACTIVE);
         when(jwtService.generateAccessToken(eq("testuser"), any(), eq(1))).thenReturn("newAccess");
-        when(jwtService.generateRefreshToken(eq("testuser"), eq(1))).thenReturn("newRefresh");
+        when(jwtService.generateRefreshToken("testuser", 1)).thenReturn("newRefresh");
 
         // Act
         TokenResponse response = authenticationService.refreshToken(oldRefreshToken);
@@ -372,8 +372,8 @@ class AuthenticationServiceTest {
         authenticationService.logout(mockToken, TokenType.ACCESS_TOKEN);
 
         // Assert
-        verify(valueOperations).set(eq("blacklist:mockToken"), eq("logged_out"), eq(5000L),
-                eq(java.util.concurrent.TimeUnit.MILLISECONDS));
+        verify(valueOperations).set("blacklist:mockToken", "logged_out", 5000L,
+                java.util.concurrent.TimeUnit.MILLISECONDS);
     }
 
     @Test
@@ -477,8 +477,8 @@ class AuthenticationServiceTest {
 
         authenticationService.resendOtp("test@example.com");
 
-        verify(valueOperations).set(eq("cooldown:resend:test@example.com"), eq("1"), eq(60L),
-                eq(java.util.concurrent.TimeUnit.SECONDS));
+        verify(valueOperations).set("cooldown:resend:test@example.com", "1", 60L,
+                java.util.concurrent.TimeUnit.SECONDS);
         verify(emailKafkaProducer).sendOtpEmailTask(eq("test@example.com"), eq("testuser"), anyString());
     }
 
@@ -667,8 +667,8 @@ class AuthenticationServiceTest {
 
         authenticationService.resendForgotPasswordOtp("test@example.com");
 
-        verify(valueOperations).set(eq("cooldown:resend:testuser"), eq("1"), eq(60L),
-                eq(java.util.concurrent.TimeUnit.SECONDS));
+        verify(valueOperations).set("cooldown:resend:testuser", "1", 60L,
+                java.util.concurrent.TimeUnit.SECONDS);
         verify(emailKafkaProducer).sendOtpEmailTask(eq("test@example.com"), eq("testuser"), anyString());
     }
 

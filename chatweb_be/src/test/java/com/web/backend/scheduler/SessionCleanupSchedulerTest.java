@@ -18,6 +18,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 
+import org.mockito.ArgumentMatchers;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -55,7 +56,7 @@ class SessionCleanupSchedulerTest {
         sessionCleanupScheduler.cleanupZombieSessions();
 
         verify(redisTemplate, never()).opsForZSet();
-        verify(redisTemplate, never()).execute(any(RedisScript.class), anyList(), any());
+        verify(redisTemplate, never()).execute(ArgumentMatchers.<RedisScript<Long>>any(), anyList(), any());
     }
 
     @Test
@@ -69,7 +70,7 @@ class SessionCleanupSchedulerTest {
         sessionCleanupScheduler.cleanupZombieSessions();
 
         verify(userService, never()).setUserOnlineStatus(anyString(), anyBoolean());
-        verify(redisTemplate).execute(any(RedisScript.class), eq(Collections.singletonList("lock:session_cleanup")), anyString());
+        verify(redisTemplate).execute(ArgumentMatchers.<RedisScript<Long>>any(), eq(Collections.singletonList("lock:session_cleanup")), anyString());
     }
 
     @Test
@@ -96,7 +97,7 @@ class SessionCleanupSchedulerTest {
         verify(redisTemplate).delete("ws:routing:servers:user2");
         verify(userService).setUserOnlineStatus("user1", false);
         verify(userService).setUserOnlineStatus("user2", false);
-        verify(redisTemplate).execute(any(RedisScript.class), eq(Collections.singletonList("lock:session_cleanup")), anyString());
+        verify(redisTemplate).execute(ArgumentMatchers.<RedisScript<Long>>any(), eq(Collections.singletonList("lock:session_cleanup")), anyString());
     }
 
     @Test
@@ -109,7 +110,7 @@ class SessionCleanupSchedulerTest {
 
         sessionCleanupScheduler.cleanupZombieSessions();
 
-        verify(redisTemplate).execute(any(RedisScript.class), eq(Collections.singletonList("lock:session_cleanup")), anyString());
+        verify(redisTemplate).execute(ArgumentMatchers.<RedisScript<Long>>any(), eq(Collections.singletonList("lock:session_cleanup")), anyString());
     }
 
     // ==========================================
@@ -124,7 +125,7 @@ class SessionCleanupSchedulerTest {
         sessionCleanupScheduler.processOfflineDebounceQueue();
 
         verify(redisTemplate, never()).opsForZSet();
-        verify(redisTemplate, never()).execute(any(RedisScript.class), anyList(), any());
+        verify(redisTemplate, never()).execute(ArgumentMatchers.<RedisScript<Long>>any(), anyList(), any());
     }
 
     @Test
@@ -138,7 +139,7 @@ class SessionCleanupSchedulerTest {
         sessionCleanupScheduler.processOfflineDebounceQueue();
 
         verify(userService, never()).setUserOnlineStatus(anyString(), anyBoolean());
-        verify(redisTemplate).execute(any(RedisScript.class), eq(Collections.singletonList("lock:presence_debounce")), anyString());
+        verify(redisTemplate).execute(ArgumentMatchers.<RedisScript<Long>>any(), eq(Collections.singletonList("lock:presence_debounce")), anyString());
     }
 
     @Test
@@ -160,7 +161,7 @@ class SessionCleanupSchedulerTest {
         verify(redisTemplate).delete("ws:routing:servers:user_offline");
         verify(userService).setUserOnlineStatus("user_offline", false);
         verify(zSetOperations).remove("presence:offline_queue", "user_offline");
-        verify(redisTemplate).execute(any(RedisScript.class), eq(Collections.singletonList("lock:presence_debounce")), anyString());
+        verify(redisTemplate).execute(ArgumentMatchers.<RedisScript<Long>>any(), eq(Collections.singletonList("lock:presence_debounce")), anyString());
     }
 
     @Test
@@ -179,6 +180,6 @@ class SessionCleanupSchedulerTest {
 
         verify(userService, never()).setUserOnlineStatus(eq("user_reconnected"), anyBoolean());
         verify(zSetOperations).remove("presence:offline_queue", "user_reconnected");
-        verify(redisTemplate).execute(any(RedisScript.class), eq(Collections.singletonList("lock:presence_debounce")), anyString());
+        verify(redisTemplate).execute(ArgumentMatchers.<RedisScript<Long>>any(), eq(Collections.singletonList("lock:presence_debounce")), anyString());
     }
 }

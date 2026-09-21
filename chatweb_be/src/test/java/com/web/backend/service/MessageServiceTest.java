@@ -65,7 +65,6 @@ import com.web.backend.repository.MessageRepository;
 import com.web.backend.repository.ReadReceiptRepository;
 import com.web.backend.repository.SystemMessageRepository;
 import com.web.backend.repository.projection.UnreadCountProjection;
-import com.web.backend.service.NotificationService;
 import com.web.backend.service.impl.MessageServiceImpl;
 
 @ExtendWith(MockitoExtension.class)
@@ -133,7 +132,8 @@ class MessageServiceTest {
 
         lenient().when(messageMapper.toResponse(any(ChatMessage.class))).thenAnswer(inv -> {
             ChatMessage entity = inv.getArgument(0);
-            if (entity == null) return null;
+            if (entity == null)
+                return null;
             return ChatMessageResponse.builder()
                     .id(entity.getId())
                     .sender(entity.getSender())

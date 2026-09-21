@@ -70,7 +70,8 @@ class RoleServiceTest {
     void testGetAllRoles() {
         RoleEntity role = new RoleEntity();
         when(roleRepository.findAll()).thenReturn(List.of(role));
-        when(userMapper.toRoleResponse(role)).thenReturn(org.mockito.Mockito.mock(RoleResponse.class));
+        RoleResponse mockRoleResponse = mock(RoleResponse.class);
+        when(userMapper.toRoleResponse(role)).thenReturn(mockRoleResponse);
 
         List<RoleResponse> result = roleService.getAllRoles();
         assertEquals(1, result.size());
@@ -81,7 +82,8 @@ class RoleServiceTest {
         PermissionEntity perm = new PermissionEntity();
         perm.setName("P1");
         when(permissionRepository.findAll()).thenReturn(List.of(perm));
-        when(userMapper.toPermissionResponse(perm)).thenReturn(org.mockito.Mockito.mock(PermissionResponse.class));
+        PermissionResponse mockPermissionResponse = mock(PermissionResponse.class);
+        when(userMapper.toPermissionResponse(perm)).thenReturn(mockPermissionResponse);
 
         List<PermissionResponse> result = roleService.getAllPermissions();
         assertEquals(1, result.size());
@@ -105,7 +107,8 @@ class RoleServiceTest {
 
         RoleEntity savedRole = new RoleEntity();
         when(roleRepository.save(any(RoleEntity.class))).thenReturn(savedRole);
-        when(userMapper.toRoleResponse(savedRole)).thenReturn(org.mockito.Mockito.mock(RoleResponse.class));
+        RoleResponse mockRoleResponse = mock(RoleResponse.class);
+        when(userMapper.toRoleResponse(savedRole)).thenReturn(mockRoleResponse);
 
         assertNotNull(roleService.createRole(req));
         verify(roleRepository).save(any(RoleEntity.class));
@@ -120,7 +123,8 @@ class RoleServiceTest {
 
         when(roleRepository.findByName("USER")).thenReturn(Optional.empty());
         when(roleRepository.save(any(RoleEntity.class))).thenReturn(new RoleEntity());
-        when(userMapper.toRoleResponse(any())).thenReturn(org.mockito.Mockito.mock(RoleResponse.class));
+        RoleResponse mockRoleResponse = mock(RoleResponse.class);
+        when(userMapper.toRoleResponse(any())).thenReturn(mockRoleResponse);
 
         assertNotNull(roleService.createRole(req));
         verify(permissionRepository, never()).findAllById(any());
@@ -147,7 +151,8 @@ class RoleServiceTest {
         p1.setName("P1");
         when(permissionRepository.findAllById(java.util.List.of(1L))).thenReturn(List.of(p1));
         when(roleRepository.save(role)).thenReturn(role);
-        when(userMapper.toRoleResponse(role)).thenReturn(org.mockito.Mockito.mock(RoleResponse.class));
+        RoleResponse mockRoleResponse = mock(RoleResponse.class);
+        when(userMapper.toRoleResponse(role)).thenReturn(mockRoleResponse);
 
         assertNotNull(roleService.updateRole(1L, req));
     }
@@ -168,7 +173,8 @@ class RoleServiceTest {
 
         when(roleRepository.findById(1L)).thenReturn(Optional.of(role));
         when(roleRepository.save(role)).thenReturn(role);
-        when(userMapper.toRoleResponse(role)).thenReturn(org.mockito.Mockito.mock(RoleResponse.class));
+        RoleResponse mockRoleResponse = mock(RoleResponse.class);
+        when(userMapper.toRoleResponse(role)).thenReturn(mockRoleResponse);
 
         assertNotNull(roleService.updateRole(1L, req));
         verify(permissionRepository, never()).findAllById(any());
