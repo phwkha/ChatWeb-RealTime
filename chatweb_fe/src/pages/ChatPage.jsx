@@ -19,6 +19,7 @@ import { useChatRealtime } from '../hooks/useChatRealtime.js'
 import { useContextMenu } from '../hooks/useContextMenu.js'
 import { useConversationMessages } from '../hooks/useConversationMessages.js'
 import { useMessageSearch } from '../hooks/useMessageSearch.js'
+import { useNotifications } from '../hooks/useNotifications.js'
 import { useUserDiscovery } from '../hooks/useUserDiscovery.js'
 import { isAdminAccount, isAdminUser } from '../services/authorization.js'
 import {
@@ -115,6 +116,22 @@ function ChatPage() {
     setSelectedUser((cur) => cur?.username?.toLocaleLowerCase('en-US') === norm ? { ...cur, online, isOnline: online } : cur)
   }, [setFriends])
 
+  const {
+    notifications,
+    unreadCount: unreadNotificationCount,
+    loading: notificationsLoading,
+    loadingMore: notificationsLoadingMore,
+    hasMore: notificationsHasMore,
+    loadMore: loadMoreNotifications,
+    markAsRead: markNotificationRead,
+    markAllAsRead: markAllNotificationsRead,
+    handleRealtimeNotification,
+  } = useNotifications({
+    enabled: Boolean(currentUser),
+    playNotificationSound,
+    showToast,
+  })
+
   const realtime = useChatRealtime({
     currentUser, selectedUser, activeSection, blockedMessageIntervals, language,
     playNotificationSound, playInboxSound, showToast, t,
@@ -124,6 +141,7 @@ function ChatPage() {
     removeRateLimitedMessage: (...args) => messagesState.removeRateLimitedMessage(...args),
     loadConversation: (...args) => messagesState.loadConversation(...args),
     scheduleConnectionSync, updatePeerPresence,
+    onRealtimeNotification: handleRealtimeNotification,
   })
 
   const {
@@ -201,6 +219,30 @@ function ChatPage() {
     }
   }, [closeContextMenu, markAsRead, messagesState, sendRealtimeReceipt, setSearchParams])
 
+  const handleNotificationClick = useCallback((notification) => {
+    if (!notification) return
+    void markNotificationRead(notification.id)
+    const targetUsername = notification.targetType === 'USER'
+      ? (notification.targetId || notification.senderUsername)
+      : (notification.senderUsername || notification.targetId)
+
+    if (!targetUsername) return
+
+    const friend = friends.find((f) => (
+      String(f.username || '').toLocaleLowerCase('en-US') === String(targetUsername).toLocaleLowerCase('en-US')
+    ))
+    if (friend) {
+      selectFriend(friend)
+    } else {
+      selectFriend({
+        username: targetUsername,
+        firstName: notification.senderFirstName || '',
+        lastName: notification.senderLastName || '',
+        avatar: notification.senderAvatar || null,
+      })
+    }
+  }, [friends, markNotificationRead, selectFriend])
+
   const clearActiveConversation = useCallback(() => {
     selectedRef.current = null
     setSelectedUser(null)
@@ -271,7 +313,9 @@ function ChatPage() {
       <AppRail
         activeSection={activeSection} online={connectionState === 'connected'}
         totalUnreadMessages={totalUnreadMessages} friendRequestCount={friendRequests.length}
-        worldNotificationCount={worldNotifications.length} onSelectSection={setActiveSection}
+        worldNotificationCount={worldNotifications.length}
+        unreadNotificationCount={unreadNotificationCount}
+        onSelectSection={setActiveSection}
         onOpenWorld={() => setWorldOpen(true)}
       />
 
@@ -327,8 +371,19 @@ function ChatPage() {
 
       {activeSection === 'notifications' && (
         <NotificationsSection
-          friendRequests={friendRequests} worldNotifications={worldNotifications}
-          language={language} t={t} onAcceptFriend={async (p) => { await acceptFriend(p); selectFriend(p) }}
+          notifications={notifications}
+          unreadCount={unreadNotificationCount}
+          loading={notificationsLoading}
+          loadingMore={notificationsLoadingMore}
+          hasMore={notificationsHasMore}
+          onLoadMore={loadMoreNotifications}
+          onMarkAllAsRead={markAllNotificationsRead}
+          onNotificationClick={handleNotificationClick}
+          friendRequests={friendRequests}
+          worldNotifications={worldNotifications}
+          language={language}
+          t={t}
+          onAcceptFriend={async (p) => { await acceptFriend(p); selectFriend(p) }}
           onOpenWorld={() => setWorldOpen(true)}
         />
       )}

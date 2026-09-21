@@ -35,6 +35,7 @@ export default function AppRail({
   totalUnreadMessages = 0,
   friendRequestCount = 0,
   worldNotificationCount = 0,
+  unreadNotificationCount = 0,
   onSelectSection,
   onOpenWorld,
   onSelectSettings,
@@ -90,12 +91,17 @@ export default function AppRail({
     <nav aria-label="Chat navigation">
       <button className={`${activeSection === 'chat' ? 'is-active ' : ''}rail-badge`} type="button" title={t('conversations')} onClick={() => selectSection('chat')}><ChatIcon name="chat" />{totalUnreadMessages > 0 && <span>{totalUnreadMessages > 99 ? '99+' : totalUnreadMessages}</span>}</button>
       <button className={`${activeSection === 'friends' ? 'is-active ' : ''}rail-badge`} type="button" title={t('friends')} onClick={() => selectSection('friends')}><ChatIcon name="users" />{friendRequestCount > 0 && <span>{friendRequestCount > 99 ? '99+' : friendRequestCount}</span>}</button>
-      <button className={`${activeSection === 'notifications' ? 'is-active ' : ''}rail-badge`} type="button" title={t('notifications')} onClick={() => selectSection('notifications')}><ChatIcon name="bell" />{friendRequestCount + worldNotificationCount > 0 && <span>{friendRequestCount + worldNotificationCount}</span>}</button>
+      <button className={`${activeSection === 'notifications' ? 'is-active ' : ''}rail-badge`} type="button" title={t('notifications')} onClick={() => selectSection('notifications')}>
+        <ChatIcon name="bell" />
+        {unreadNotificationCount > 0 && (
+          <span>{unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}</span>
+        )}
+      </button>
       <button type="button" title={t('worldShort')} onClick={openWorld}><ChatIcon name="globe" /></button>
       {isAdmin && <button type="button" title={t('adminConsole')} onClick={() => navigate('/admin')}><ChatIcon name="shield" /></button>}
     </nav>
     <div className="chat-rail__bottom">
-      <button className="language-button" type="button" onClick={() => setLanguage(language === 'vi' ? 'en' : 'vi')} title={t('language')}>{language.toUpperCase()}</button>
+      <button className="language-button" type="button" onClick={() => setLanguage(language === 'vi' ? 'en' : language === 'en' ? 'ja' : 'vi')} title={t('language')}>{language.toUpperCase()}</button>
       <button type="button" title={t('logout')} onClick={handleLogout}><ChatIcon name="logout" /></button>
       <div className="account-menu-anchor" ref={menuRef}>
         {menuOpen && <div className="account-menu" role="menu">

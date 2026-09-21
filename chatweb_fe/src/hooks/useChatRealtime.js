@@ -35,6 +35,7 @@ export function useChatRealtime({
   loadConversation,
   scheduleConnectionSync,
   updatePeerPresence,
+  onRealtimeNotification,
 }) {
   const [unreadCounts, setUnreadCounts] = useState({})
   const [typingUsers, setTypingUsers] = useState({})
@@ -231,7 +232,9 @@ export function useChatRealtime({
     const isMsgUpdate = isEdit || isRevoke || isReaction || notification.type === 'STATUS_MESSAGE'
     const notifPeer = notification.data?.sender === currentUser?.username ? notification.data?.recipient : notification.data?.sender || notification.data?.reader || notification.relatedUsername
     if (isMsgUpdate && isIncomingMessageBlocked(blockedMessageIntervals, currentUser?.username, notifPeer)) return
-    if (notification.type === 'FRIEND_REQUEST') {
+    if (onRealtimeNotification) {
+      onRealtimeNotification(notification)
+    } else if (notification.type === 'FRIEND_REQUEST') {
       playNotificationSound()
       if (notification.message) showToast(notification.message)
     }
@@ -258,7 +261,7 @@ export function useChatRealtime({
       }
       setMessagesByUser((cur) => ({ ...cur, [peer]: upsertMessage(cur[peer] || [], data) }))
     }
-  }, [blockedMessageIntervals, currentUser, messagesByUserRef, playNotificationSound, recordMessageEdit, scheduleConnectionSync, setMessagesByUser, showToast, updatePeerPresence])
+  }, [blockedMessageIntervals, currentUser, messagesByUserRef, onRealtimeNotification, playNotificationSound, recordMessageEdit, scheduleConnectionSync, setMessagesByUser, showToast, updatePeerPresence])
 
   const handleWorldMessage = useCallback((message) => {
     if (!String(message?.content || '').trim()) return

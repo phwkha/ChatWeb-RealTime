@@ -200,7 +200,8 @@ export function formatTime(timestamp, language) {
   if (!timestamp) return ''
   const date = new Date(timestamp)
   if (Number.isNaN(date.getTime())) return ''
-  return new Intl.DateTimeFormat(language === 'vi' ? 'vi-VN' : 'en-US', {
+  const locale = language === 'vi' ? 'vi-VN' : language === 'ja' ? 'ja-JP' : 'en-US'
+  return new Intl.DateTimeFormat(locale, {
     hour: '2-digit', minute: '2-digit',
   }).format(date)
 }
@@ -209,9 +210,44 @@ export function formatDateTime(timestamp, language) {
   if (!timestamp) return ''
   const date = new Date(timestamp)
   if (Number.isNaN(date.getTime())) return ''
-  return new Intl.DateTimeFormat(language === 'vi' ? 'vi-VN' : 'en-US', {
+  const locale = language === 'vi' ? 'vi-VN' : language === 'ja' ? 'ja-JP' : 'en-US'
+  return new Intl.DateTimeFormat(locale, {
     dateStyle: 'medium', timeStyle: 'short',
   }).format(date)
+}
+
+export function formatRelativeTime(timestamp, language = 'vi') {
+  if (!timestamp) return ''
+  const date = new Date(timestamp)
+  if (Number.isNaN(date.getTime())) return ''
+  const now = new Date()
+  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000)
+
+  if (diffInSeconds < 60) {
+    if (language === 'vi') return 'vừa xong'
+    if (language === 'ja') return 'たった今'
+    return 'just now'
+  }
+
+  const locale = language === 'vi' ? 'vi-VN' : language === 'ja' ? 'ja-JP' : 'en-US'
+  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' })
+
+  const diffInMinutes = Math.floor(diffInSeconds / 60)
+  if (diffInMinutes < 60) {
+    return rtf.format(-diffInMinutes, 'minute')
+  }
+
+  const diffInHours = Math.floor(diffInMinutes / 60)
+  if (diffInHours < 24) {
+    return rtf.format(-diffInHours, 'hour')
+  }
+
+  const diffInDays = Math.floor(diffInHours / 24)
+  if (diffInDays < 7) {
+    return rtf.format(-diffInDays, 'day')
+  }
+
+  return formatDateTime(timestamp, language)
 }
 
 export function initialChatSection() {
