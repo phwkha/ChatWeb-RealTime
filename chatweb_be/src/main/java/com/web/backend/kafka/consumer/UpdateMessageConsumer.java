@@ -64,9 +64,8 @@ public class UpdateMessageConsumer {
 
             if (sender != null) {
                 webSocketRoutingService.routeMessage(sender, QUEUE_NOTIFICATIONS_STRING, notification);
+                log.debug("Dispatched read receipt notification to sender '{}' for conv '{}'", sender, convId);
             }
-            webSocketRoutingService.routeMessage(reader, QUEUE_NOTIFICATIONS_STRING, notification);
-            log.debug("Dispatched read receipt notification for reader '{}' and sender '{}'", reader, sender);
         } catch (Exception e) {
             log.error("Failed to route read receipt WebSocket notification for conv '{}'", convId, e);
             throw new MessageProcessingException("Failed to process message in UpdateMessageConsumer", e);

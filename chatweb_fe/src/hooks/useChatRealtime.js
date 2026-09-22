@@ -345,15 +345,15 @@ export function useChatRealtime({
     channel.onmessage = (event) => {
       const payload = event?.data
       if (!payload || payload.type !== 'WATERMARK_READ') return
-      const { reader, sender, readTimestamp, status } = payload
+      const { reader, sender } = payload
       if (!reader || !sender || reader !== currentUser?.username) return
+      // Only sync unread counts across tabs.
+      // This broadcast means "I (reader) read messages FROM sender",
+      // NOT "sender read MY messages", so promoteStatuses must NOT be called here.
       setUnreadCounts((cur) => ({ ...cur, [sender]: 0 }))
-      const nextStatus = status || 'READ'
-      const nextTimestamp = readTimestamp || new Date().toISOString()
-      setMessagesByUser((cur) => ({ ...cur, [sender]: promoteStatuses(cur[sender], currentUser.username, nextStatus, nextTimestamp) }))
     }
     return () => channel.close()
-  }, [currentUser?.username, setMessagesByUser])
+  }, [currentUser?.username])
 
   useEffect(() => {
     const handleUnload = () => { flushPendingReceipts(); flushPendingMarkAsRead() }
