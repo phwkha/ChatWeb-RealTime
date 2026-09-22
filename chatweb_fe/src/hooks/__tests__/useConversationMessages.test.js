@@ -136,6 +136,48 @@ describe('useConversationMessages', () => {
     expect(apiClient.apiRequest).toHaveBeenCalledTimes(1)
   })
 
+  it('deduplicates concurrent in-flight loadConversation calls for the same user', async () => {
+    let resolveApi
+    vi.mocked(apiClient.apiRequest).mockImplementationOnce(() => new Promise((resolve) => {
+      resolveApi = resolve
+    }))
+
+    const user = { username: 'alice' }
+    const selectedUser = { username: 'bob' }
+
+    const { result } = renderHook(() =>
+      useConversationMessages({
+        user,
+        selectedUser,
+        activeSection: 'chat',
+        connectionState: 'connected',
+        blockedMessageIntervals: {},
+        sendPrivateMessage: vi.fn(),
+        sendTypingStatus: vi.fn(),
+        sendReactionControl: vi.fn(),
+        showToast: vi.fn(),
+        t: (k) => k,
+        selectedUserIsTyping: false,
+      })
+    )
+
+    // Trigger another loadConversation concurrently while first is in-flight
+    act(() => {
+      void result.current.loadConversation(selectedUser, true)
+    })
+
+    const calls = vi.mocked(apiClient.apiRequest).mock.calls.filter((c) =>
+      typeof c[0] === 'string' && c[0].includes('/api/messages/private?user2=bob')
+    )
+    expect(calls.length).toBe(1)
+
+    act(() => {
+      resolveApi({
+        data: { content: [], nextCursor: null, hasMore: false },
+      })
+    })
+  })
+
   it('provides scrollToBottom function and does not trigger loadOlderConversation during initial load', async () => {
     const user = { username: 'alice' }
     const selectedUser = { username: 'bob' }

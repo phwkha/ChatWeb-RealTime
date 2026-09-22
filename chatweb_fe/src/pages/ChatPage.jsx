@@ -199,25 +199,29 @@ function ChatPage() {
     .slice(0, 8), [blockedNames, currentUsernameKey, friendNames, incomingRequestNames, sentNames, suggestions])
 
   const selectFriend = useCallback((friend) => {
-    messagesState.setReactionPickerMessageId(null); messagesState.setDetailMessageId(null)
-    messagesState.setEditHistoryMessageId(null); closeContextMenu()
-    selectedRef.current = friend; setSelectedUser(friend); setActiveSection('chat'); setWorldOpen(false)
+    messagesStateRef.current?.setReactionPickerMessageId(null)
+    messagesStateRef.current?.setDetailMessageId(null)
+    messagesStateRef.current?.setEditHistoryMessageId(null)
+    closeContextMenu()
+    selectedRef.current = friend
+    setSelectedUser(friend)
+    setActiveSection('chat')
+    setWorldOpen(false)
     if (friend?.username) {
       markAsRead(friend.username, true)
       sendRealtimeReceipt(friend.username, 'READ')
-      messagesState.scrollToBottom(true)
+      messagesStateRef.current?.scrollToBottom(true)
       try {
         localStorage.setItem(ACTIVE_CONVERSATION_STORAGE_KEY, friend.username)
       } catch {}
       setSearchParams((prev) => {
+        if (prev.get('user') === friend.username) return prev
         const next = new URLSearchParams(prev)
-        if (next.get('user') !== friend.username) {
-          next.set('user', friend.username)
-        }
+        next.set('user', friend.username)
         return next
       }, { replace: true })
     }
-  }, [closeContextMenu, markAsRead, messagesState, sendRealtimeReceipt, setSearchParams])
+  }, [closeContextMenu, markAsRead, sendRealtimeReceipt, setSearchParams])
 
   const handleNotificationClick = useCallback((notification) => {
     if (!notification) return

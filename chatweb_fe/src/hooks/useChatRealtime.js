@@ -53,9 +53,11 @@ export function useChatRealtime({
   const unreadCountsRef = useRef({})
   const pendingReceiptsRef = useRef(new Map())
   const receiptDebounceTimersRef = useRef(new Map())
+  const hasConnectedOnceRef = useRef(false)
 
   const currentUsernameKey = String(currentUser?.username || '').trim().toLocaleLowerCase('en-US')
 
+  useEffect(() => { hasConnectedOnceRef.current = false }, [currentUser?.username])
   useEffect(() => { selectedRef.current = selectedUser }, [selectedUser])
   useEffect(() => { activeSectionRef.current = activeSection }, [activeSection])
   useEffect(() => { unreadCountsRef.current = unreadCounts }, [unreadCounts])
@@ -288,9 +290,14 @@ export function useChatRealtime({
     showToast(getErrorMessage(error, t('socketError')), 'error')
   }, [removeRateLimitedMessage, setMessagesByUser, showToast, t])
 
-  const handleSocketConnected = useCallback(() => {
+  const handleSocketConnected = useCallback((connectInfo) => {
+    const isReconnect = Boolean(connectInfo?.isReconnect || hasConnectedOnceRef.current)
+    hasConnectedOnceRef.current = true
+
     if (selectedRef.current && activeSectionRef.current === 'chat') {
-      void loadConversation(selectedRef.current, true)
+      if (isReconnect) {
+        void loadConversation(selectedRef.current, true)
+      }
       const blocked = isIncomingMessageBlocked(blockedMessageIntervals, currentUser?.username, selectedRef.current.username)
       if (!blocked && isActivelyViewingConversation(selectedRef.current.username)) {
         markAsRead(selectedRef.current.username)
