@@ -22,9 +22,22 @@ public interface NotificationRepository extends JpaRepository<NotificationEntity
           FROM NotificationEntity n
           LEFT JOIN n.sender s
           WHERE n.recipient.id = :recipientId
+          ORDER BY n.createAt DESC, n.id DESC
+      """)
+  List<NotificationResponse> findInitialNotifications(
+      @Param("recipientId") Long recipientId,
+      Pageable pageable);
+
+  @Query("""
+          SELECT new com.web.backend.controller.response.NotificationResponse(
+              n.id, n.type, n.targetType, n.targetId, n.content, n.isRead, n.createAt,
+              s.username, s.firstName, s.lastName, s.avatar
+          )
+          FROM NotificationEntity n
+          LEFT JOIN n.sender s
+          WHERE n.recipient.id = :recipientId
             AND (
-                :cursorTime IS NULL
-                OR n.createAt < :cursorTime
+                n.createAt < :cursorTime
                 OR (n.createAt = :cursorTime AND n.id < :cursorId)
             )
           ORDER BY n.createAt DESC, n.id DESC

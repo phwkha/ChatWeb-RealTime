@@ -130,12 +130,10 @@ describe('NotificationsSection Component', () => {
     expect(onNotificationClick).toHaveBeenCalledWith(sampleNotifications[0])
   })
 
-  it('renders empty state when there are no notifications or friend requests', () => {
+  it('renders empty state when there are no notifications', () => {
     render(
       <NotificationsSection
         notifications={[]}
-        friendRequests={[]}
-        worldNotifications={[]}
         loading={false}
         t={mockT}
       />

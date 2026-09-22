@@ -1,7 +1,6 @@
 import React, { useState } from 'react'
 import ChatIcon from './ChatIcon.jsx'
-import PersonResult from './PersonResult.jsx'
-import { formatRelativeTime, formatTime } from './chatUtils.js'
+import { formatRelativeTime } from './chatUtils.js'
 
 function getSenderName(notification) {
   const parts = [notification.senderFirstName, notification.senderLastName].filter(Boolean)
@@ -53,14 +52,10 @@ export const NotificationsSection = React.memo(function NotificationsSection({
   onLoadMore,
   onMarkAllAsRead,
   onNotificationClick,
-  friendRequests = [],
-  worldNotifications = [],
   language,
   t,
-  onAcceptFriend,
-  onOpenWorld,
 }) {
-  const hasItems = friendRequests.length > 0 || notifications.length > 0 || worldNotifications.length > 0
+  const hasItems = notifications.length > 0
 
   return (
     <section className="app-section-page notifications-section-page" aria-label={t('notifications')}>
@@ -88,15 +83,6 @@ export const NotificationsSection = React.memo(function NotificationsSection({
 
       <div className="app-section-page__content notifications-page__content">
         <div className="panel-section notifications-page__list">
-          {friendRequests.map((person) => (
-            <PersonResult
-              key={person.username}
-              person={person}
-              actionLabel={t('accept')}
-              onAction={() => onAcceptFriend(person)}
-            />
-          ))}
-
           {notifications.map((item) => (
             <button
               className={`notification-card ${!item.isRead ? 'is-unread' : ''}`}
@@ -114,24 +100,6 @@ export const NotificationsSection = React.memo(function NotificationsSection({
                 </div>
                 <p>{item.content}</p>
                 <time>{formatRelativeTime(item.createdAt, language)}</time>
-              </div>
-            </button>
-          ))}
-
-          {worldNotifications.map((message, index) => (
-            <button
-              className="notification-card"
-              type="button"
-              key={`${message.receivedAt}-${index}`}
-              onClick={onOpenWorld}
-            >
-              <span><ChatIcon name="globe" size={17} /></span>
-              <div className="notification-card__body">
-                <div className="notification-card__header">
-                  <strong>{message.sender || t('admin')}</strong>
-                </div>
-                <p>{message.content}</p>
-                <time>{formatTime(message.receivedAt, language)}</time>
               </div>
             </button>
           ))}

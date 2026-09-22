@@ -92,7 +92,7 @@ class NotificationServiceTest {
                 .createdAt(now)
                 .build());
 
-        when(notificationRepository.findNotificationsByCursor(eq(100L), eq(null), eq(null), any(Pageable.class)))
+        when(notificationRepository.findInitialNotifications(eq(100L), any(Pageable.class)))
                 .thenReturn(mockList);
 
         CursorResponse<NotificationResponse> result = notificationService.getNotifications(testUser, null, 20);
@@ -150,7 +150,7 @@ class NotificationServiceTest {
     @Test
     void getNotifications_InvalidCursor_FallsBackToFirstPage() {
         List<NotificationResponse> mockList = new ArrayList<>();
-        when(notificationRepository.findNotificationsByCursor(eq(100L), eq(null), eq(null), any(Pageable.class)))
+        when(notificationRepository.findInitialNotifications(eq(100L), any(Pageable.class)))
                 .thenReturn(mockList);
 
         CursorResponse<NotificationResponse> result = notificationService.getNotifications(testUser,
@@ -158,14 +158,14 @@ class NotificationServiceTest {
 
         assertThat(result).isNotNull();
         assertThat(result.getContent()).isEmpty();
-        verify(notificationRepository).findNotificationsByCursor(eq(100L), eq(null), eq(null), any(Pageable.class));
+        verify(notificationRepository).findInitialNotifications(eq(100L), any(Pageable.class));
     }
 
     @Test
     void getNotifications_SizeGreaterThanMax_UsesDefaultSize() {
-        when(notificationRepository.findNotificationsByCursor(eq(100L), eq(null), eq(null), any(Pageable.class)))
+        when(notificationRepository.findInitialNotifications(eq(100L), any(Pageable.class)))
                 .thenAnswer(inv -> {
-                    Pageable pageable = inv.getArgument(3);
+                    Pageable pageable = inv.getArgument(1);
                     // DEFAULT_PAGE_SIZE = 20, so pageable should request pageSize + 1 = 21
                     assertThat(pageable.getPageSize()).isEqualTo(21);
                     return new ArrayList<NotificationResponse>();

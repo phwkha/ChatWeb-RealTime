@@ -383,12 +383,8 @@ function ChatPage() {
           onLoadMore={loadMoreNotifications}
           onMarkAllAsRead={markAllNotificationsRead}
           onNotificationClick={handleNotificationClick}
-          friendRequests={friendRequests}
-          worldNotifications={worldNotifications}
           language={language}
           t={t}
-          onAcceptFriend={async (p) => { await acceptFriend(p); selectFriend(p) }}
-          onOpenWorld={() => setWorldOpen(true)}
         />
       )}
 
