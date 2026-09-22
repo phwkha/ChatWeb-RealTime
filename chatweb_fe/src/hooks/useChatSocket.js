@@ -16,6 +16,7 @@ export function useChatSocket({ enabled, language, subscribeToWorld, onMessage, 
   const clientRef = useRef(null)
   const callbacksRef = useRef({ onMessage, onNotification, onWorldMessage, onError, onConnected })
   const [connectionState, setConnectionState] = useState('connecting')
+  const isReconnectRef = useRef(false)
 
   useEffect(() => {
     callbacksRef.current = { onMessage, onNotification, onWorldMessage, onError, onConnected }
@@ -49,17 +50,25 @@ export function useChatSocket({ enabled, language, subscribeToWorld, onMessage, 
         if (subscribeToWorld) {
           client.subscribe('/topic/public', (frame) => callbacksRef.current.onWorldMessage?.(parseFrame(frame)))
         }
-        callbacksRef.current.onConnected?.()
+        const wasReconnect = isReconnectRef.current
+        isReconnectRef.current = true
+        callbacksRef.current.onConnected?.({ isReconnect: wasReconnect })
       },
       onStompError: (frame) => {
         setConnectionState('disconnected')
         callbacksRef.current.onError?.(parseFrame(frame))
       },
       onWebSocketClose: () => {
-        if (!disposed) setConnectionState('reconnecting')
+        if (!disposed) {
+          isReconnectRef.current = true
+          setConnectionState('reconnecting')
+        }
       },
       onWebSocketError: () => {
-        if (!disposed) setConnectionState('reconnecting')
+        if (!disposed) {
+          isReconnectRef.current = true
+          setConnectionState('reconnecting')
+        }
       },
     })
 

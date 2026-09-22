@@ -28,14 +28,18 @@ export function useNotifications({ enabled = true, playNotificationSound, showTo
     if (!enabled) return
     setLoading(true)
     try {
-      const [listRes, countRes] = await Promise.all([
+      const [listResult, countResult] = await Promise.allSettled([
         getNotifications({ size: 20 }),
-        getUnreadNotificationCount().catch(() => 0),
+        getUnreadNotificationCount(),
       ])
-      setNotifications(listRes.content || [])
-      setNextCursor(listRes.nextCursor)
-      setHasMore(listRes.hasMore)
-      setUnreadCount(countRes)
+      if (listResult.status === 'fulfilled') {
+        setNotifications(listResult.value.content || [])
+        setNextCursor(listResult.value.nextCursor)
+        setHasMore(listResult.value.hasMore)
+      }
+      if (countResult.status === 'fulfilled') {
+        setUnreadCount(countResult.value)
+      }
     } catch {
       // Ignore initial notification load errors
     } finally {
@@ -100,10 +104,9 @@ export function useNotifications({ enabled = true, playNotificationSound, showTo
     const rawData = socketPayload.data || {}
     const type = socketPayload.type || rawData.type
 
-    // Filter notification-relevant types
+    // Filter strictly to notification types stored in BE
     const NOTIF_TYPES = new Set(['FRIEND_REQUEST', 'FRIEND_ACCEPTED', 'REACT_MESSAGE'])
-    const isRelevant = NOTIF_TYPES.has(type) || socketPayload.targetType || rawData.targetType
-    if (!isRelevant && !socketPayload.content && !socketPayload.message && !rawData.content) {
+    if (!NOTIF_TYPES.has(type)) {
       return null
     }
 
@@ -114,7 +117,7 @@ export function useNotifications({ enabled = true, playNotificationSound, showTo
     const newNotification = {
       id,
       type,
-      targetType: socketPayload.targetType || rawData.targetType || 'USER',
+      targetType: socketPayload.targetType || rawData.targetType || (type === 'REACT_MESSAGE' ? 'MESSAGE' : 'USER'),
       targetId: socketPayload.targetId || rawData.targetId || senderUsername,
       content,
       isRead: false,

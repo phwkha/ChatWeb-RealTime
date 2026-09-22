@@ -23,12 +23,17 @@ vi.mock('../../context/language-context.js', () => ({
   useLanguage: vi.fn(),
 }))
 
+let socketOnConnected = null
+
 vi.mock('../../hooks/useChatSocket.js', () => ({
-  useChatSocket: vi.fn(() => ({
-    connectionState: 'connected',
-    sendPrivateMessage: vi.fn(),
-    sendWorldMessage: vi.fn(),
-  })),
+  useChatSocket: vi.fn((props) => {
+    socketOnConnected = props?.onConnected
+    return {
+      connectionState: 'connected',
+      sendPrivateMessage: vi.fn(),
+      sendWorldMessage: vi.fn(),
+    }
+  }),
 }))
 
 vi.mock('../../hooks/useChatAudio.js', () => ({
@@ -142,5 +147,28 @@ describe('ChatPage Conversation Persistence', () => {
       // Invalid user should be cleaned up from localStorage
       expect(localStorage.getItem(ACTIVE_CONVERSATION_STORAGE_KEY)).toBeNull()
     })
+  })
+
+  it('calls messages API only once when page loads with conversation and socket connects', async () => {
+    render(
+      <MemoryRouter initialEntries={['/chat?user=alice']}>
+        <ChatPage />
+      </MemoryRouter>
+    )
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Alice Wonderland').length).toBeGreaterThanOrEqual(2)
+    })
+
+    // Simulate socket onConnected firing on initial connection
+    act(() => {
+      socketOnConnected?.({ isReconnect: false })
+    })
+
+    // Check how many times /api/messages/private? was called
+    const messageCalls = vi.mocked(apiClient.apiRequest).mock.calls.filter((c) =>
+      typeof c[0] === 'string' && c[0].includes('/api/messages/private?')
+    )
+    expect(messageCalls.length).toBe(1)
   })
 })

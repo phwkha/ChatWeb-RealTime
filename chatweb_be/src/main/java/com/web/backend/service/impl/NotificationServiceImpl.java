@@ -121,7 +121,9 @@ public class NotificationServiceImpl implements NotificationService {
 
         Pageable pageable = PageRequest.of(0, pageSize + 1);
         List<NotificationResponse> notifications = new ArrayList<>(
-                notificationRepository.findNotificationsByCursor(user.getId(), cursorTime, cursorId, pageable));
+                cursorTime == null
+                        ? notificationRepository.findInitialNotifications(user.getId(), pageable)
+                        : notificationRepository.findNotificationsByCursor(user.getId(), cursorTime, cursorId, pageable));
 
         boolean hasMore = false;
         if (notifications.size() > pageSize) {

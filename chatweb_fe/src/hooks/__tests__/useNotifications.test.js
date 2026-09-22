@@ -117,4 +117,53 @@ describe('useNotifications', () => {
     expect(playSound).toHaveBeenCalled()
     expect(showToast).toHaveBeenCalledWith('User D sent you a friend request')
   })
+
+  it('ignores non-notification socket events like USER_ONLINE or REQUEST_SENT_SUCCESS', async () => {
+    const playSound = vi.fn()
+    const showToast = vi.fn()
+
+    const { result } = renderHook(() =>
+      useNotifications({
+        enabled: true,
+        playNotificationSound: playSound,
+        showToast,
+      })
+    )
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.unreadCount).toBe(1)
+    expect(result.current.notifications).toHaveLength(2)
+
+    act(() => {
+      const ignored1 = result.current.handleRealtimeNotification({
+        type: 'USER_ONLINE',
+        message: 'userX is online',
+        relatedUsername: 'userX',
+      })
+      const ignored2 = result.current.handleRealtimeNotification({
+        type: 'REQUEST_SENT_SUCCESS',
+        message: 'Friend request sent',
+      })
+      expect(ignored1).toBeNull()
+      expect(ignored2).toBeNull()
+    })
+
+    // unreadCount and notifications list should not have changed
+    expect(result.current.unreadCount).toBe(1)
+    expect(result.current.notifications).toHaveLength(2)
+    expect(playSound).not.toHaveBeenCalled()
+    expect(showToast).not.toHaveBeenCalled()
+  })
+
+  it('sets unreadCount even when getNotifications fails on mount', async () => {
+    vi.spyOn(notificationApi, 'getNotifications').mockRejectedValueOnce(new Error('500 Internal Server Error'))
+    vi.spyOn(notificationApi, 'getUnreadNotificationCount').mockResolvedValueOnce(4)
+
+    const { result } = renderHook(() => useNotifications({ enabled: true }))
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    expect(result.current.notifications).toEqual([])
+    expect(result.current.unreadCount).toBe(4)
+  })
 })

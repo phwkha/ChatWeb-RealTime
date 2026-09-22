@@ -33,7 +33,6 @@ jobs:
           images: ${{ secrets.DOCKER_USERNAME }}/chatweb-frontend
           tags: |
             type=raw,value=latest
-            type=raw,value=v${{ github.run_number }}
             type=sha,prefix=sha-,format=short
 
       - name: Build and Push Docker Image

@@ -67,6 +67,8 @@ export function useConversationMessages({
   const replyCacheRef = useRef(new Map())
   const fetchingReplyIdsRef = useRef(new Set())
   const highlightTimeoutRef = useRef(null)
+  const inFlightLoadsRef = useRef(new Map())
+  const lastLoadedAtRef = useRef(new Map())
 
   const currentUsernameKey = String(user?.username || '').trim().toLocaleLowerCase('en-US')
   const selectedUsername = selectedUser?.username || ''
@@ -249,44 +251,67 @@ export function useConversationMessages({
 
   const loadConversation = useCallback(async (person, silent = false, cursor = null) => {
     if (!person || !user) return
+    const targetUsername = person.username
+    const requestKey = `${targetUsername}:${cursor || ''}`
+
+    if (inFlightLoadsRef.current.has(requestKey)) {
+      return inFlightLoadsRef.current.get(requestKey)
+    }
+
+    if (silent && !cursor) {
+      const lastLoadedAt = lastLoadedAtRef.current.get(targetUsername) || 0
+      if (Date.now() - lastLoadedAt < 2000) {
+        return messagesByUserRef.current[targetUsername]?.length || 0
+      }
+    }
+
     const isInitialLoad = !cursor
     if (isInitialLoad) initialLoadScrollRef.current = true
     if (!silent) setLoadingConversation(true)
-    try {
-      const fetchConversationPage = async (size) => {
-        const query = new URLSearchParams({ user2: person.username, size: String(size) })
-        if (cursor) query.set('cursor', cursor)
-        return apiRequest(`/api/messages/private?${query}`)
-      }
-      let response
+
+    const executeLoad = async () => {
       try {
-        response = await fetchConversationPage(MESSAGE_PAGE_SIZE)
+        const fetchConversationPage = async (size) => {
+          const query = new URLSearchParams({ user2: targetUsername, size: String(size) })
+          if (cursor) query.set('cursor', cursor)
+          return apiRequest(`/api/messages/private?${query}`)
+        }
+        let response
+        try {
+          response = await fetchConversationPage(MESSAGE_PAGE_SIZE)
+        } catch (error) {
+          if (Number(error?.status || error?.code) !== 500) throw error
+          response = await fetchConversationPage(MESSAGE_HISTORY_FALLBACK_SIZE)
+        }
+        const visibleHistory = (response?.data?.content || []).filter((message) => (
+          !wasMessageSentWhileBlocked(message, blockedMessageIntervals, user.username, targetUsername)
+        ))
+        setMessagesByUser((current) => ({
+          ...current,
+          [targetUsername]: mergeMessageLists(current[targetUsername], visibleHistory),
+        }))
+        setConversationPages((current) => ({
+          ...current,
+          [targetUsername]: {
+            nextCursor: response?.data?.nextCursor || null,
+            hasMore: Boolean(response?.data?.hasMore && response?.data?.nextCursor),
+          },
+        }))
+        lastLoadedAtRef.current.set(targetUsername, Date.now())
+        return visibleHistory.length
       } catch (error) {
-        if (Number(error?.status || error?.code) !== 500) throw error
-        response = await fetchConversationPage(MESSAGE_HISTORY_FALLBACK_SIZE)
+        if (isInitialLoad) initialLoadScrollRef.current = false
+        if (!silent || cursor) showToast(getErrorMessage(error, t('errorGeneric')), 'error')
+        return -1
+      } finally {
+        inFlightLoadsRef.current.delete(requestKey)
+        if (!silent) setLoadingConversation(false)
       }
-      const visibleHistory = (response?.data?.content || []).filter((message) => (
-        !wasMessageSentWhileBlocked(message, blockedMessageIntervals, user.username, person.username)
-      ))
-      setMessagesByUser((current) => ({
-        ...current,
-        [person.username]: mergeMessageLists(current[person.username], visibleHistory),
-      }))
-      setConversationPages((current) => ({
-        ...current,
-        [person.username]: {
-          nextCursor: response?.data?.nextCursor || null,
-          hasMore: Boolean(response?.data?.hasMore && response?.data?.nextCursor),
-        },
-      }))
-      return visibleHistory.length
-    } catch (error) {
-      if (isInitialLoad) initialLoadScrollRef.current = false
-      if (!silent || cursor) showToast(getErrorMessage(error, t('errorGeneric')), 'error')
-      return -1
-    } finally {
-      if (!silent) setLoadingConversation(false)
     }
+
+    const loadPromise = executeLoad()
+    inFlightLoadsRef.current.set(requestKey, loadPromise)
+    return loadPromise
   }, [blockedMessageIntervals, showToast, t, user])
 
   useEffect(() => {

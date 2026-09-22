@@ -70,7 +70,7 @@ class UpdateMessageConsumerTest {
 
         verify(webSocketRoutingService).routeMessage(eq("sender1"), eq("/queue/notifications"),
                 ArgumentMatchers.<SocketNotificationResponse<?>>any());
-        verify(webSocketRoutingService).routeMessage(eq("recipient1"), eq("/queue/notifications"),
+        verify(webSocketRoutingService, never()).routeMessage(eq("recipient1"), eq("/queue/notifications"),
                 ArgumentMatchers.<SocketNotificationResponse<?>>any());
     }
 }
