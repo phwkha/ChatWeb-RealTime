@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -19,6 +20,7 @@ import org.springframework.context.support.ResourceBundleMessageSource;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 import com.web.backend.common.ActionType;
+import com.web.backend.common.MessageType;
 import com.web.backend.common.NotificationsType;
 import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.response.ChatMessageResponse;
@@ -71,6 +73,31 @@ class ChatConsumerTest {
 
                 verify(webSocketRoutingService).routeMessage("userB", "/queue/messages", response);
                 verify(webSocketRoutingService).routeMessage("userA", "/queue/messages", response);
+        }
+
+        @Test
+        void testListenChatMessages_CreateAction_Typing_RoutesOnlyToRecipient() throws Exception {
+                ChatMessageAvro message = new ChatMessageAvro();
+                message.setId("msg1");
+                message.setSender("userA");
+                message.setRecipient("userB");
+                message.setContent("typing");
+                message.setActionType(ActionType.CREATE.name());
+
+                ChatMessageResponse response = ChatMessageResponse.builder()
+                                .id("msg1")
+                                .sender("userA")
+                                .recipient("userB")
+                                .content("typing")
+                                .messageType(MessageType.TYPING)
+                                .build();
+
+                when(messageMapper.avroToResponse(message)).thenReturn(response);
+
+                chatConsumer.listenChatMessages(message, "conv_key");
+
+                verify(webSocketRoutingService).routeMessage("userB", "/queue/messages", response);
+                verify(webSocketRoutingService, never()).routeMessage(eq("userA"), eq("/queue/messages"), any());
         }
 
         @Test

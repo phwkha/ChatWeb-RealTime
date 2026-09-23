@@ -11,6 +11,7 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.stereotype.Component;
 import com.web.backend.common.ActionType;
+import com.web.backend.common.MessageType;
 import com.web.backend.common.NotificationsType;
 import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.response.ChatMessageResponse;
@@ -64,8 +65,12 @@ public class ChatConsumer {
             ChatMessageResponse messageResponse = messageMapper.avroToResponse(message);
             if (action == ActionType.CREATE) {
                 webSocketRoutingService.routeMessage(recipient, QUEUE_MESSAGES_STRING, messageResponse);
-                webSocketRoutingService.routeMessage(sender, QUEUE_MESSAGES_STRING, messageResponse);
-                log.debug("Dispatched chat message to WebSocket sender '{}' and recipient '{}'", sender, recipient);
+                if (messageResponse.getMessageType() != MessageType.TYPING) {
+                    webSocketRoutingService.routeMessage(sender, QUEUE_MESSAGES_STRING, messageResponse);
+                    log.debug("Dispatched chat message to WebSocket sender '{}' and recipient '{}'", sender, recipient);
+                } else {
+                    log.debug("Dispatched typing event to WebSocket recipient '{}'", recipient);
+                }
             } else {
                 UpdateMetadata metadata = resolveUpdateMetadata(action);
 

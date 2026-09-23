@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 
 export function displayName(person) {
   return [person?.firstName, person?.lastName].filter(Boolean).join(' ').trim() || person?.nickname || person?.fullName || person?.username || 'ChatWeb user'
@@ -17,6 +17,9 @@ export function isPersonOnline(person) {
 
 export const Avatar = React.memo(function Avatar({ person, size = 'medium', showStatus = false }) {
   const [failed, setFailed] = useState(false)
+  useEffect(() => {
+    setFailed(false)
+  }, [person?.avatar])
   return (
     <span className={`cw-avatar cw-avatar--${size}`}>
       {person?.avatar && !failed
