@@ -213,6 +213,11 @@ body:has(.admin-shell), body:has(.admin-denied) { margin: 0; background: var(--a
 .admin-user-drawer__body > .admin-form { padding: 0; border: 0; box-shadow: none; }
 .admin-user-overview { display: flex; margin-bottom: 22px; padding: 11px; align-items: center; gap: 8px; border-radius: 10px; background: #f6f8fb; }
 .admin-user-overview > small { margin-left: auto; color: #7d899a; font-size: 7px; font-weight: 800; }
+.admin-provider-badge { margin-left: auto; display: inline-flex; align-items: center; padding: 5px 8px; border-radius: 6px; font-size: 7px; font-weight: 850; letter-spacing: 0.5px; text-transform: uppercase; }
+.admin-provider-badge--local { background: #edf2f7; color: #475569; border: 1px solid #e2e8f0; }
+.admin-provider-badge--google { background: #fee2e2; color: #dc2626; border: 1px solid #fecaca; }
+.admin-provider-badge--facebook { background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; }
+.admin-provider-badge--github { background: #f3f4f6; color: #111827; border: 1px solid #e5e7eb; }
 .admin-danger-actions { margin-top: 25px; padding: 17px; border: 1px solid #f0dadd; border-radius: 12px; background: #fff9f9; }
 .admin-danger-actions h3, .admin-address-section h3, .admin-address-form h3 { margin: 0 0 11px; font-size: 11px; }
 .admin-danger-actions > div { display: flex; flex-wrap: wrap; gap: 7px; }

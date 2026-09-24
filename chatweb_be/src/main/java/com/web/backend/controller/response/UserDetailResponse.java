@@ -8,12 +8,16 @@ import lombok.experimental.SuperBuilder;
 
 import java.util.List;
 
+import com.web.backend.common.AuthProvider;
+
 @Data
 @SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
 @EqualsAndHashCode(callSuper = true)
 public class UserDetailResponse extends UserResponse {
+
+    private AuthProvider authProvider;
 
     private List<AddressResponse> addresses;
 }
