@@ -29,9 +29,9 @@ public class ReportController {
 
     private final ReportService reportService;
 
-    private static final String SUCCESS_REPORT_CREATED = "success.report.created";
-    private static final String SUCCESS_REPORT_CANCELLED = "success.report.cancelled";
-    private static final String SUCCESS_SYS_OPERATION = "success.sys.operation";
+    private static final String SUCCESS_REPORT_CREATED_STRING = "success.report.created";
+    private static final String SUCCESS_REPORT_CANCELLED_STRING = "success.report.cancelled";
+    private static final String SUCCESS_SYS_OPERATION_STRING = "success.sys.operation";
 
     @Operation(summary = "Submit a user report", description = "Allows an authenticated user to report another user")
     @RateLimit(key = "report_create", limit = 10, period = 60, type = LimitType.USER)
@@ -45,7 +45,7 @@ public class ReportController {
 
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(
                 HttpStatus.CREATED.value(),
-                Translator.tolocale(SUCCESS_REPORT_CREATED),
+                Translator.tolocale(SUCCESS_REPORT_CREATED_STRING),
                 response));
     }
 
@@ -62,7 +62,7 @@ public class ReportController {
 
         return ResponseEntity.ok(ApiResponse.success(
                 HttpStatus.OK.value(),
-                Translator.tolocale(SUCCESS_SYS_OPERATION),
+                Translator.tolocale(SUCCESS_SYS_OPERATION_STRING),
                 reports));
     }
 
@@ -77,7 +77,7 @@ public class ReportController {
 
         return ResponseEntity.ok(ApiResponse.success(
                 HttpStatus.OK.value(),
-                Translator.tolocale(SUCCESS_REPORT_CANCELLED),
+                Translator.tolocale(SUCCESS_REPORT_CANCELLED_STRING),
                 null));
     }
 }

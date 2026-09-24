@@ -30,9 +30,9 @@ public class AdminReportController {
 
     private final ReportService reportService;
 
-    private static final String SUCCESS_REPORT_RESOLVED = "success.report.resolved";
-    private static final String SUCCESS_REPORT_DELETED = "success.report.deleted";
-    private static final String SUCCESS_SYS_OPERATION = "success.sys.operation";
+    private static final String SUCCESS_REPORT_RESOLVED_STRING = "success.report.resolved";
+    private static final String SUCCESS_REPORT_DELETED_STRING = "success.report.deleted";
+    private static final String SUCCESS_SYS_OPERATION_STRING = "success.sys.operation";
 
     @Operation(summary = "Search and list reports for admin")
     @GetMapping
@@ -46,7 +46,7 @@ public class AdminReportController {
 
         return ResponseEntity.ok(ApiResponse.success(
                 HttpStatus.OK.value(),
-                Translator.tolocale(SUCCESS_SYS_OPERATION),
+                Translator.tolocale(SUCCESS_SYS_OPERATION_STRING),
                 reports));
     }
 
@@ -58,7 +58,7 @@ public class AdminReportController {
 
         return ResponseEntity.ok(ApiResponse.success(
                 HttpStatus.OK.value(),
-                Translator.tolocale(SUCCESS_SYS_OPERATION),
+                Translator.tolocale(SUCCESS_SYS_OPERATION_STRING),
                 statistics));
     }
 
@@ -70,7 +70,7 @@ public class AdminReportController {
 
         return ResponseEntity.ok(ApiResponse.success(
                 HttpStatus.OK.value(),
-                Translator.tolocale(SUCCESS_SYS_OPERATION),
+                Translator.tolocale(SUCCESS_SYS_OPERATION_STRING),
                 report));
     }
 
@@ -86,7 +86,7 @@ public class AdminReportController {
 
         return ResponseEntity.ok(ApiResponse.success(
                 HttpStatus.OK.value(),
-                Translator.tolocale(SUCCESS_REPORT_RESOLVED),
+                Translator.tolocale(SUCCESS_REPORT_RESOLVED_STRING),
                 response));
     }
 
@@ -98,7 +98,7 @@ public class AdminReportController {
 
         return ResponseEntity.ok(ApiResponse.success(
                 HttpStatus.OK.value(),
-                Translator.tolocale(SUCCESS_REPORT_DELETED),
+                Translator.tolocale(SUCCESS_REPORT_DELETED_STRING),
                 null));
     }
 }
