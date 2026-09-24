@@ -70,7 +70,7 @@ public class SecurityConfig {
                                 .authorizeHttpRequests(auth -> auth
                                                 .requestMatchers("/api/auth/logout", "/api/auth/logout-all-devices")
                                                 .authenticated()
-                                                .requestMatchers("/ws/**", "/oauth2/**", "/login/oauth2/**",
+                                                .requestMatchers("/error", "/ws/**", "/oauth2/**", "/login/oauth2/**",
                                                                 "/api/auth/**", "/actuator/health", "/actuator/info", "/actuator/prometheus")
                                                 .permitAll()
                                                 .requestMatchers("/actuator/**").hasAuthority("ADMIN_VIEW_USERS")

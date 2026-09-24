@@ -31,8 +31,8 @@ ChatWeb is an enterprise-grade, real-time messaging web application engineered w
 │   ├── architecture/       # System topology, 8 ADRs, and 5 Mermaid sequence diagrams
 │   ├── database/           # PostgreSQL ERD, MongoDB schemas, and Redis key catalog
 │   └── api/                # WebSocket/STOMP specs, Kafka Avro catalog, and REST API guide
-├── nginx/                  # Nginx configuration (reverse proxy, TLS, edge rate-limiting)
-├── ssl/                    # Private CA, backend PKCS12 keystore, and Nginx certificates
+├── nginx/                  # Nginx configuration (reverse proxy, edge rate-limiting)
+├── ssl/                    # Private CA and backend PKCS12 keystore (Upstream TLS)
 └── docker-compose.yml      # Multi-container orchestration (App, DBs, Kafka, ELK, Prometheus)
 ```
 

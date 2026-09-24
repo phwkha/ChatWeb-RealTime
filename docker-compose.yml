@@ -244,7 +244,7 @@ services:
     environment:
       - GF_SECURITY_ADMIN_USER=${GF_SECURITY_ADMIN_USER}
       - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD}
-      - GF_SERVER_ROOT_URL=https://localhost/grafana/
+      - GF_SERVER_ROOT_URL=${GF_SERVER_ROOT_URL}
       - GF_SERVER_SERVE_FROM_SUB_PATH=true
     volumes:
       - grafana_data:/var/lib/grafana
@@ -258,13 +258,10 @@ services:
     image: nginx:alpine
     container_name: nginx_load_balancer
     ports:
-      - "80:80"
-      - "443:443"
+      - "127.0.0.1:80:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./ssl/ca/rootCA.crt:/etc/nginx/ssl/rootCA.crt:ro
-      - ./ssl/nginx/nginx.crt:/etc/nginx/ssl/nginx.crt:ro
-      - ./ssl/nginx/nginx.key:/etc/nginx/ssl/nginx.key:ro
     networks:
       - default
     depends_on:
