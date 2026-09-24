@@ -11,9 +11,10 @@ function OAuthCallbackPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const oauthErrorCode = searchParams.get('error') || ''
+  const oauthErrorDescription = searchParams.get('error_description') || ''
   const oauthError = oauthErrorCode ? getErrorMessage({
     code: oauthErrorCode,
-    message: searchParams.get('error_description') || '',
+    message: oauthErrorDescription || oauthErrorCode,
   }, 'Không thể đăng nhập bằng Google. Vui lòng thử lại.') : ''
   const [error, setError] = useState(oauthError)
   const hasHandledCallback = useRef(false)

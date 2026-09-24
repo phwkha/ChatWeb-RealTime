@@ -38,5 +38,39 @@ class OAuth2AuthenticationFailureHandlerTest {
 
 		String redirectedUrl = response.getRedirectedUrl();
 		assertTrue(redirectedUrl != null && redirectedUrl.startsWith("http://localhost:3000/oauth2/redirect?error="));
+		assertTrue(redirectedUrl.contains("error_description="));
+	}
+
+	@Test
+	void testOnAuthenticationFailure_OAuth2AuthenticationException_ExtractsErrorCode() throws Exception {
+		MockHttpServletRequest request = new MockHttpServletRequest();
+		MockHttpServletResponse response = new MockHttpServletResponse();
+
+		org.springframework.security.oauth2.core.OAuth2Error error = 
+				new org.springframework.security.oauth2.core.OAuth2Error("error.oauth2.email_already_exists");
+		org.springframework.security.oauth2.core.OAuth2AuthenticationException exception = 
+				new org.springframework.security.oauth2.core.OAuth2AuthenticationException(error);
+
+		failureHandler.onAuthenticationFailure(request, response, exception);
+
+		String redirectedUrl = response.getRedirectedUrl();
+		assertTrue(redirectedUrl != null && redirectedUrl.contains("error="));
+		assertTrue(redirectedUrl.contains("error_description="));
+	}
+
+	@Test
+	void testOnAuthenticationFailure_UnknownErrorCode_FallbacksGracefully() throws Exception {
+		MockHttpServletRequest request = new MockHttpServletRequest();
+		MockHttpServletResponse response = new MockHttpServletResponse();
+
+		org.springframework.security.oauth2.core.OAuth2Error error = 
+				new org.springframework.security.oauth2.core.OAuth2Error("unknown.code.that.does.not.exist");
+		org.springframework.security.oauth2.core.OAuth2AuthenticationException exception = 
+				new org.springframework.security.oauth2.core.OAuth2AuthenticationException(error);
+
+		failureHandler.onAuthenticationFailure(request, response, exception);
+
+		String redirectedUrl = response.getRedirectedUrl();
+		assertTrue(redirectedUrl != null && redirectedUrl.contains("error=unknown.code.that.does.not.exist"));
 	}
 }
