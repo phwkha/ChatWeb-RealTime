@@ -15,7 +15,7 @@ graph TB
     end
 
     subgraph IngressLayer["Ingress & Load Balancing"]
-        Nginx["Nginx Reverse Proxy & Load Balancer<br/>- HTTP/HTTPS Ports 80 & 443<br/>- IP Rate Limiting (auth: 10r/m, global: 30r/s)<br/>- Upstream TLS Verification (Private rootCA.crt)"]
+        Nginx["Nginx Reverse Proxy & Load Balancer<br/>- HTTP Port 80 (Edge TLS terminated by Cloudflare/Tailscale)<br/>- IP Rate Limiting (auth: 10r/m, global: 30r/s)<br/>- Upstream TLS Verification (Private rootCA.crt)"]
     end
 
     subgraph AppLayer["Application Layer"]
@@ -42,7 +42,7 @@ graph TB
     end
 
     %% Network Connections
-    WebClient -->|"HTTP / WS (Port 80/443)"| Nginx
+    WebClient -->|"HTTP / WS (Port 80 via Edge/Proxy)"| Nginx
     Nginx -->|"HTTPS / WSS (Port 8443)<br/>mTLS / Upstream TLS Verified"| Backend
     Backend -->|"Pub/Sub, Caching & Routing"| Redis
     Backend -->|"Relational Data & Auth"| Postgres
@@ -65,7 +65,7 @@ graph TB
   - **WebRTC Peer-to-Peer Subsystem (`useWebRTC.js`)**: Facilitates real-time audio and video peer-to-peer calls directly between clients, using WebSocket STOMP for signaling exchange.
 
 ### 2.2. Ingress & Reverse Proxy Tier (Nginx)
-- Serves as the single unified entry point into the system from external networks, listening on ports `80` (HTTP) and `443` (HTTPS).
+- Serves as the single unified entry point into the system from external networks (or behind an Edge Proxy such as Cloudflare / Tailscale Funnel), listening on port `80` (HTTP).
 - **Network-Level Rate Limiting**:
   - **Authentication Zone**: Enforces a strict limit of 10 requests/minute (burst 5) on `/api/auth/` routes to mitigate credential stuffing and brute-force attacks.
   - **Global Zone**: Enforces 30 requests/second (burst 20) across general API and static asset traffic.
