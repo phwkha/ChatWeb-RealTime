@@ -39,4 +39,9 @@ export const adminApi = {
     address.filter(Boolean).forEach((item) => query.append('address', item))
     return apiRequest(`/api/search/users/filter?${query}`)
   },
+  getReports: (filters = {}) => apiRequest(`/api/admin/reports?${queryString(filters)}`),
+  getReportStatistics: () => apiRequest('/api/admin/reports/statistics'),
+  getReport: (id) => apiRequest(`/api/admin/reports/${encodeURIComponent(id)}`),
+  resolveReport: (id, body) => apiRequest(`/api/admin/reports/${encodeURIComponent(id)}/resolve`, { method: 'PUT', body }),
+  deleteReport: (id) => apiRequest(`/api/admin/reports/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 }

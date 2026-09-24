@@ -420,6 +420,7 @@ function ChatPage() {
       <ReportUserDialog
         isOpen={reportDialogOpen && Boolean(selectedUser)} selectedUser={selectedUser}
         t={t} onClose={() => setReportDialogOpen(false)}
+        onSubmitSuccess={(msg) => showToast(msg, 'success')}
       />
 
       {toast && (
