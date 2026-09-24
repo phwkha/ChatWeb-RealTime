@@ -133,8 +133,12 @@ body:has(.admin-shell), body:has(.admin-denied) { margin: 0; background: var(--a
 .admin-status--active i { background: var(--admin-cyan); }
 .admin-status--locked, .admin-status--inactive { background: #fff0f1; color: #bd4450; }
 .admin-status--locked i, .admin-status--inactive i { background: var(--admin-danger); }
-.admin-status--unverified { background: #fff6e6; color: #a66c16; }
-.admin-status--unverified i { background: var(--admin-warning); }
+.admin-status--unverified, .admin-status--pending { background: #fff6e6; color: #a66c16; }
+.admin-status--unverified i, .admin-status--pending i { background: var(--admin-warning); }
+.admin-status--resolved { background: #eaf8f4; color: #208779; }
+.admin-status--resolved i { background: var(--admin-cyan); }
+.admin-status--dismissed { background: #eef2f6; color: #68778b; }
+.admin-status--dismissed i { background: #98a4b3; }
 .admin-user-table article > button, .admin-search-result > button { padding: 7px 0; border: 0; background: transparent; color: var(--admin-accent); cursor: pointer; font-size: 8px; font-weight: 800; text-align: right; }
 .admin-user-table article > button:disabled { opacity: .4; cursor: not-allowed; }
 .admin-pagination { display: flex; min-height: 54px; padding: 9px 15px; align-items: center; justify-content: flex-end; gap: 12px; background: #fbfcfe; }

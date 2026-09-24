@@ -16,12 +16,15 @@ const EMPTY_EMAIL = { to: '', subject: '', text: '' }
 const EMPTY_ADVANCED = { username: '', firstName: '', lastName: '', city: '', country: '' }
 const EMPTY_ANNOUNCEMENT = { content: '', survivalTime: '' }
 const DEFAULT_FILTERS = { keyword: '', role: '', status: '', gender: '', authProvider: '', sorts: 'id:desc', page: 0, size: 20 }
+const DEFAULT_REPORT_FILTERS = { keyword: '', status: '', reason: '', page: 0, size: 20 }
+const EMPTY_RESOLVE_FORM = { status: 'RESOLVED', resolutionNote: '', lockReportedUser: false }
 const EMPTY_PAGE = { pageNo: 0, pageSize: 20, totalElements: 0, totalPages: 0, last: true }
 const ADDRESS_FIELDS = ['houseNumber', 'street', 'ward', 'district', 'city', 'country', 'postalCode']
 
 const NAV_ITEMS = [
   { id: 'dashboard', label: 'Tổng quan', icon: 'shield' },
   { id: 'users', label: 'Người dùng', icon: 'users', permission: 'ADMIN_VIEW_USERS' },
+  { id: 'reports', label: 'Báo cáo vi phạm', icon: 'flag', permission: 'ADMIN_VIEW_REPORTS' },
   { id: 'roles', label: 'Role & quyền', icon: 'settings', permission: 'ROLE_VIEW_ALL' },
   { id: 'search', label: 'Tìm kiếm nâng cao', icon: 'search' },
   { id: 'email', label: 'Email hệ thống', icon: 'send', permission: 'SEND_EMAIL' },
@@ -31,6 +34,7 @@ const NAV_ITEMS = [
 const SECTION_META = {
   dashboard: ['Trung tâm điều hành', 'Theo dõi và truy cập nhanh toàn bộ công cụ quản trị ChatWeb.'],
   users: ['Quản lý người dùng', 'Tìm kiếm, tạo mới, cập nhật, khóa và quản lý dữ liệu tài khoản.'],
+  reports: ['Báo cáo vi phạm', 'Kiểm duyệt và xử lý các báo cáo vi phạm từ người dùng.'],
   roles: ['Role & phân quyền', 'Thiết kế vai trò và kiểm soát chính xác quyền truy cập hệ thống.'],
   search: ['Tìm kiếm nâng cao', 'Kết hợp điều kiện tài khoản và địa chỉ để truy vấn người dùng.'],
   email: ['Email hệ thống', 'Gửi email văn bản trực tiếp từ hệ thống đến người dùng.'],
@@ -108,6 +112,12 @@ function AdminPage() {
   const [announcementCursor, setAnnouncementCursor] = useState(null)
   const [announcementHasMore, setAnnouncementHasMore] = useState(false)
   const [announcementForm, setAnnouncementForm] = useState(EMPTY_ANNOUNCEMENT)
+  const [reports, setReports] = useState([])
+  const [reportPage, setReportPage] = useState(EMPTY_PAGE)
+  const [reportFilters, setReportFilters] = useState(DEFAULT_REPORT_FILTERS)
+  const [selectedReport, setSelectedReport] = useState(null)
+  const [resolveForm, setResolveForm] = useState(EMPTY_RESOLVE_FORM)
+  const [reportDrawerOpen, setReportDrawerOpen] = useState(false)
   const [notice, setNotice] = useState(null)
   const [busy, setBusy] = useState('')
   const initializedRef = useRef(false)
@@ -215,6 +225,89 @@ function AdminPage() {
     if (tab === 'broadcast' && announcements.length === 0) void loadAnnouncements()
   }, [announcements.length, loadAnnouncements, tab])
 
+  const loadReports = useCallback(async (customFilters = reportFilters) => {
+    setBusy('reports-load')
+    try {
+      const response = await adminApi.getReports(customFilters)
+      const pageData = response?.data || EMPTY_PAGE
+      setReports(pageData.content || [])
+      setReportPage({
+        pageNo: pageData.pageNo || 0,
+        pageSize: pageData.pageSize || 20,
+        totalElements: pageData.totalElements || 0,
+        totalPages: pageData.totalPages || 0,
+        last: Boolean(pageData.last),
+      })
+    } catch (error) {
+      notify(getErrorMessage(error, 'Không thể tải danh sách báo cáo.'), 'error')
+    } finally {
+      setBusy('')
+    }
+  }, [notify, reportFilters])
+
+  useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- opening the reports section hydrates its data.
+    if (tab === 'reports' && reports.length === 0) void loadReports()
+  }, [loadReports, reports.length, tab])
+
+  const applyReportFilters = (event) => {
+    event.preventDefault()
+    const next = { ...reportFilters, page: 0 }
+    setReportFilters(next)
+    void loadReports(next)
+  }
+
+  const changeReportPage = (page) => {
+    const next = { ...reportFilters, page }
+    setReportFilters(next)
+    void loadReports(next)
+  }
+
+  const openReportDetail = async (reportId) => {
+    setBusy('report-detail')
+    try {
+      const response = await adminApi.getReport(reportId)
+      if (response?.data) {
+        setSelectedReport(response.data)
+        setResolveForm({
+          status: response.data.status === 'PENDING' ? 'RESOLVED' : response.data.status,
+          resolutionNote: response.data.resolutionNote || '',
+          lockReportedUser: false,
+        })
+        setReportDrawerOpen(true)
+      }
+    } catch (error) {
+      notify(getErrorMessage(error, 'Không thể tải chi tiết báo cáo.'), 'error')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const resolveReport = async (event) => {
+    event.preventDefault()
+    if (!selectedReport) return
+    const response = await run(
+      'report-resolve',
+      () => adminApi.resolveReport(selectedReport.id, resolveForm),
+      'Đã cập nhật trạng thái báo cáo.'
+    )
+    if (response) {
+      setReportDrawerOpen(false)
+      setSelectedReport(null)
+      void loadReports()
+    }
+  }
+
+  const deleteReport = async (reportId) => {
+    if (!window.confirm('Bạn có chắc chắn muốn xóa bản ghi báo cáo này?')) return
+    const response = await run('report-delete', () => adminApi.deleteReport(reportId), 'Đã xóa báo cáo.')
+    if (response) {
+      setReportDrawerOpen(false)
+      setSelectedReport(null)
+      void loadReports()
+    }
+  }
+
   const selectTab = (nextTab) => { setTab(nextTab); setMobileNavOpen(false); setNotice(null) }
   const applyFilters = (event) => { event.preventDefault(); const next = { ...filters, page: 0 }; setFilters(next); void loadUsers(next, onlineOnly) }
   const changeUserPage = (page) => { const next = { ...filters, page }; setFilters(next); void loadUsers(next, onlineOnly) }
@@ -303,6 +396,7 @@ function AdminPage() {
         {notice && <div className={`admin-notice admin-notice--${notice.tone}`} role="status"><span>{notice.tone === 'error' ? '!' : '✓'}</span><p>{notice.message}</p><button type="button" onClick={() => setNotice(null)}><ChatIcon name="close" size={14} /></button></div>}
         {tab === 'dashboard' && <Dashboard user={user} userPage={userPage} onlineCount={onlineCount} roles={roles} permissions={permissions} connectionState={connectionState} navItems={visibleNavItems} onSelect={selectTab} />}
         {tab === 'users' && <UsersSection users={users} roles={roles} filters={filters} setFilters={setFilters} onlineOnly={onlineOnly} onToggleOnline={toggleOnlineOnly} onFilter={applyFilters} onCreate={startCreateUser} onOpen={openUser} can={can} busy={busy} page={userPage} onPage={changeUserPage} onLoad={loadUsers} />}
+        {tab === 'reports' && <ReportsSection reports={reports} filters={reportFilters} setFilters={setReportFilters} onFilter={applyReportFilters} onOpen={openReportDetail} can={can} busy={busy} page={reportPage} onPage={changeReportPage} onLoad={loadReports} />}
         {tab === 'roles' && <RolesSection roles={roles} permissions={permissions} form={roleForm} setForm={setRoleForm} editingId={editingRoleId} busy={busy} can={can} onEdit={editRole} onDelete={deleteRole} onSave={saveRole} onCancel={() => { setEditingRoleId(null); setRoleForm(EMPTY_ROLE) }} />}
         {tab === 'search' && <SearchSection form={advancedForm} setForm={setAdvancedForm} results={advancedResults} page={advancedPage} busy={busy} onSearch={advancedSearch} onReset={() => { setAdvancedForm(EMPTY_ADVANCED); setAdvancedResults([]); setAdvancedPage(EMPTY_PAGE) }} onManage={(username) => { selectTab('users'); void openUser(username) }} />}
         {tab === 'email' && <EmailSection form={emailForm} setForm={setEmailForm} busy={busy} onSubmit={sendEmail} />}
@@ -310,6 +404,7 @@ function AdminPage() {
       </div>
     </section>
     {userEditorOpen && <UserDrawer selectedUser={selectedUser} addresses={selectedAddresses} editingAddress={editingAddress} setEditingAddress={setEditingAddress} form={userForm} setForm={setUserForm} roles={roles} busy={busy} can={can} onClose={closeUserEditor} onSave={saveUser} onAction={userAction} onAddressEdit={beginAddressEdit} onAddressSave={saveAddress} onAddressDelete={deleteAddress} />}
+    {reportDrawerOpen && <ReportDrawer report={selectedReport} form={resolveForm} setForm={setResolveForm} busy={busy} can={can} onClose={() => { setReportDrawerOpen(false); setSelectedReport(null) }} onResolve={resolveReport} onDelete={deleteReport} />}
   </main>
 }
 
@@ -339,6 +434,15 @@ function BroadcastSection({ form, setForm, messages, connectionState, busy, hasM
 
 function UserDrawer({ selectedUser, addresses, editingAddress, setEditingAddress, form, setForm, roles, busy, can, onClose, onSave, onAction, onAddressEdit, onAddressSave, onAddressDelete }) {
   return <div className="admin-drawer-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><aside className="admin-user-drawer" role="dialog" aria-modal="true"><header><div>{selectedUser ? <AdminAvatar person={selectedUser} /> : <span className="admin-form-icon"><ChatIcon name="plus" /></span>}<span><small>{selectedUser ? 'USER MANAGEMENT' : 'CREATE ACCOUNT'}</small><h2>{selectedUser ? displayName(selectedUser) : 'Tạo người dùng'}</h2>{selectedUser && <p>@{selectedUser.username}</p>}</span></div><button type="button" onClick={onClose}><ChatIcon name="close" /></button></header><div className="admin-user-drawer__body">{selectedUser && <div className="admin-user-overview"><StatusBadge status={selectedUser.userStatus} /><span className="admin-role-badge">{selectedUser.role}</span><ProviderBadge provider={selectedUser.authProvider} /></div>}<form className="admin-form" onSubmit={onSave}><div className="admin-form-grid">{!selectedUser && <><label>Username<input required value={form.username} onChange={(event) => setForm({ ...form, username: event.target.value })} /></label><label>Mật khẩu<input type="password" minLength="8" required value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} /></label></>}<label>Họ<input required={!selectedUser} value={form.firstName} onChange={(event) => setForm({ ...form, firstName: event.target.value })} /></label><label>Tên<input value={form.lastName} onChange={(event) => setForm({ ...form, lastName: event.target.value })} /></label><label>Email<input type="email" required value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label><label>Số điện thoại<input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} placeholder="0xxxxxxxxx" /></label><label>Role<select value={form.roleId} onChange={(event) => setForm({ ...form, roleId: event.target.value })}><option value="">Role mặc định</option>{roles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}</select></label></div><div className="admin-form-actions"><button className="admin-primary-button" disabled={busy === 'user-save'}>{selectedUser ? 'Lưu thay đổi' : 'Tạo tài khoản'}</button></div></form>{selectedUser && <><section className="admin-danger-actions"><h3>Thao tác tài khoản</h3><div>{selectedUser.userStatus === 'LOCKED' ? can('ADMIN_UNLOCK') && <button type="button" onClick={() => void onAction('unlock')}>Mở khóa</button> : can('ADMIN_LOCK') && <button type="button" onClick={() => void onAction('lock')}>Khóa tài khoản</button>}{can('ADMIN_DELETE_AVATAR') && <button type="button" onClick={() => void onAction('avatar')}>Xóa avatar</button>}{can('ADMIN_DELETE_USER') && <button className="is-danger" type="button" onClick={() => void onAction('delete')}>Xóa người dùng</button>}</div></section>{can('ADMIN_VIEW_USER_ADDRESSES') && <section className="admin-address-section"><header><h3>Địa chỉ người dùng</h3><span>{addresses.length}</span></header>{addresses.map((address) => <article key={address.id}><div><strong>{address.houseNumber} {address.street}</strong><p>{[address.ward, address.district, address.city, address.country].filter(Boolean).join(', ')}</p></div><span>{can('ADMIN_UPDATE_USER_ADDRESS') && <button type="button" onClick={() => void onAddressEdit(address.id)}>Sửa</button>}{can('ADMIN_DELETE_USER_ADDRESS') && <button className="is-danger" type="button" onClick={() => void onAddressDelete(address.id)}>Xóa</button>}</span></article>)}{!addresses.length && <EmptyState icon="globe">Người dùng chưa có địa chỉ.</EmptyState>}{editingAddress && <form className="admin-form admin-address-form" onSubmit={onAddressSave}><h3>Cập nhật địa chỉ</h3><div className="admin-form-grid">{ADDRESS_FIELDS.map((key) => <label key={key}>{key}<input value={editingAddress[key] || ''} onChange={(event) => setEditingAddress({ ...editingAddress, [key]: event.target.value })} /></label>)}</div><div className="admin-form-actions"><button className="admin-primary-button">Lưu địa chỉ</button><button type="button" onClick={() => setEditingAddress(null)}>Hủy</button></div></form>}</section>}</>}</div></aside></div>
+}
+
+function ReportsSection({ reports, filters, setFilters, onFilter, onOpen, can, busy, page, onPage, onLoad }) {
+  return <section className="admin-section"><div className="admin-section-toolbar"><form className="admin-filter-form" onSubmit={onFilter}><label className="admin-search"><ChatIcon name="search" size={17} /><input value={filters.keyword} onChange={(event) => setFilters({ ...filters, keyword: event.target.value })} placeholder="Username người gửi hoặc bị báo cáo..." /></label><select value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })}><option value="">Mọi trạng thái</option><option value="PENDING">Chờ xử lý (PENDING)</option><option value="RESOLVED">Đã giải quyết (RESOLVED)</option><option value="DISMISSED">Đã bác bỏ (DISMISSED)</option></select><select value={filters.reason} onChange={(event) => setFilters({ ...filters, reason: event.target.value })}><option value="">Mọi lý do</option><option value="SPAM">Spam / Lừa đảo</option><option value="HARASSMENT">Quấy rối</option><option value="INAPPROPRIATE">Nội dung không phù hợp</option><option value="IMPERSONATION">Mạo danh</option><option value="OTHER">Lý do khác</option></select><button type="submit"><ChatIcon name="search" size={15} />Lọc</button></form></div><div className="admin-table-card"><div className="admin-table-summary"><span><strong>{page.totalElements}</strong> báo cáo vi phạm</span><select value={filters.size} onChange={(event) => { const next = { ...filters, size: Number(event.target.value), page: 0 }; setFilters(next); void onLoad(next) }}><option value="10">10 / trang</option><option value="20">20 / trang</option><option value="50">50 / trang</option></select></div><div className="admin-user-table"><div className="admin-user-table__head"><span>Người báo cáo</span><span>Người bị báo cáo</span><span>Lý do</span><span>Trạng thái</span><span /></div>{reports.map((item) => <article key={item.id}><div className="admin-user-cell"><AdminAvatar person={item.reporter} size="small" /><div><strong>{displayName(item.reporter)}</strong><small>@{item.reporter?.username}</small></div></div><div className="admin-user-cell"><AdminAvatar person={item.reportedUser} size="small" /><div><strong>{displayName(item.reportedUser)}</strong><small>@{item.reportedUser?.username}</small></div></div><div><strong>{item.reason}</strong><small>{item.details ? (item.details.length > 35 ? `${item.details.slice(0, 35)}...` : item.details) : 'Không có chi tiết'}</small></div><StatusBadge status={item.status} /><button type="button" disabled={!can('ADMIN_VIEW_REPORTS')} onClick={() => void onOpen(item.id)}>Chi tiết <span>→</span></button></article>)}{!reports.length && <EmptyState icon="flag">{busy === 'reports-load' ? 'Đang tải danh sách báo cáo...' : 'Không có báo cáo vi phạm nào.'}</EmptyState>}</div><Pagination page={page} onChange={onPage} /></div></section>
+}
+
+function ReportDrawer({ report, form, setForm, busy, can, onClose, onResolve, onDelete }) {
+  if (!report) return null
+  return <div className="admin-drawer-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><aside className="admin-user-drawer" role="dialog" aria-modal="true"><header><div><span className="admin-form-icon"><ChatIcon name="flag" /></span><span><small>REPORT MODERATION</small><h2>Báo cáo #{report.id}</h2><p>Lý do: <strong>{report.reason}</strong></p></span></div><button type="button" onClick={onClose}><ChatIcon name="close" /></button></header><div className="admin-user-drawer__body"><div className="admin-user-overview"><StatusBadge status={report.status} /><span className="admin-role-badge">Bị báo cáo: {report.reportedUserTotalReports || 1} lần</span></div><section className="admin-panel admin-form" style={{ marginTop: '14px' }}><h3>Chi tiết các bên liên quan</h3><div className="admin-form-grid"><div><small style={{ color: '#888' }}>Người gửi tố cáo:</small><div><strong>{displayName(report.reporter)}</strong> (@{report.reporter?.username})</div></div><div><small style={{ color: '#888' }}>Người bị tố cáo:</small><div><strong>{displayName(report.reportedUser)}</strong> (@{report.reportedUser?.username})</div></div></div><div style={{ marginTop: '12px' }}><small style={{ color: '#888' }}>Nội dung mô tả từ người gửi:</small><p style={{ marginTop: '5px', padding: '10px', background: '#f6f7fa', borderRadius: '8px', fontSize: '11px', whiteSpace: 'pre-wrap' }}>{report.details || 'Không có mô tả chi tiết.'}</p></div><small style={{ display: 'block', marginTop: '8px', color: '#999' }}>Gửi lúc: {report.createdAt ? new Date(report.createdAt).toLocaleString('vi-VN') : '—'}</small></section>{can('ADMIN_RESOLVE_REPORTS') && <form className="admin-form" onSubmit={onResolve} style={{ marginTop: '16px' }}><h3>Phán quyết & Xử lý</h3><label>Hành động<select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}><option value="RESOLVED">Chấp thuận vi phạm (RESOLVED)</option><option value="DISMISSED">Bác bỏ báo cáo (DISMISSED)</option></select></label><label>Ghi chú của kiểm duyệt viên<textarea rows="3" value={form.resolutionNote} placeholder="Lý do xử lý..." onChange={(event) => setForm({ ...form, resolutionNote: event.target.value })} /></label>{form.status === 'RESOLVED' && <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px', cursor: 'pointer' }}><input type="checkbox" checked={form.lockReportedUser} onChange={(event) => setForm({ ...form, lockReportedUser: event.target.checked })} /><span>Khóa tài khoản <strong>@{report.reportedUser?.username}</strong> ngay lập tức</span></label>}<div className="admin-form-actions"><button className="admin-primary-button" disabled={busy === 'report-resolve'}>{busy === 'report-resolve' ? 'Đang lưu...' : 'Lưu kết quả'}</button></div></form>}{can('ADMIN_DELETE_REPORTS') && <section className="admin-danger-actions" style={{ marginTop: '16px' }}><h3>Thao tác dữ liệu</h3><div><button className="is-danger" type="button" onClick={() => void onDelete(report.id)}>Xóa bản ghi báo cáo này</button></div></section>}</div></aside></div>
 }
 
 export default AdminPage

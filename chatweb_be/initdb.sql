@@ -114,3 +114,23 @@ ON notifications(recipient_id, create_at DESC, id DESC);
 
 CREATE INDEX IF NOT EXISTS idx_notifications_recipient_unread 
 ON notifications(recipient_id) WHERE is_read = false;
+
+-- 8. Table: reports
+CREATE TABLE IF NOT EXISTS reports (
+    id BIGSERIAL PRIMARY KEY,
+    reporter_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    reported_user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    reason VARCHAR(30) NOT NULL,
+    details TEXT,
+    status VARCHAR(20) NOT NULL,
+    resolution_note TEXT,
+    resolved_by_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+    resolve_at TIMESTAMP WITH TIME ZONE,
+    create_at TIMESTAMP WITH TIME ZONE,
+    update_at TIMESTAMP WITH TIME ZONE,
+    version BIGINT NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_reports_status_create_at ON reports(status, create_at DESC);
+CREATE INDEX IF NOT EXISTS idx_reports_reported_user ON reports(reported_user_id);
+

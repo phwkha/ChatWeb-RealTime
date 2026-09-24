@@ -84,6 +84,11 @@ public class DataSeeder implements CommandLineRunner {
         // Chat permissions
         PermissionEntity pAdminSendMessage = createPermissionIfNotFound("ADMIN_SEND-MESSAGE", "Gửi tin nhắn hệ thống");
 
+        // Report moderation permissions
+        PermissionEntity pAdminViewReports = createPermissionIfNotFound("ADMIN_VIEW_REPORTS", "Xem danh sách báo cáo vi phạm");
+        PermissionEntity pAdminResolveReports = createPermissionIfNotFound("ADMIN_RESOLVE_REPORTS", "Xử lý báo cáo vi phạm");
+        PermissionEntity pAdminDeleteReports = createPermissionIfNotFound("ADMIN_DELETE_REPORTS", "Xóa báo cáo vi phạm");
+
         RoleEntity roleAdmin = createRoleIfNotFound("ADMIN", "Quản trị viên hệ thống");
         createRoleIfNotFound("USER", "Người dùng cơ bản");
 
@@ -93,7 +98,8 @@ public class DataSeeder implements CommandLineRunner {
                 pAdminDeleteUser, pAdminDeleteUserAddress,
                 pAdminLock, pAdminUnlock, pAdminDeleteAvatar,
                 pRoleViewAll, pRoleViewAllPermission, pRoleAdd, pRoleUpdate, pRoleDelete,
-                pSendEmail, pAdminSendMessage);
+                pSendEmail, pAdminSendMessage,
+                pAdminViewReports, pAdminResolveReports, pAdminDeleteReports);
 
         if (!userRepository.existsByUsername("admin")) {
             UserEntity admin = new UserEntity();

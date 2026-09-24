@@ -17,10 +17,7 @@ public class AdminCreateUserRequest {
     private String firstName;
     private String lastName;
 
-    @Pattern(
-            regexp = "^(0[0-9]{9}|\\+84[0-9]{9})$",
-            message = "{valid.phone_invalid}"
-    )
+    @Pattern(regexp = "^(0\\d{9}|\\+84\\d{9})$", message = "{valid.phone_invalid}")
     private String phone;
 
     @NotBlank(message = "{valid.email_empty}")
