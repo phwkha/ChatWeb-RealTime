@@ -13,6 +13,7 @@ import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.response.SocketNotificationResponse;
 import com.web.backend.exception.custom.MessageProcessingException;
 import com.web.backend.kafka.payload.FriendPayload;
+import com.web.backend.model.postgres.NotificationEntity;
 import com.web.backend.service.NotificationService;
 import com.web.backend.service.WebSocketRoutingService;
 
@@ -51,16 +52,20 @@ public class FriendConsumer {
         }
 
         NotificationsType type = friendEvent.recipientType();
+        Long notificationId = null;
 
         if (type == NotificationsType.FRIEND_REQUEST || type == NotificationsType.FRIEND_ACCEPTED) {
             String content = buildResponse(type, friendEvent.senderDisplayName()).getMessage();
-            notificationService.createNotification(
+            NotificationEntity saved = notificationService.createNotification(
                     friendEvent.senderUsername(),
                     friendEvent.recipientUsername(),
                     type,
                     NotificationTargetType.USER,
                     friendEvent.senderUsername(),
                     content);
+            if (saved != null) {
+                notificationId = saved.getId();
+            }
         }
 
         String recipient = friendEvent.recipientUsername();
@@ -71,9 +76,9 @@ public class FriendConsumer {
 
         try {
             SocketNotificationResponse<?> recipientResp = buildResponse(friendEvent.recipientType(),
-                    friendEvent.senderDisplayName());
+                    friendEvent.senderDisplayName(), notificationId);
             SocketNotificationResponse<?> senderResp = buildResponse(friendEvent.senderType(),
-                    friendEvent.recipientDisplayName());
+                    friendEvent.recipientDisplayName(), null);
 
             if (recipients != null && !recipients.isEmpty() && recipientResp != null) {
                 for (String r : recipients) {
@@ -94,7 +99,7 @@ public class FriendConsumer {
     }
 
     private SocketNotificationResponse<?> buildResponse(NotificationsType type,
-            String relatedUsername) {
+            String relatedUsername, Long notificationId) {
         if (type == null) {
             return null;
         }
@@ -132,7 +137,12 @@ public class FriendConsumer {
                 translationKey = EMPTY_STRING;
         }
 
-        return SocketNotificationResponse.notificationData(type, relatedUsername, Translator.tolocale(translationKey));
+        return SocketNotificationResponse.notificationData(notificationId, type, relatedUsername, Translator.tolocale(translationKey));
+    }
+
+    private SocketNotificationResponse<?> buildResponse(NotificationsType type,
+            String relatedUsername) {
+        return buildResponse(type, relatedUsername, null);
     }
 
 }

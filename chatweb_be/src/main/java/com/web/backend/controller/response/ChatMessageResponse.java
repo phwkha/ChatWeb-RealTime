@@ -44,4 +44,6 @@ public class ChatMessageResponse {
     private Map<String, String> reactions;
 
     private String localId;
+
+    private Long notificationId;
 }

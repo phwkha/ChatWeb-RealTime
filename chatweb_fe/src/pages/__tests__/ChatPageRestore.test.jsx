@@ -171,4 +171,62 @@ describe('ChatPage Conversation Persistence', () => {
     )
     expect(messageCalls.length).toBe(1)
   })
+
+  it('preserves friends section on reload even if localStorage has active conversation', async () => {
+    localStorage.setItem(ACTIVE_CONVERSATION_STORAGE_KEY, 'bob')
+
+    render(
+      <MemoryRouter initialEntries={['/chat?section=friends']}>
+        <ChatPage />
+      </MemoryRouter>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('region', { name: 'friends' })).toBeInTheDocument()
+    })
+
+    // Must NOT restore conversation with bob in ChatHeader
+    expect(screen.queryByText('searchMessages')).not.toBeInTheDocument()
+    // Bob should only appear once in sidebar, not in ChatHeader
+    expect(screen.getAllByText('Bob Builder')).toHaveLength(1)
+  })
+
+  it('preserves notifications section on reload even if localStorage has active conversation', async () => {
+    localStorage.setItem(ACTIVE_CONVERSATION_STORAGE_KEY, 'bob')
+
+    render(
+      <MemoryRouter initialEntries={['/chat?section=notifications']}>
+        <ChatPage />
+      </MemoryRouter>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('region', { name: 'notifications' })).toBeInTheDocument()
+    })
+
+    // Must NOT restore conversation with bob in ChatHeader
+    expect(screen.queryByText('searchMessages')).not.toBeInTheDocument()
+    // Bob should only appear once in sidebar, not in ChatHeader
+    expect(screen.getAllByText('Bob Builder')).toHaveLength(1)
+  })
+
+  it('does not eagerly fetch friend requests or notifications list on initial chat load', async () => {
+    render(
+      <MemoryRouter initialEntries={['/chat']}>
+        <ChatPage />
+      </MemoryRouter>
+    )
+
+    await waitFor(() => {
+      const calls = vi.mocked(apiClient.apiRequest).mock.calls.map(([url]) => String(url))
+      expect(calls.some((u) => u.includes('/api/friends?'))).toBe(true)
+    })
+
+    const allCalls = vi.mocked(apiClient.apiRequest).mock.calls.map(([url]) => String(url))
+    expect(allCalls.some((u) => u.includes('/api/friends/requests?'))).toBe(false)
+    expect(allCalls.some((u) => u.includes('/api/friends/sent?'))).toBe(false)
+    expect(allCalls.some((u) => u.includes('/api/friends/blocked?'))).toBe(false)
+    expect(allCalls.some((u) => u.includes('/api/notifications?'))).toBe(false)
+  })
 })
+

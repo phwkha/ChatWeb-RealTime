@@ -188,6 +188,7 @@ class ChatConsumerTest {
                 message.setSender("userA");
                 message.setRecipient("userB");
                 message.setActionType(ActionType.REACT.name());
+                message.setNotificationId(999L);
 
                 ChatMessageResponse response = ChatMessageResponse.builder()
                                 .id("msg1")
@@ -200,11 +201,17 @@ class ChatConsumerTest {
 
                 chatConsumer.listenChatMessages(message, "conv_key");
 
+                org.junit.jupiter.api.Assertions.assertEquals(999L, response.getNotificationId());
+
                 verify(webSocketRoutingService).routeMessage(eq("userA"), eq("/queue/notifications"),
                                 argThat((SocketNotificationResponse<?> notif) -> notif
-                                                .getType() == NotificationsType.REACT_MESSAGE));
+                                                .getType() == NotificationsType.REACT_MESSAGE
+                                                && Long.valueOf(999L).equals(notif.getId())
+                                                && Long.valueOf(999L).equals(notif.getNotificationId())));
                 verify(webSocketRoutingService).routeMessage(eq("userB"), eq("/queue/notifications"),
                                 argThat((SocketNotificationResponse<?> notif) -> notif
-                                                .getType() == NotificationsType.REACT_MESSAGE));
+                                                .getType() == NotificationsType.REACT_MESSAGE
+                                                && Long.valueOf(999L).equals(notif.getId())
+                                                && Long.valueOf(999L).equals(notif.getNotificationId())));
         }
 }

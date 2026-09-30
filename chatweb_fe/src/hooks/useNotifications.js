@@ -7,7 +7,7 @@ import {
 } from '../services/notificationApi.js'
 import { PERSISTED_NOTIFICATION_TYPES } from '../components/chat/chatUtils.js'
 
-export function useNotifications({ enabled = true, currentUser, playNotificationSound, showToast } = {}) {
+export function useNotifications({ enabled = true, activeSection, currentUser, playNotificationSound, showToast } = {}) {
   const [notifications, setNotifications] = useState([])
   const [unreadCount, setUnreadCount] = useState(0)
   const [nextCursor, setNextCursor] = useState(null)
@@ -25,36 +25,50 @@ export function useNotifications({ enabled = true, currentUser, playNotification
     callbacksRef.current = { playNotificationSound, showToast }
   }, [playNotificationSound, showToast])
 
-  const fetchInitial = useCallback(async () => {
+  const listFetchedRef = useRef(false)
+
+  const fetchUnreadCount = useCallback(async () => {
+    if (!enabled) return
+    try {
+      const count = await getUnreadNotificationCount()
+      setUnreadCount(count)
+    } catch {
+      // Ignore count fetch errors
+    }
+  }, [enabled])
+
+  const fetchInitialList = useCallback(async () => {
     if (!enabled) return
     setLoading(true)
     try {
-      const [listResult, countResult] = await Promise.allSettled([
-        getNotifications({ size: 20 }),
-        getUnreadNotificationCount(),
-      ])
-      if (listResult.status === 'fulfilled') {
-        const rawContent = listResult.value.content || []
-        const validNotifications = rawContent.filter((item) => (
-          PERSISTED_NOTIFICATION_TYPES.has(String(item?.type || '').toUpperCase())
-        ))
-        setNotifications(validNotifications)
-        setNextCursor(listResult.value.nextCursor)
-        setHasMore(listResult.value.hasMore)
-      }
-      if (countResult.status === 'fulfilled') {
-        setUnreadCount(countResult.value)
-      }
+      const listResult = await getNotifications({ size: 20 })
+      const rawContent = listResult?.content || []
+      const validNotifications = rawContent.filter((item) => (
+        PERSISTED_NOTIFICATION_TYPES.has(String(item?.type || '').toUpperCase())
+      ))
+      setNotifications(validNotifications)
+      setNextCursor(listResult?.nextCursor || null)
+      setHasMore(Boolean(listResult?.hasMore))
+      listFetchedRef.current = true
     } catch {
-      // Ignore initial notification load errors
+      // Ignore list fetch errors
     } finally {
       setLoading(false)
     }
   }, [enabled])
 
+  // Always fetch unread notification count on mount for badge
   useEffect(() => {
-    void fetchInitial()
-  }, [fetchInitial])
+    void fetchUnreadCount()
+  }, [fetchUnreadCount])
+
+  // Lazy fetch full notifications list only when in notifications section (or if section is unspecified)
+  useEffect(() => {
+    const shouldFetchList = activeSection === 'notifications' || activeSection === undefined
+    if (shouldFetchList && !listFetchedRef.current) {
+      void fetchInitialList()
+    }
+  }, [activeSection, fetchInitialList])
 
   const loadMore = useCallback(async () => {
     if (!hasMore || loadingMore || !nextCursor) return
@@ -127,7 +141,11 @@ export function useNotifications({ enabled = true, currentUser, playNotification
       return null
     }
 
-    const id = socketPayload.id || rawData.id || Date.now()
+    const id = socketPayload.notificationId
+      || socketPayload.id
+      || rawData.notificationId
+      || (type !== 'REACT_MESSAGE' ? rawData.id : null)
+      || Date.now()
     const content = socketPayload.content || socketPayload.message || rawData.content || ''
 
     const newNotification = {
@@ -160,6 +178,13 @@ export function useNotifications({ enabled = true, currentUser, playNotification
     return newNotification
   }, [currentUser?.username])
 
+  const refreshNotifications = useCallback(async () => {
+    void fetchUnreadCount()
+    if (activeSection === 'notifications') {
+      void fetchInitialList()
+    }
+  }, [activeSection, fetchInitialList, fetchUnreadCount])
+
   return {
     notifications,
     unreadCount,
@@ -172,7 +197,7 @@ export function useNotifications({ enabled = true, currentUser, playNotification
     markAsRead,
     markAllAsRead,
     handleRealtimeNotification,
-    refreshNotifications: fetchInitial,
+    refreshNotifications,
   }
 }
 

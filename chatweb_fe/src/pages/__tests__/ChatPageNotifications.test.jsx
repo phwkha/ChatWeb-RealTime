@@ -259,7 +259,7 @@ describe('ChatPage Notification Click Navigation Integration', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getAllByText('Bob Builder').length).toBeGreaterThanOrEqual(1)
+      expect(localStorage.getItem(ACTIVE_CONVERSATION_STORAGE_KEY)).toBe('bob')
     })
 
     const charlieButton = screen.getAllByRole('button').find((btn) => btn.textContent.includes('Charlie Chaplin'))

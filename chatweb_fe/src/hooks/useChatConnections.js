@@ -8,6 +8,7 @@ import {
 
 export function useChatConnections({
   currentUser,
+  activeSection = 'chat',
   showToast,
   t,
   onAfterRemoveConversation,
@@ -22,13 +23,23 @@ export function useChatConnections({
 
   const friendSyncTimersRef = useRef([])
   const currentUsernameKey = String(currentUser?.username || '').trim().toLocaleLowerCase('en-US')
+  const requestsLoadedRef = useRef(false)
 
   const saveBlockedIntervals = useCallback((nextPreferences) => {
     setBlockedMessageIntervals(nextPreferences)
     localStorage.setItem(BLOCKED_MESSAGES_STORAGE_KEY, JSON.stringify(nextPreferences))
   }, [])
 
-  const loadConnections = useCallback(async () => {
+  const loadFriendsOnly = useCallback(async () => {
+    try {
+      const friendsRes = await apiRequest('/api/friends?size=100')
+      setFriends(friendsRes?.data?.content || [])
+    } finally {
+      setConnectionsLoaded(true)
+    }
+  }, [])
+
+  const loadFriendsAndRelationships = useCallback(async () => {
     try {
       const [friendsRes, requestsRes, sentRes, blockedRes] = await Promise.allSettled([
         apiRequest('/api/friends?size=100'),
@@ -40,10 +51,19 @@ export function useChatConnections({
       if (requestsRes.status === 'fulfilled') setFriendRequests(requestsRes.value?.data?.content || [])
       if (sentRes.status === 'fulfilled') setSentRequests(sentRes.value?.data?.content || [])
       if (blockedRes.status === 'fulfilled') setBlockedUsers(blockedRes.value?.data?.content || [])
+      requestsLoadedRef.current = true
     } finally {
       setConnectionsLoaded(true)
     }
   }, [])
+
+  const loadConnections = useCallback(async () => {
+    if (activeSection === 'friends') {
+      await loadFriendsAndRelationships()
+    } else {
+      await loadFriendsOnly()
+    }
+  }, [activeSection, loadFriendsAndRelationships, loadFriendsOnly])
 
   const scheduleConnectionSync = useCallback(() => {
     friendSyncTimersRef.current.forEach((timer) => window.clearTimeout(timer))
@@ -60,6 +80,12 @@ export function useChatConnections({
       friendSyncTimersRef.current.forEach((timer) => window.clearTimeout(timer))
     }
   }, [loadConnections])
+
+  useEffect(() => {
+    if (activeSection === 'friends' && !requestsLoadedRef.current) {
+      void loadFriendsAndRelationships()
+    }
+  }, [activeSection, loadFriendsAndRelationships])
 
   const addFriend = useCallback(async (person) => {
     if (String(person?.username || '').trim().toLocaleLowerCase('en-US') === currentUsernameKey) {

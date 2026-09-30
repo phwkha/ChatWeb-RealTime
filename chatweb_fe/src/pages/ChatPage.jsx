@@ -90,8 +90,32 @@ function ChatPage() {
     setConfirmConversationAction(null)
   }, [setSearchParams])
 
+  const handleSelectSection = useCallback((section) => {
+    setActiveSection(section)
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (section === 'chat') {
+        next.delete('section')
+      } else {
+        next.set('section', section)
+        next.delete('user')
+      }
+      return next
+    }, { replace: true })
+  }, [setSearchParams])
+
+  useEffect(() => {
+    const sectionParam = searchParams.get('section')
+    const validSection = ['chat', 'friends', 'notifications'].includes(sectionParam) ? sectionParam : 'chat'
+    setActiveSection(validSection)
+  }, [searchParams])
+
   const connections = useChatConnections({
-    currentUser, showToast, t, onAfterRemoveConversation: removeConversationLocally,
+    currentUser,
+    activeSection,
+    showToast,
+    t,
+    onAfterRemoveConversation: removeConversationLocally,
   })
 
   const {
@@ -132,6 +156,7 @@ function ChatPage() {
     handleRealtimeNotification,
   } = useNotifications({
     enabled: Boolean(currentUser),
+    activeSection,
     currentUser,
     playNotificationSound,
     showToast,
@@ -221,8 +246,9 @@ function ChatPage() {
         localStorage.setItem(ACTIVE_CONVERSATION_STORAGE_KEY, friend.username)
       } catch {}
       setSearchParams((prev) => {
-        if (prev.get('user') === friend.username) return prev
         const next = new URLSearchParams(prev)
+        next.delete('section')
+        if (prev.get('user') === friend.username && !prev.has('section')) return prev
         next.set('user', friend.username)
         return next
       }, { replace: true })
@@ -240,21 +266,21 @@ function ChatPage() {
     if (!nav) return
 
     if (nav.section === 'friends') {
-      setActiveSection('friends')
+      handleSelectSection('friends')
       setWorldOpen(false)
       if (setSearchQuery) setSearchQuery('')
       return
     }
 
     if (nav.section === 'chat' && nav.targetUsername) {
-      setActiveSection('chat')
+      handleSelectSection('chat')
       setWorldOpen(false)
       const friend = friends.find((f) => (
         String(f.username || '').toLocaleLowerCase('en-US') === nav.targetUsername.toLocaleLowerCase('en-US')
       ))
       selectFriend(friend || nav.userFallback || { username: nav.targetUsername })
     }
-  }, [friends, markNotificationRead, selectFriend, setActiveSection, setSearchQuery, setWorldOpen])
+  }, [friends, handleSelectSection, markNotificationRead, selectFriend, setSearchQuery, setWorldOpen])
 
   const clearActiveConversation = useCallback(() => {
     selectedRef.current = null
@@ -278,6 +304,9 @@ function ChatPage() {
 
     const rawQueryUser = searchParams.get('user')?.trim()
     const queryUser = rawQueryUser ? rawQueryUser.toLocaleLowerCase('en-US') : null
+    const querySection = searchParams.get('section')?.trim()
+    const isNonChatSection = querySection && querySection !== 'chat'
+
     const storedUser = (() => {
       try {
         return localStorage.getItem(ACTIVE_CONVERSATION_STORAGE_KEY)?.trim()
@@ -286,8 +315,8 @@ function ChatPage() {
       }
     })()
 
-    // If no queryUser in URL on initial mount, check if localStorage has one
-    if (!queryUser && !restoredRef.current && storedUser) {
+    // If no queryUser in URL on initial mount, check if localStorage has one (only if not on a non-chat section)
+    if (!queryUser && !restoredRef.current && storedUser && !isNonChatSection) {
       restoredRef.current = true
       const match = friends.find((f) => (
         String(f.username || '').toLocaleLowerCase('en-US') === storedUser.toLocaleLowerCase('en-US')
@@ -335,7 +364,7 @@ function ChatPage() {
         totalUnreadMessages={totalUnreadMessages} friendRequestCount={friendRequests.length}
         worldNotificationCount={worldNotifications.length}
         unreadNotificationCount={unreadNotificationCount}
-        onSelectSection={setActiveSection}
+        onSelectSection={handleSelectSection}
         onOpenWorld={() => setWorldOpen(true)}
       />
 
@@ -346,7 +375,7 @@ function ChatPage() {
         onSelectFriend={selectFriend} unreadCounts={unreadCounts} typingUsers={typingUsers}
         currentUserWithPresence={{ ...currentUser, isOnline: connectionState === 'connected' }}
         currentUser={currentUser} isAdmin={isAdmin} t={t}
-        onOpenFriendsSection={() => setActiveSection('friends')}
+        onOpenFriendsSection={() => handleSelectSection('friends')}
       />
 
       <ChatArea
@@ -362,7 +391,7 @@ function ChatPage() {
         onConfirmBlock={() => { setConversationMenuOpen(false); setConfirmConversationAction('block') }}
         onConfirmUnfriend={() => { setConversationMenuOpen(false); setConfirmConversationAction('unfriend') }}
         onOpenReport={() => { setConversationMenuOpen(false); setReportDialogOpen(true) }}
-        onOpenFriendsSection={() => setActiveSection('friends')}
+        onOpenFriendsSection={() => handleSelectSection('friends')}
         messagesState={messagesState} contextMenu={contextMenu}
         closeContextMenu={closeContextMenu} openContextMenu={openContextMenu} showToast={showToast}
       />

@@ -46,12 +46,12 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     @Transactional
-    public void createNotification(String senderUsername, String recipientUsername, NotificationsType type,
+    public NotificationEntity createNotification(String senderUsername, String recipientUsername, NotificationsType type,
             NotificationTargetType targetType, String targetId, String content) {
         UserEntity recipient = userRepository.findByUsername(recipientUsername).orElse(null);
         if (recipient == null) {
             log.warn("Cannot create notification: recipient '{}' not found", recipientUsername);
-            return;
+            return null;
         }
 
         UserEntity sender = null;
@@ -71,13 +71,15 @@ public class NotificationServiceImpl implements NotificationService {
                 .content(content)
                 .isRead(false)
                 .build();
-        notificationRepository.save(entity);
+        NotificationEntity saved = notificationRepository.save(entity);
 
         try {
             redisTemplate.delete(NOTIF_UNREAD_PREFIX + recipientUsername);
         } catch (Exception e) {
             log.warn("createNotification Failed to evict unread notification cache for user {}", recipientUsername, e);
         }
+
+        return saved;
     }
 
     @Override

@@ -71,8 +71,7 @@ public class ChatServiceImpl implements ChatService {
     private static final int RATE_LIMIT_WS_SEND_PERIOD_SECONDS = 60;
     private static final String ERROR_RATE_LIMIT_STRING = "error.auth.too_many_attempts";
 
-    private static final Set<MessageType> ALLOWED_PRIVATE_MESSAGE_TYPES =
-            Set.of(MessageType.CHAT, MessageType.TYPING);
+    private static final Set<MessageType> ALLOWED_PRIVATE_MESSAGE_TYPES = Set.of(MessageType.CHAT, MessageType.TYPING);
 
     private static final String ERROR_MSG_RECIPIENT_NOT_FOUND_STRING = "error.msg.recipient_not_found";
     private static final String ERROR_MSG_SEND_DELETED_STRING = "error.msg.send_deleted";
@@ -92,7 +91,8 @@ public class ChatServiceImpl implements ChatService {
             Boolean isNew = stringRedisTemplate.opsForValue()
                     .setIfAbsent(dedupKey, "1", java.time.Duration.ofSeconds(WS_DEDUP_TTL_SECONDS));
             if (Boolean.FALSE.equals(isNew)) {
-                log.warn("Duplicate WebSocket message detected: sender='{}', localId='{}'", sender, request.getLocalId());
+                log.warn("Duplicate WebSocket message detected: sender='{}', localId='{}'", sender,
+                        request.getLocalId());
                 return;
             }
         }
@@ -214,6 +214,7 @@ public class ChatServiceImpl implements ChatService {
         }
     }
 
+    @SuppressWarnings("java:S9395")
     private void cacheMessageToRedis(ChatMessage chatMsg) {
         if (chatMsg == null || chatMsg.getMessageType() != MessageType.CHAT) {
             return;
@@ -226,7 +227,7 @@ public class ChatServiceImpl implements ChatService {
         try {
             String hashKey = CHAT_RECENT_HASH_STRING + convId;
             String zsetKey = CHAT_RECENT_ZSET_STRING + convId;
-            long score = chatMsg.getTimestamp().toEpochMilli();
+            double score = chatMsg.getTimestamp().toEpochMilli();
             Duration chatTtl = getRandomTtl(3600, 300);
 
             redisTemplate.executePipelined(new SessionCallback<Object>() {
