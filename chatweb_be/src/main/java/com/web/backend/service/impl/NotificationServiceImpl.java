@@ -85,8 +85,13 @@ public class NotificationServiceImpl implements NotificationService {
     public void markNotificationAsRead(UserEntity user, Long notiId) {
         int updateRow = notificationRepository.markAsReadByIdAndRecipientId(notiId, user.getId());
         if (updateRow == 0) {
-            log.warn("Notification {} not found or already read for user {}", notiId, user.getUsername());
-            throw new ResourceNotFoundException(Translator.tolocale(ERROR_NOTIFICATION_NOT_FOUND_STRING));
+            boolean exists = notificationRepository.existsByIdAndRecipientId(notiId, user.getId());
+            if (!exists) {
+                log.warn("Notification {} not found for user {}", notiId, user.getUsername());
+                throw new ResourceNotFoundException(Translator.tolocale(ERROR_NOTIFICATION_NOT_FOUND_STRING));
+            }
+            log.info("Notification {} already read for user {}", notiId, user.getUsername());
+            return;
         }
         try {
             redisTemplate.delete(NOTIF_UNREAD_PREFIX + user.getUsername());
@@ -98,48 +103,63 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     @Transactional(readOnly = true)
     public CursorResponse<NotificationResponse> getNotifications(UserEntity user, String cursorStr, int size) {
-        int pageSize = (size <= 0 || size > MAX_PAGE_SIZE) ? DEFAULT_PAGE_SIZE : size;
-
-        Instant cursorTime = null;
-        Long cursorId = null;
-        if (cursorStr != null && !cursorStr.isBlank()) {
-            try {
-                if (cursorStr.contains("_")) {
-                    String[] parts = cursorStr.split("_", 2);
-                    cursorTime = Instant.parse(parts[0]);
-                    cursorId = Long.parseLong(parts[1]);
-                } else {
-                    cursorTime = Instant.parse(cursorStr);
-                    cursorId = Long.MAX_VALUE;
-                }
-            } catch (Exception e) {
-                log.warn("Invalid cursor format: {}, defaulting to first page", cursorStr);
-                cursorTime = null;
-                cursorId = null;
-            }
-        }
+        int pageSize = resolvePageSize(size);
+        NotificationCursor cursor = parseCursor(cursorStr);
 
         Pageable pageable = PageRequest.of(0, pageSize + 1);
-        List<NotificationResponse> notifications = new ArrayList<>(
-                cursorTime == null
-                        ? notificationRepository.findInitialNotifications(user.getId(), pageable)
-                        : notificationRepository.findNotificationsByCursor(user.getId(), cursorTime, cursorId, pageable));
+        List<NotificationResponse> notifications = new ArrayList<>(fetchNotifications(user.getId(), cursor, pageable));
 
-        boolean hasMore = false;
-        if (notifications.size() > pageSize) {
-            hasMore = true;
+        boolean hasMore = notifications.size() > pageSize;
+        if (hasMore) {
             notifications.remove(notifications.size() - 1);
         }
 
-        String nextCursor = null;
-        if (!notifications.isEmpty() && hasMore) {
-            NotificationResponse last = notifications.get(notifications.size() - 1);
-            if (last.getCreatedAt() != null && last.getId() != null) {
-                nextCursor = last.getCreatedAt().toString() + "_" + last.getId();
-            }
-        }
-
+        String nextCursor = buildNextCursor(notifications, hasMore);
         return new CursorResponse<>(notifications, nextCursor, hasMore);
+    }
+
+    private record NotificationCursor(Instant time, Long id) {
+    }
+
+    private int resolvePageSize(int size) {
+        if (size <= 0 || size > MAX_PAGE_SIZE) {
+            return DEFAULT_PAGE_SIZE;
+        }
+        return size;
+    }
+
+    private NotificationCursor parseCursor(String cursorStr) {
+        if (cursorStr == null || cursorStr.isBlank()) {
+            return null;
+        }
+        try {
+            if (cursorStr.contains("_")) {
+                String[] parts = cursorStr.split("_", 2);
+                return new NotificationCursor(Instant.parse(parts[0]), Long.parseLong(parts[1]));
+            }
+            return new NotificationCursor(Instant.parse(cursorStr), Long.MAX_VALUE);
+        } catch (Exception e) {
+            log.warn("Invalid cursor format: {}, defaulting to first page", cursorStr);
+            return null;
+        }
+    }
+
+    private List<NotificationResponse> fetchNotifications(Long userId, NotificationCursor cursor, Pageable pageable) {
+        if (cursor == null) {
+            return notificationRepository.findInitialNotifications(userId, pageable);
+        }
+        return notificationRepository.findNotificationsByCursor(userId, cursor.time(), cursor.id(), pageable);
+    }
+
+    private String buildNextCursor(List<NotificationResponse> notifications, boolean hasMore) {
+        if (notifications.isEmpty() || !hasMore) {
+            return null;
+        }
+        NotificationResponse last = notifications.get(notifications.size() - 1);
+        if (last.getCreatedAt() == null || last.getId() == null) {
+            return null;
+        }
+        return last.getCreatedAt().toString() + "_" + last.getId();
     }
 
     @Override

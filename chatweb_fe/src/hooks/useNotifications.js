@@ -83,9 +83,8 @@ export function useNotifications({ enabled = true, currentUser, playNotification
     setNotifications((prev) =>
       prev.map((item) => (item.id === id ? { ...item, isRead: true } : item))
     )
-    if (wasUnread) {
-      setUnreadCount((prev) => Math.max(0, prev - 1))
-    }
+    if (!wasUnread) return
+    setUnreadCount((prev) => Math.max(0, prev - 1))
 
     try {
       await markNotificationAsRead(id)

@@ -49,6 +49,7 @@ function ChatPage() {
   const [reportDialogOpen, setReportDialogOpen] = useState(false)
 
   const selectedRef = useRef(null)
+  const lastSelectedUsernameRef = useRef(null)
   const conversationMenuRef = useRef(null)
   const isAdmin = isAdminUser(currentUser)
   const currentUsernameKey = String(currentUser?.username || '').trim().toLocaleLowerCase('en-US')
@@ -74,10 +75,12 @@ function ChatPage() {
     if (selectedRef.current?.username === username) {
       selectedRef.current = null
       setSelectedUser(null)
+      lastSelectedUsernameRef.current = null
       try {
         localStorage.removeItem(ACTIVE_CONVERSATION_STORAGE_KEY)
       } catch {}
       setSearchParams((prev) => {
+        if (!prev.has('user')) return prev
         const next = new URLSearchParams(prev)
         next.delete('user')
         return next
@@ -207,6 +210,7 @@ function ChatPage() {
     closeContextMenu()
     selectedRef.current = friend
     setSelectedUser(friend)
+    lastSelectedUsernameRef.current = friend?.username ? String(friend.username).toLocaleLowerCase('en-US') : null
     setActiveSection('chat')
     setWorldOpen(false)
     if (friend?.username) {
@@ -228,7 +232,7 @@ function ChatPage() {
   const handleNotificationClick = useCallback((notification) => {
     if (!notification) return
 
-    if (notification.id !== null && notification.id !== undefined && notification.id !== '') {
+    if (!notification.isRead && notification.id !== null && notification.id !== undefined && notification.id !== '') {
       void markNotificationRead(notification.id)
     }
 
@@ -255,10 +259,12 @@ function ChatPage() {
   const clearActiveConversation = useCallback(() => {
     selectedRef.current = null
     setSelectedUser(null)
+    lastSelectedUsernameRef.current = null
     try {
       localStorage.removeItem(ACTIVE_CONVERSATION_STORAGE_KEY)
     } catch {}
     setSearchParams((prev) => {
+      if (!prev.has('user')) return prev
       const next = new URLSearchParams(prev)
       next.delete('user')
       return next
@@ -270,7 +276,8 @@ function ChatPage() {
   useEffect(() => {
     if (!connectionsLoaded) return
 
-    const queryUser = searchParams.get('user')?.trim()
+    const rawQueryUser = searchParams.get('user')?.trim()
+    const queryUser = rawQueryUser ? rawQueryUser.toLocaleLowerCase('en-US') : null
     const storedUser = (() => {
       try {
         return localStorage.getItem(ACTIVE_CONVERSATION_STORAGE_KEY)?.trim()
@@ -296,24 +303,28 @@ function ChatPage() {
     restoredRef.current = true
 
     if (queryUser) {
-      if (selectedUser?.username?.toLocaleLowerCase('en-US') === queryUser.toLocaleLowerCase('en-US')) {
+      if (
+        selectedRef.current?.username?.toLocaleLowerCase('en-US') === queryUser ||
+        lastSelectedUsernameRef.current === queryUser
+      ) {
         return
       }
       const match = friends.find((f) => (
-        String(f.username || '').toLocaleLowerCase('en-US') === queryUser.toLocaleLowerCase('en-US')
+        String(f.username || '').toLocaleLowerCase('en-US') === queryUser
       ))
       if (match) {
         selectFriend(match)
       } else {
         try { localStorage.removeItem(ACTIVE_CONVERSATION_STORAGE_KEY) } catch {}
         setSearchParams((prev) => {
+          if (!prev.has('user')) return prev
           const next = new URLSearchParams(prev)
           next.delete('user')
           return next
         }, { replace: true })
       }
     }
-  }, [connectionsLoaded, friends, searchParams, selectFriend, selectedUser?.username, setSearchParams])
+  }, [connectionsLoaded, friends, searchParams, selectFriend, setSearchParams])
 
   const latestWorldMessage = worldMessages.length ? worldMessages[worldMessages.length - 1] : null
 

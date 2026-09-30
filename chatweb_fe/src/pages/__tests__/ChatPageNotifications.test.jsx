@@ -251,6 +251,26 @@ describe('ChatPage Notification Click Navigation Integration', () => {
     })
   })
 
+  it('allows switching from one friend to another friend in the chat sidebar', async () => {
+    render(
+      <MemoryRouter initialEntries={['/chat?user=bob']}>
+        <ChatPage />
+      </MemoryRouter>
+    )
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Bob Builder').length).toBeGreaterThanOrEqual(1)
+    })
+
+    const charlieButton = screen.getAllByRole('button').find((btn) => btn.textContent.includes('Charlie Chaplin'))
+    expect(charlieButton).toBeTruthy()
+    fireEvent.click(charlieButton)
+
+    await waitFor(() => {
+      expect(localStorage.getItem(ACTIVE_CONVERSATION_STORAGE_KEY)).toBe('charlie')
+    })
+  })
+
   it('filters out non-persisted notification types so only types saved by BE are shown', async () => {
     render(
       <MemoryRouter initialEntries={['/chat']}>
