@@ -5,8 +5,9 @@ import {
   markNotificationAsRead,
   markAllNotificationsAsRead,
 } from '../services/notificationApi.js'
+import { PERSISTED_NOTIFICATION_TYPES } from '../components/chat/chatUtils.js'
 
-export function useNotifications({ enabled = true, playNotificationSound, showToast } = {}) {
+export function useNotifications({ enabled = true, currentUser, playNotificationSound, showToast } = {}) {
   const [notifications, setNotifications] = useState([])
   const [unreadCount, setUnreadCount] = useState(0)
   const [nextCursor, setNextCursor] = useState(null)
@@ -33,7 +34,11 @@ export function useNotifications({ enabled = true, playNotificationSound, showTo
         getUnreadNotificationCount(),
       ])
       if (listResult.status === 'fulfilled') {
-        setNotifications(listResult.value.content || [])
+        const rawContent = listResult.value.content || []
+        const validNotifications = rawContent.filter((item) => (
+          PERSISTED_NOTIFICATION_TYPES.has(String(item?.type || '').toUpperCase())
+        ))
+        setNotifications(validNotifications)
         setNextCursor(listResult.value.nextCursor)
         setHasMore(listResult.value.hasMore)
       }
@@ -58,7 +63,9 @@ export function useNotifications({ enabled = true, playNotificationSound, showTo
       const res = await getNotifications({ cursor: nextCursor, size: 20 })
       setNotifications((prev) => {
         const existingIds = new Set(prev.map((n) => n.id))
-        const incoming = (res.content || []).filter((n) => !existingIds.has(n.id))
+        const incoming = (res.content || []).filter((n) => (
+          !existingIds.has(n.id) && PERSISTED_NOTIFICATION_TYPES.has(String(n?.type || '').toUpperCase())
+        ))
         return [...prev, ...incoming]
       })
       setNextCursor(res.nextCursor)
@@ -102,17 +109,27 @@ export function useNotifications({ enabled = true, playNotificationSound, showTo
   const handleRealtimeNotification = useCallback((socketPayload) => {
     if (!socketPayload) return null
     const rawData = socketPayload.data || {}
-    const type = socketPayload.type || rawData.type
+    const rawType = socketPayload.type || rawData.type
+    const type = String(rawType || '').trim().toUpperCase()
 
     // Filter strictly to notification types stored in BE
-    const NOTIF_TYPES = new Set(['FRIEND_REQUEST', 'FRIEND_ACCEPTED', 'REACT_MESSAGE'])
-    if (!NOTIF_TYPES.has(type)) {
+    if (!PERSISTED_NOTIFICATION_TYPES.has(type)) {
+      return null
+    }
+
+    const senderUsername = socketPayload.senderUsername
+      || rawData.senderUsername
+      || socketPayload.relatedUsername
+      || rawData.sender
+      || ''
+
+    // If currentUser is present, do not notify self actions (e.g. self reaction)
+    if (currentUser?.username && senderUsername && currentUser.username.toLowerCase() === senderUsername.toLowerCase()) {
       return null
     }
 
     const id = socketPayload.id || rawData.id || Date.now()
     const content = socketPayload.content || socketPayload.message || rawData.content || ''
-    const senderUsername = socketPayload.senderUsername || rawData.senderUsername || socketPayload.relatedUsername || rawData.sender || ''
 
     const newNotification = {
       id,
@@ -142,7 +159,7 @@ export function useNotifications({ enabled = true, playNotificationSound, showTo
     }
 
     return newNotification
-  }, [])
+  }, [currentUser?.username])
 
   return {
     notifications,

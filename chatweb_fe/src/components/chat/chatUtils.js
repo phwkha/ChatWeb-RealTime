@@ -285,3 +285,71 @@ export function getQuotedMessagePreview(message, t) {
   }
   return message.content || ''
 }
+
+export const PERSISTED_NOTIFICATION_TYPES = new Set([
+  'FRIEND_REQUEST',
+  'FRIEND_ACCEPTED',
+  'REACT_MESSAGE',
+])
+
+export function isPersistedNotification(notification) {
+  if (!notification || typeof notification !== 'object') return false
+  const data = typeof notification.data === 'object' && notification.data !== null ? notification.data : {}
+  const type = String(notification.type || data.type || '').trim().toUpperCase()
+  return PERSISTED_NOTIFICATION_TYPES.has(type)
+}
+
+export function getNotificationNavigationTarget(notification) {
+  if (!notification || typeof notification !== 'object') return null
+
+  const data = typeof notification.data === 'object' && notification.data !== null ? notification.data : {}
+  const type = String(notification.type || data.type || '').trim().toUpperCase()
+
+  if (!PERSISTED_NOTIFICATION_TYPES.has(type)) {
+    return null
+  }
+
+  if (type === 'FRIEND_REQUEST') {
+    return { section: 'friends' }
+  }
+
+  if (type === 'FRIEND_ACCEPTED' || type === 'REACT_MESSAGE') {
+    const senderObj = (typeof notification.sender === 'object' && notification.sender !== null)
+      ? notification.sender
+      : (typeof data.sender === 'object' && data.sender !== null ? data.sender : {})
+    const relatedUserObj = (typeof notification.relatedUser === 'object' && notification.relatedUser !== null)
+      ? notification.relatedUser
+      : (typeof data.relatedUser === 'object' && data.relatedUser !== null ? data.relatedUser : {})
+    const targetType = String(notification.targetType || data.targetType || '').trim().toUpperCase()
+
+    const isFriendAccept = type === 'FRIEND_ACCEPTED'
+    const targetId = notification.targetId || data.targetId
+    const targetIdUser = isFriendAccept && (!targetType || targetType === 'USER') ? targetId : null
+
+    const rawTarget = notification.senderUsername
+      || data.senderUsername
+      || targetIdUser
+      || senderObj.username
+      || (typeof notification.sender === 'string' ? notification.sender : null)
+      || (typeof data.sender === 'string' ? data.sender : null)
+      || relatedUserObj.username
+      || (typeof notification.relatedUsername === 'string' ? notification.relatedUsername : null)
+      || (typeof data.relatedUsername === 'string' ? data.relatedUsername : null)
+
+    const targetUsername = String(rawTarget || '').trim()
+    if (!targetUsername) return null
+
+    return {
+      section: 'chat',
+      targetUsername,
+      userFallback: {
+        username: targetUsername,
+        firstName: notification.senderFirstName || data.senderFirstName || senderObj.firstName || relatedUserObj.firstName || '',
+        lastName: notification.senderLastName || data.senderLastName || senderObj.lastName || relatedUserObj.lastName || '',
+        avatar: notification.senderAvatar || data.senderAvatar || senderObj.avatar || relatedUserObj.avatar || null,
+      },
+    }
+  }
+
+  return null
+}

@@ -23,6 +23,7 @@ import { useNotifications } from '../hooks/useNotifications.js'
 import { useUserDiscovery } from '../hooks/useUserDiscovery.js'
 import { isAdminAccount, isAdminUser } from '../services/authorization.js'
 import {
+  getNotificationNavigationTarget,
   initialChatSection,
   isIncomingMessageBlocked,
   normalizeSearchValue,
@@ -128,6 +129,7 @@ function ChatPage() {
     handleRealtimeNotification,
   } = useNotifications({
     enabled: Boolean(currentUser),
+    currentUser,
     playNotificationSound,
     showToast,
   })
@@ -225,27 +227,30 @@ function ChatPage() {
 
   const handleNotificationClick = useCallback((notification) => {
     if (!notification) return
-    void markNotificationRead(notification.id)
-    const targetUsername = notification.targetType === 'USER'
-      ? (notification.targetId || notification.senderUsername)
-      : (notification.senderUsername || notification.targetId)
 
-    if (!targetUsername) return
-
-    const friend = friends.find((f) => (
-      String(f.username || '').toLocaleLowerCase('en-US') === String(targetUsername).toLocaleLowerCase('en-US')
-    ))
-    if (friend) {
-      selectFriend(friend)
-    } else {
-      selectFriend({
-        username: targetUsername,
-        firstName: notification.senderFirstName || '',
-        lastName: notification.senderLastName || '',
-        avatar: notification.senderAvatar || null,
-      })
+    if (notification.id !== null && notification.id !== undefined && notification.id !== '') {
+      void markNotificationRead(notification.id)
     }
-  }, [friends, markNotificationRead, selectFriend])
+
+    const nav = getNotificationNavigationTarget(notification)
+    if (!nav) return
+
+    if (nav.section === 'friends') {
+      setActiveSection('friends')
+      setWorldOpen(false)
+      if (setSearchQuery) setSearchQuery('')
+      return
+    }
+
+    if (nav.section === 'chat' && nav.targetUsername) {
+      setActiveSection('chat')
+      setWorldOpen(false)
+      const friend = friends.find((f) => (
+        String(f.username || '').toLocaleLowerCase('en-US') === nav.targetUsername.toLocaleLowerCase('en-US')
+      ))
+      selectFriend(friend || nav.userFallback || { username: nav.targetUsername })
+    }
+  }, [friends, markNotificationRead, selectFriend, setActiveSection, setSearchQuery, setWorldOpen])
 
   const clearActiveConversation = useCallback(() => {
     selectedRef.current = null
