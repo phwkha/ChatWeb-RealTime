@@ -198,9 +198,12 @@ public class GlobalExceptionHandler {
 
         BindingResult bindingResult = ex.getBindingResult();
         bindingResult.getAllErrors().forEach(error -> {
-            String fieldName = ((FieldError) error).getField();
             String errorMessage = error.getDefaultMessage();
-            errors.put(fieldName, errorMessage);
+            if (error instanceof FieldError fieldError) {
+                errors.put(fieldError.getField(), errorMessage);
+            } else {
+                errors.put(error.getObjectName(), errorMessage);
+            }
         });
 
         return ResponseEntity
