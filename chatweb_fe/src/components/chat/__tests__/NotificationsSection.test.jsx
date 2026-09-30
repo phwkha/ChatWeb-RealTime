@@ -115,7 +115,7 @@ describe('NotificationsSection Component', () => {
     expect(screen.getByRole('button', { name: 'loadingNotifications' })).toBeDisabled()
   })
 
-  it('triggers onNotificationClick when a notification card is clicked', () => {
+  it('triggers onNotificationClick with correct item for different notification types', () => {
     const onNotificationClick = vi.fn()
 
     render(
@@ -126,8 +126,13 @@ describe('NotificationsSection Component', () => {
       />
     )
 
+    // Click FRIEND_REQUEST notification
     fireEvent.click(screen.getByText('Alice sent you a friend request'))
     expect(onNotificationClick).toHaveBeenCalledWith(sampleNotifications[0])
+
+    // Click REACT_MESSAGE notification
+    fireEvent.click(screen.getByText('Bob liked your message'))
+    expect(onNotificationClick).toHaveBeenCalledWith(sampleNotifications[1])
   })
 
   it('renders empty state when there are no notifications', () => {
@@ -140,5 +145,28 @@ describe('NotificationsSection Component', () => {
     )
 
     expect(screen.getByText('noNotifications')).toBeInTheDocument()
+  })
+
+  it('filters out non-persisted notification types not saved by BE (e.g. USER_ONLINE, STATUS_MESSAGE)', () => {
+    const mixedNotifications = [
+      ...sampleNotifications,
+      { id: 99, type: 'USER_ONLINE', content: 'User is online', isRead: false },
+      { id: 100, type: 'STATUS_MESSAGE', content: 'Read receipt status', isRead: false },
+    ]
+
+    render(
+      <NotificationsSection
+        notifications={mixedNotifications}
+        unreadCount={3}
+        loading={false}
+        t={mockT}
+      />
+    )
+
+    // Only Alice and Bob should be rendered
+    expect(screen.getByText('Alice sent you a friend request')).toBeInTheDocument()
+    expect(screen.getByText('Bob liked your message')).toBeInTheDocument()
+    expect(screen.queryByText('User is online')).toBeNull()
+    expect(screen.queryByText('Read receipt status')).toBeNull()
   })
 })

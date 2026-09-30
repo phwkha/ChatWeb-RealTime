@@ -1,6 +1,6 @@
-import React, { useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import ChatIcon from './ChatIcon.jsx'
-import { formatRelativeTime } from './chatUtils.js'
+import { formatRelativeTime, PERSISTED_NOTIFICATION_TYPES } from './chatUtils.js'
 
 function getSenderName(notification) {
   const parts = [notification.senderFirstName, notification.senderLastName].filter(Boolean)
@@ -55,7 +55,14 @@ export const NotificationsSection = React.memo(function NotificationsSection({
   language,
   t,
 }) {
-  const hasItems = notifications.length > 0
+  const visibleNotifications = useMemo(() => {
+    return notifications.filter((item) => {
+      const type = String(item?.type || item?.data?.type || '').trim().toUpperCase()
+      return PERSISTED_NOTIFICATION_TYPES.has(type)
+    })
+  }, [notifications])
+
+  const hasItems = visibleNotifications.length > 0
 
   return (
     <section className="app-section-page notifications-section-page" aria-label={t('notifications')}>
@@ -83,7 +90,7 @@ export const NotificationsSection = React.memo(function NotificationsSection({
 
       <div className="app-section-page__content notifications-page__content">
         <div className="panel-section notifications-page__list">
-          {notifications.map((item) => (
+          {visibleNotifications.map((item) => (
             <button
               className={`notification-card ${!item.isRead ? 'is-unread' : ''}`}
               type="button"
