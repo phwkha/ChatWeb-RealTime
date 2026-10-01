@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { formatRelativeTime, formatTime, formatDateTime } from '../chatUtils.js'
+import { formatRelativeTime, formatTime, formatDateTime, formatNotificationContent } from '../chatUtils.js'
+import { CHAT_TRANSLATIONS } from '../../../i18n/chatTranslations.js'
 
 describe('chatUtils notifications time formatting', () => {
   const fixedNow = new Date('2026-09-21T12:00:00.000Z')
@@ -74,5 +75,54 @@ describe('chatUtils notifications time formatting', () => {
     const ts = '2026-09-21T12:30:00.000Z'
     expect(formatTime(ts, 'ja')).toBeTruthy()
     expect(formatDateTime(ts, 'ja')).toBeTruthy()
+  })
+})
+
+describe('formatNotificationContent multilingual support', () => {
+  const getT = (lang) => (key) => CHAT_TRANSLATIONS[lang]?.[key] || key
+
+  it('translates notification content by type across vi, en, and ja', () => {
+    const notif = { type: 'FRIEND_REQUEST', content: 'Lời mời kết bạn mới' }
+
+    expect(formatNotificationContent(notif, getT('vi'))).toBe('Lời mời kết bạn mới')
+    expect(formatNotificationContent(notif, getT('en'))).toBe('New friend invite')
+    expect(formatNotificationContent(notif, getT('ja'))).toBe('新しい友達招待')
+  })
+
+  it('translates FRIEND_ACCEPTED and REACT_MESSAGE across languages', () => {
+    const friendAccepted = { type: 'FRIEND_ACCEPTED', content: 'Đã chấp nhận kết bạn' }
+    const reactMessage = { type: 'REACT_MESSAGE', content: 'đã bày tỏ cảm xúc về một tin nhắn' }
+
+    expect(formatNotificationContent(friendAccepted, getT('en'))).toBe('Friend request accepted')
+    expect(formatNotificationContent(friendAccepted, getT('vi'))).toBe('Đã chấp nhận kết bạn')
+    expect(formatNotificationContent(friendAccepted, getT('ja'))).toBe('友達リクエストを承認しました')
+
+    expect(formatNotificationContent(reactMessage, getT('en'))).toBe('Reacted to a message')
+    expect(formatNotificationContent(reactMessage, getT('vi'))).toBe('Đã bày tỏ cảm xúc về một tin nhắn')
+    expect(formatNotificationContent(reactMessage, getT('ja'))).toBe('メッセージにリアクションしました')
+  })
+
+  it('translates by matching known backend content even if type is missing', () => {
+    const untypedNotif = { content: 'Lời mời kết bạn mới' }
+    expect(formatNotificationContent(untypedNotif, getT('en'))).toBe('New friend invite')
+    expect(formatNotificationContent(untypedNotif, getT('ja'))).toBe('新しい友達招待')
+  })
+
+  it('preserves custom message when type and content are not in predefined keys', () => {
+    const customNotif = { type: 'SYSTEM_ANNOUNCEMENT', content: 'Bảo trì hệ thống lúc 12:00' }
+    expect(formatNotificationContent(customNotif, getT('en'))).toBe('Bảo trì hệ thống lúc 12:00')
+    expect(formatNotificationContent(customNotif, getT('vi'))).toBe('Bảo trì hệ thống lúc 12:00')
+  })
+
+  it('falls back to raw content when mock t returns the key itself', () => {
+    const dummyT = (key) => key
+    const notif = { type: 'FRIEND_REQUEST', content: 'Alice sent you a friend request' }
+    expect(formatNotificationContent(notif, dummyT)).toBe('Alice sent you a friend request')
+  })
+
+  it('handles null, undefined, or missing input safely', () => {
+    expect(formatNotificationContent(null, getT('en'))).toBe('')
+    expect(formatNotificationContent({}, getT('en'))).toBe('')
+    expect(formatNotificationContent({ content: 'Test' }, null)).toBe('Test')
   })
 })

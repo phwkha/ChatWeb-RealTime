@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react'
 import ChatIcon from './ChatIcon.jsx'
-import { formatRelativeTime, PERSISTED_NOTIFICATION_TYPES } from './chatUtils.js'
+import { formatRelativeTime, PERSISTED_NOTIFICATION_TYPES, formatNotificationContent } from './chatUtils.js'
 
 function getSenderName(notification) {
   const parts = [notification.senderFirstName, notification.senderLastName].filter(Boolean)
@@ -105,7 +105,7 @@ export const NotificationsSection = React.memo(function NotificationsSection({
                     <span className="unread-dot" title={t('unreadNotification')} />
                   )}
                 </div>
-                <p>{item.content}</p>
+                <p>{formatNotificationContent(item, t)}</p>
                 <time>{formatRelativeTime(item.createdAt, language)}</time>
               </div>
             </button>

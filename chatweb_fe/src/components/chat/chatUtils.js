@@ -353,3 +353,101 @@ export function getNotificationNavigationTarget(notification) {
 
   return null
 }
+
+export const NOTIFICATION_TYPE_KEYS = {
+  FRIEND_REQUEST: 'notifFriendRequest',
+  FRIEND_ACCEPTED: 'notifFriendAccepted',
+  REACT_MESSAGE: 'notifReactMessage',
+  EDIT_MESSAGE: 'notifEditMessage',
+  REVOKE_MESSAGE: 'notifRevokeMessage',
+  STATUS_MESSAGE: 'notifStatusMessage',
+  REQUEST_SENT_SUCCESS: 'notifRequestSentSuccess',
+  YOU_ACCEPTED: 'notifYouAccepted',
+  UNFRIENDED: 'notifUnfriended',
+  REQUEST_CANCELLED: 'notifRequestCancelled',
+  REQUEST_REJECTED: 'notifRequestRejected',
+  USER_ONLINE: 'notifUserOnline',
+  USER_OFFLINE: 'notifUserOffline',
+}
+
+export const BACKEND_CONTENT_TO_KEYS = {
+  // Friend request
+  'Lời mời kết bạn mới': 'notifFriendRequest',
+  'New friend invite': 'notifFriendRequest',
+  '新しい友達招待': 'notifFriendRequest',
+
+  // Friend accepted
+  'Đã chấp nhận kết bạn': 'notifFriendAccepted',
+  'Friend request accepted': 'notifFriendAccepted',
+  '友達リクエストを承認しました': 'notifFriendAccepted',
+
+  // Reaction
+  'đã bày tỏ cảm xúc về một tin nhắn': 'notifReactMessage',
+  'has reacted to a message': 'notifReactMessage',
+  'がメッセージにリアクションしました': 'notifReactMessage',
+  'Thả cảm xúc thành công': 'notifReactMessage',
+  'React to message successfully': 'notifReactMessage',
+
+  // Edit / Revoke / Status
+  'đã chỉnh sửa một tin nhắn': 'notifEditMessage',
+  'has edited a message': 'notifEditMessage',
+  'がメッセージを編集しました': 'notifEditMessage',
+
+  'đã thu hồi một tin nhắn': 'notifRevokeMessage',
+  'has revoked a message': 'notifRevokeMessage',
+  'がメッセージを取り消しました': 'notifRevokeMessage',
+
+  'đã xem tin nhắn của bạn': 'notifStatusMessage',
+  'has read your messages': 'notifStatusMessage',
+  'があなたのメッセージを既読にしました': 'notifStatusMessage',
+
+  // Other friend events
+  'Đã gửi lời mời kết bạn': 'notifRequestSentSuccess',
+  'Friend invite sent': 'notifRequestSentSuccess',
+  '友達招待を送信しました': 'notifRequestSentSuccess',
+
+  'Bạn đã chấp nhận kết bạn': 'notifYouAccepted',
+  'You accepted the friend request': 'notifYouAccepted',
+  'あなたは友達リクエストを承認しました': 'notifYouAccepted',
+
+  'Đã hủy kết bạn': 'notifUnfriended',
+  'Unfriended': 'notifUnfriended',
+  '友達から削除しました': 'notifUnfriended',
+
+  'Đã rút lại lời mời kết bạn': 'notifRequestCancelled',
+  'Friend invite retracted': 'notifRequestCancelled',
+  '友達招待を取り消しました': 'notifRequestCancelled',
+
+  'Đã từ chối lời mời kết bạn': 'notifRequestRejected',
+  'Friend invite declined': 'notifRequestRejected',
+  '友達招待を拒否しました': 'notifRequestRejected',
+
+  // Presence
+  'Người dùng đang hoạt động': 'notifUserOnline',
+  'User is online': 'notifUserOnline',
+  'ユーザーがオンラインです': 'notifUserOnline',
+
+  'Người dùng đã ngắt kết nối': 'notifUserOffline',
+  'User is offline': 'notifUserOffline',
+  'ユーザーがオフラインです': 'notifUserOffline',
+}
+
+export function formatNotificationContent(notification, t) {
+  if (!notification || typeof notification !== 'object') return ''
+
+  const rawContent = notification.content || notification.message || notification.data?.content || ''
+  if (!t || typeof t !== 'function') return rawContent
+
+  const data = typeof notification.data === 'object' && notification.data !== null ? notification.data : {}
+  const type = String(notification.type || data.type || '').trim().toUpperCase()
+
+  const key = NOTIFICATION_TYPE_KEYS[type] || BACKEND_CONTENT_TO_KEYS[String(rawContent).trim()]
+  if (!key) return rawContent
+
+  const translated = t(key)
+  if (translated && translated !== key) {
+    return translated
+  }
+
+  return rawContent || key
+}

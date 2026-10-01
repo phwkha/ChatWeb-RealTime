@@ -32,5 +32,18 @@
   "reportHarassment": "Harassment",
   "reportInappropriate": "Inappropriate content",
   "reportImpersonation": "Impersonation",
-  "reportOther": "Other reason"
+  "reportOther": "Other reason",
+  "notifFriendRequest": "New friend invite",
+  "notifFriendAccepted": "Friend request accepted",
+  "notifReactMessage": "Reacted to a message",
+  "notifEditMessage": "Edited a message",
+  "notifRevokeMessage": "Revoked a message",
+  "notifStatusMessage": "Read your messages",
+  "notifRequestSentSuccess": "Friend invite sent",
+  "notifYouAccepted": "You accepted the friend request",
+  "notifUnfriended": "Unfriended",
+  "notifRequestCancelled": "Friend invite retracted",
+  "notifRequestRejected": "Friend invite declined",
+  "notifUserOnline": "User is online",
+  "notifUserOffline": "User is offline"
 }

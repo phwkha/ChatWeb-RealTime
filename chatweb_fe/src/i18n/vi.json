@@ -32,5 +32,18 @@
   "reportHarassment": "Quấy rối",
   "reportInappropriate": "Nội dung không phù hợp",
   "reportImpersonation": "Mạo danh",
-  "reportOther": "Lý do khác"
+  "reportOther": "Lý do khác",
+  "notifFriendRequest": "Lời mời kết bạn mới",
+  "notifFriendAccepted": "Đã chấp nhận kết bạn",
+  "notifReactMessage": "Đã bày tỏ cảm xúc về một tin nhắn",
+  "notifEditMessage": "Đã chỉnh sửa một tin nhắn",
+  "notifRevokeMessage": "Đã thu hồi một tin nhắn",
+  "notifStatusMessage": "Đã xem tin nhắn của bạn",
+  "notifRequestSentSuccess": "Đã gửi lời mời kết bạn",
+  "notifYouAccepted": "Bạn đã chấp nhận kết bạn",
+  "notifUnfriended": "Đã hủy kết bạn",
+  "notifRequestCancelled": "Đã rút lại lời mời kết bạn",
+  "notifRequestRejected": "Đã từ chối lời mời kết bạn",
+  "notifUserOnline": "Người dùng đang hoạt động",
+  "notifUserOffline": "Người dùng đã ngắt kết nối"
 }

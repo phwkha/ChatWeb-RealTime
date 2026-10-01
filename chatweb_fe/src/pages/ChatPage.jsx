@@ -166,6 +166,7 @@ function ChatPage() {
     currentUser,
     playNotificationSound,
     showToast,
+    t,
   })
 
   const realtime = useChatRealtime({

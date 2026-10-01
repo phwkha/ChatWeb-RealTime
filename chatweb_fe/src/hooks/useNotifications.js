@@ -5,9 +5,9 @@ import {
   markNotificationAsRead,
   markAllNotificationsAsRead,
 } from '../services/notificationApi.js'
-import { PERSISTED_NOTIFICATION_TYPES } from '../components/chat/chatUtils.js'
+import { PERSISTED_NOTIFICATION_TYPES, formatNotificationContent } from '../components/chat/chatUtils.js'
 
-export function useNotifications({ enabled = true, activeSection, currentUser, playNotificationSound, showToast } = {}) {
+export function useNotifications({ enabled = true, activeSection, currentUser, playNotificationSound, showToast, t } = {}) {
   const [notifications, setNotifications] = useState([])
   const [unreadCount, setUnreadCount] = useState(0)
   const [nextCursor, setNextCursor] = useState(null)
@@ -20,10 +20,10 @@ export function useNotifications({ enabled = true, activeSection, currentUser, p
     notificationsRef.current = notifications
   }, [notifications])
 
-  const callbacksRef = useRef({ playNotificationSound, showToast })
+  const callbacksRef = useRef({ playNotificationSound, showToast, t })
   useEffect(() => {
-    callbacksRef.current = { playNotificationSound, showToast }
-  }, [playNotificationSound, showToast])
+    callbacksRef.current = { playNotificationSound, showToast, t }
+  }, [playNotificationSound, showToast, t])
 
   const listFetchedRef = useRef(false)
 
@@ -172,7 +172,8 @@ export function useNotifications({ enabled = true, activeSection, currentUser, p
       callbacksRef.current.playNotificationSound()
     }
     if (content && callbacksRef.current.showToast) {
-      callbacksRef.current.showToast(content)
+      const toastText = formatNotificationContent(newNotification, callbacksRef.current.t) || content
+      callbacksRef.current.showToast(toastText)
     }
 
     return newNotification
