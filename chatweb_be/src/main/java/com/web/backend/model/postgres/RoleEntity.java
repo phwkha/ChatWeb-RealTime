@@ -18,6 +18,8 @@ import java.util.Set;
 @BatchSize(size = 20)
 public class RoleEntity extends AbstractEntity<Long> {
 
+    private static final long serialVersionUID = 1L;
+
     @Column(name = "name")
     private String name;
 

@@ -24,6 +24,8 @@ import java.time.LocalDate;
 @Setter
 public class UserEntity extends AbstractEntity<Long> implements UserDetails {
 
+    private static final long serialVersionUID = 1L;
+
     @Column(name = "auth_provider")
     @Enumerated(EnumType.STRING)
     private AuthProvider authProvider;

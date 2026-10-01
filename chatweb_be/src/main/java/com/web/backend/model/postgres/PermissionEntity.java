@@ -17,6 +17,8 @@ import java.util.Set;
         })
 public class PermissionEntity extends AbstractEntity<Long> {
 
+    private static final long serialVersionUID = 1L;
+
     @Column(name = "name")
     private String name;
 

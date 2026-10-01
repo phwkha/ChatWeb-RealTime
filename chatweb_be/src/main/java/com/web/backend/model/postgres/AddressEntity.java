@@ -14,6 +14,8 @@ import lombok.*;
 @Setter
 public class AddressEntity extends AbstractEntity<Long> {
 
+    private static final long serialVersionUID = 1L;
+
     @Column(name = "house_number")
     private String houseNumber;
 
