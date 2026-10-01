@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React from 'react'
 import ChatIcon from './ChatIcon.jsx'
 import PersonResult from './PersonResult.jsx'
 
@@ -18,11 +18,6 @@ export const FriendsSection = React.memo(function FriendsSection({
   sentNames = new Set(),
   blockedNames = new Set(),
   t,
-  filters = { gender: 'ALL', city: '', minAge: '', maxAge: '' },
-  hasActiveFilters = false,
-  appliedFilterCount = 0,
-  onApplyFilters,
-  onResetFilters,
   onAcceptFriend,
   onRemoveFriendRelation,
   onUnblockUser,
@@ -30,50 +25,7 @@ export const FriendsSection = React.memo(function FriendsSection({
   onSelectFriend,
   onRefreshSuggestions,
 }) {
-  const [isPopoverOpen, setIsPopoverOpen] = useState(false)
-  const [draftFilters, setDraftFilters] = useState(filters)
-  const filterWrapperRef = useRef(null)
-
-  useEffect(() => {
-    setDraftFilters(filters)
-  }, [filters, isPopoverOpen])
-
-  useEffect(() => {
-    if (!isPopoverOpen) return
-
-    function handleKeyDown(event) {
-      if (event.key === 'Escape') {
-        setIsPopoverOpen(false)
-      }
-    }
-
-    function handleClickOutside(event) {
-      if (filterWrapperRef.current && !filterWrapperRef.current.contains(event.target)) {
-        setIsPopoverOpen(false)
-      }
-    }
-
-    document.addEventListener('keydown', handleKeyDown)
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown)
-      document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [isPopoverOpen])
-
-  const isDiscoveryActive = Boolean(searchQuery.trim() || hasActiveFilters)
-
-  const handleApply = () => {
-    onApplyFilters?.(draftFilters)
-    setIsPopoverOpen(false)
-  }
-
-  const handleReset = () => {
-    const emptyFilters = { gender: 'ALL', city: '', minAge: '', maxAge: '' }
-    setDraftFilters(emptyFilters)
-    onResetFilters?.()
-    setIsPopoverOpen(false)
-  }
+  const isDiscoveryActive = Boolean(searchQuery.trim())
 
   return (
     <section className="app-section-page friends-section-page" aria-label={t('friends')}>
@@ -96,115 +48,6 @@ export const FriendsSection = React.memo(function FriendsSection({
               onChange={(event) => onSearchQueryChange(event.target.value)}
               placeholder={t('searchHint')}
             />
-          </div>
-
-          <div className="filter-wrapper" ref={filterWrapperRef}>
-            <button
-              className={`filter-btn ${isPopoverOpen ? 'is-open' : ''} ${hasActiveFilters ? 'has-active' : ''}`}
-              type="button"
-              aria-label={t('filterUsers')}
-              title={t('filterUsers')}
-              onClick={() => setIsPopoverOpen((prev) => !prev)}
-            >
-              <ChatIcon name="filter" size={18} />
-              {appliedFilterCount > 0 && <span className="filter-badge">{appliedFilterCount}</span>}
-            </button>
-
-            {isPopoverOpen && (
-              <div className="filter-popover" role="dialog" aria-modal="true" aria-label={t('filterUsers')}>
-                <div className="filter-group">
-                  <label className="filter-label">{t('gender')}</label>
-                  <div className="filter-chips">
-                    {[
-                      { key: 'ALL', label: t('genderAll') },
-                      { key: 'MAN', label: t('genderMale') },
-                      { key: 'WOMAN', label: t('genderFemale') },
-                    ].map((g) => (
-                      <button
-                        key={g.key}
-                        type="button"
-                        className={`filter-chip ${draftFilters.gender === g.key ? 'is-active' : ''}`}
-                        onClick={() => setDraftFilters((d) => ({ ...d, gender: g.key }))}
-                      >
-                        {g.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="filter-group">
-                  <label className="filter-label">{t('location')}</label>
-                  <input
-                    className="filter-input"
-                    value={draftFilters.city}
-                    onChange={(e) => setDraftFilters((d) => ({ ...d, city: e.target.value }))}
-                    placeholder={t('locationPlaceholder')}
-                  />
-                  <div className="filter-presets">
-                    {['Hà Nội', 'TP.HCM', 'Đà Nẵng', 'Cần Thơ', 'Hải Phòng'].map((city) => (
-                      <button
-                        key={city}
-                        type="button"
-                        className={`filter-preset-btn ${draftFilters.city === city ? 'is-active' : ''}`}
-                        onClick={() => setDraftFilters((d) => ({ ...d, city }))}
-                      >
-                        {city}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="filter-group">
-                  <label className="filter-label">{t('ageRange')}</label>
-                  <div className="filter-age-inputs">
-                    <input
-                      type="number"
-                      min="1"
-                      max="120"
-                      className="filter-input filter-input--age"
-                      placeholder={t('fromAge')}
-                      value={draftFilters.minAge}
-                      onChange={(e) => setDraftFilters((d) => ({ ...d, minAge: e.target.value }))}
-                    />
-                    <span className="filter-age-sep">-</span>
-                    <input
-                      type="number"
-                      min="1"
-                      max="120"
-                      className="filter-input filter-input--age"
-                      placeholder={t('toAge')}
-                      value={draftFilters.maxAge}
-                      onChange={(e) => setDraftFilters((d) => ({ ...d, maxAge: e.target.value }))}
-                    />
-                  </div>
-                  <div className="filter-presets">
-                    {[
-                      { label: '18 - 25', min: '18', max: '25' },
-                      { label: '26 - 35', min: '26', max: '35' },
-                      { label: '36 - 50', min: '36', max: '50' },
-                    ].map((preset) => (
-                      <button
-                        key={preset.label}
-                        type="button"
-                        className={`filter-preset-btn ${draftFilters.minAge === preset.min && draftFilters.maxAge === preset.max ? 'is-active' : ''}`}
-                        onClick={() => setDraftFilters((d) => ({ ...d, minAge: preset.min, maxAge: preset.max }))}
-                      >
-                        {preset.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="filter-popover-actions">
-                  <button type="button" className="filter-action-btn filter-action-btn--reset" onClick={handleReset}>
-                    {t('resetFilter')}
-                  </button>
-                  <button type="button" className="filter-action-btn filter-action-btn--apply" onClick={handleApply}>
-                    {t('applyFilter')}
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
         </div>
 
