@@ -2,6 +2,7 @@ package com.web.backend.service.impl;
 
 import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.exception.custom.AccessForbiddenException;
+import com.web.backend.controller.response.TokenResponse;
 import com.web.backend.model.redis.RefreshTokenData;
 import com.web.backend.service.JwtService;
 import io.jsonwebtoken.Claims;
@@ -44,6 +45,7 @@ public class JwtServiceImpl implements JwtService {
     private static final String ROLE_STRING = "role";
     private static final String TOKEN_VERSION_CLAIM_STRING = "v";
     private static final String RT_PREFIX = "rt:";
+    private static final String RT_GRACE_PREFIX = "rt_grace:";
     private static final String ERROR_AUTH_REFRESH_EXPIRED_STRING = "error.auth.refresh_expired";
 
     @Override
@@ -91,6 +93,34 @@ public class JwtServiceImpl implements JwtService {
     public void revokeRefreshToken(String token) {
         if (token != null && !token.isBlank()) {
             redisTemplate.delete(RT_PREFIX + token);
+            redisTemplate.delete(RT_GRACE_PREFIX + token);
+        }
+    }
+
+    @Override
+    public TokenResponse getGraceTokenResponse(String token) {
+        if (token == null || token.isBlank()) {
+            return null;
+        }
+        try {
+            Object cached = redisTemplate.opsForValue().get(RT_GRACE_PREFIX + token);
+            if (cached instanceof TokenResponse tokenResponse) {
+                return tokenResponse;
+            }
+        } catch (Exception e) {
+            log.warn("Failed to retrieve grace token response: {}", e.getMessage());
+        }
+        return null;
+    }
+
+    @Override
+    public void recordGracePeriod(String oldToken, TokenResponse response, long durationSeconds) {
+        if (oldToken != null && !oldToken.isBlank() && response != null) {
+            try {
+                redisTemplate.opsForValue().set(RT_GRACE_PREFIX + oldToken, response, durationSeconds, TimeUnit.SECONDS);
+            } catch (Exception e) {
+                log.warn("Failed to record grace period for refresh token: {}", e.getMessage());
+            }
         }
     }
 

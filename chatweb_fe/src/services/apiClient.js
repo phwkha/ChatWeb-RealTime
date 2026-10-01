@@ -266,13 +266,17 @@ export async function apiRequest(path, options = {}) {
     try {
       await refreshAccessToken()
       response = await sendRequest(path, preparedRequestOptions)
-    } catch {
-      notifySessionExpired()
+    } catch (refreshErr) {
+      if (!(refreshErr instanceof ApiError)) {
+        notifySessionExpired(refreshErr?.message)
+      }
     }
   }
 
   const payload = await parseResponse(response)
-  if (payload?.data && typeof payload.data === 'object' && payload.data.accessToken) {
+  if (typeof payload?.data === 'string' && payload.data.length > 20) {
+    setAccessToken(payload.data)
+  } else if (payload?.data && typeof payload.data === 'object' && payload.data.accessToken) {
     setAccessToken(payload.data.accessToken)
   }
 

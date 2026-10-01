@@ -9,11 +9,7 @@ function AuthProvider({ children }) {
 
   const refreshUser = useCallback(async () => {
     try {
-      try {
-        await apiRequest('/api/auth/refresh-token', { method: 'POST', skipRefresh: true })
-      } catch {
-        // Refresh token might not exist yet if unauthenticated
-      }
+      await apiRequest('/api/auth/refresh-token', { method: 'POST', skipRefresh: true })
       const response = await apiRequest('/api/users/me')
       const currentUser = response?.data || null
       setUser(currentUser)

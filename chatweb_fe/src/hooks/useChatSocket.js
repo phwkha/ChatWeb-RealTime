@@ -34,6 +34,9 @@ export function useChatSocket({ enabled, language, subscribeToWorld, onMessage, 
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     }
 
+    let isRefreshingAuth = false
+    let refreshPromiseRef = null
+
     const client = new Client({
       webSocketFactory: () => new SockJS(`${API_BASE_URL}/ws`),
       connectHeaders,
@@ -42,6 +45,13 @@ export function useChatSocket({ enabled, language, subscribeToWorld, onMessage, 
       heartbeatOutgoing: 10000,
       debug: () => {},
       beforeConnect: async () => {
+        if (isRefreshingAuth && refreshPromiseRef) {
+          try {
+            await refreshPromiseRef
+          } catch {
+            // ignore
+          }
+        }
         const currentToken = getAccessToken()
         if (currentToken) {
           client.connectHeaders = {
@@ -77,18 +87,28 @@ export function useChatSocket({ enabled, language, subscribeToWorld, onMessage, 
 
         if (isAuthError && !disposed) {
           try {
-            await refreshAccessToken()
+            client.reconnectDelay = 0
+            isRefreshingAuth = true
+            refreshPromiseRef = refreshAccessToken()
+            await refreshPromiseRef
             if (clientRef.current && !disposed) {
               const newToken = getAccessToken()
               clientRef.current.connectHeaders = {
                 ...clientRef.current.connectHeaders,
                 ...(newToken ? { Authorization: `Bearer ${newToken}` } : {}),
               }
+              clientRef.current.reconnectDelay = 3000
               clientRef.current.activate()
               return
             }
           } catch {
             // refresh failed - notifySessionExpired() is automatically triggered by apiClient
+          } finally {
+            isRefreshingAuth = false
+            refreshPromiseRef = null
+            if (clientRef.current) {
+              clientRef.current.reconnectDelay = 3000
+            }
           }
         }
         callbacksRef.current.onError?.(payload)

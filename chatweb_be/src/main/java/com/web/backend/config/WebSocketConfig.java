@@ -100,7 +100,10 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                     errorCode = ErrorCode.TOKEN_EXPIRED;
                     responseCode = 4011;
                     errorMessage = Translator.tolocale(ERR_AUTH_TOKEN_EXPIRED);
-                } else if (rootCause instanceof JwtException) {
+                } else if (rootCause instanceof JwtException
+                        || (errorMessage != null && (errorMessage.contains("token_version")
+                                || errorMessage.contains("Phiên đăng nhập")
+                                || errorMessage.contains("phiên đăng nhập")))) {
                     errorCode = ErrorCode.TOKEN_INVALID;
                     responseCode = 4012;
                     errorMessage = Translator.tolocale(ERR_AUTH_TOKEN_INVALID);
@@ -203,11 +206,9 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
             return;
         }
 
-        Map<String, Object> sessionAttributes = accessor.getSessionAttributes();
-        String token = sessionAttributes != null ? (String) sessionAttributes.get("jwt_token_cookie") : null;
-
-        if (token == null) {
-            token = extractTokenFromHeader(accessor);
+        String token = extractTokenFromHeader(accessor);
+        if (token == null && accessor.getSessionAttributes() != null) {
+            token = (String) accessor.getSessionAttributes().get("jwt_token_cookie");
         }
 
         if (token == null) {
@@ -266,7 +267,8 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         if (tokenVersionInJwt == null || !tokenVersionInJwt.equals(currentVersion)) {
             log.warn("WebSocket token version mismatch for user '{}'", username);
             throw new MessagingException(
-                    Objects.requireNonNull(Translator.tolocale(ERR_WS_INVALID_TOKEN_VERSION)));
+                    Objects.requireNonNull(Translator.tolocale(ERR_WS_INVALID_TOKEN_VERSION)),
+                    new JwtException("invalid_token_version"));
         }
     }
 
