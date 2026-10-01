@@ -1,29 +1,57 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import AppRail from '../components/chat/AppRail.jsx'
+import ChatIcon from '../components/chat/ChatIcon.jsx'
 import { useAuth } from '../context/auth-context.js'
+import { useLanguage } from '../context/language-context.js'
 import { accountApi } from '../services/accountApi.js'
 import { getErrorMessage } from '../services/apiClient.js'
+import { reportApi } from '../services/reportApi.js'
 import '../styles/workspace.css'
 import '../styles/chat.css'
 
 const EMPTY_ADDRESS = {
   houseNumber: '', street: '', ward: '', district: '', city: '', country: 'Việt Nam', postalCode: '',
 }
-const SETTINGS_TABS = new Set(['profile', 'addresses', 'contact', 'security'])
+const SETTINGS_TABS = new Set(['profile', 'addresses', 'contact', 'security', 'reports'])
 
 function addressPayload(address) {
   return Object.fromEntries(Object.keys(EMPTY_ADDRESS).map((key) => [key, address[key] || '']))
 }
 
+function formatReportDate(dateString, lang) {
+  if (!dateString) return '—'
+  const date = new Date(dateString)
+  if (Number.isNaN(date.getTime())) return '—'
+  const locale = lang === 'vi' ? 'vi-VN' : lang === 'ja' ? 'ja-JP' : 'en-US'
+  return date.toLocaleString(locale)
+}
+
 function SettingsPage() {
   const { user, refreshUser, logoutEverywhere, deleteAccount } = useAuth()
+  const { t, language } = useLanguage()
   const navigate = useNavigate()
+  const isMountedRef = useRef(true)
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+    }
+  }, [])
   const [searchParams, setSearchParams] = useSearchParams()
   const [tab, setTab] = useState(() => {
     const requestedTab = searchParams.get('tab')
     return SETTINGS_TABS.has(requestedTab) ? requestedTab : 'profile'
   })
+
+  useEffect(() => {
+    const requestedTab = searchParams.get('tab')
+    const nextTab = SETTINGS_TABS.has(requestedTab) ? requestedTab : 'profile'
+    if (nextTab !== tab) {
+      setTab(nextTab)
+    }
+  }, [searchParams, tab])
+
   const [profile, setProfile] = useState(null)
   const [profileForm, setProfileForm] = useState({ firstName: '', lastName: '', phone: '', birthday: '', gender: '' })
   const [addresses, setAddresses] = useState([])
@@ -32,6 +60,11 @@ function SettingsPage() {
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' })
   const [emailFlow, setEmailFlow] = useState({ newEmail: '', currentPassword: '', otp: '', pending: false })
   const [phoneFlow, setPhoneFlow] = useState({ newPhone: '', currentPassword: '', otp: '', pending: false })
+  const [reports, setReports] = useState([])
+  const [reportsPage, setReportsPage] = useState({ content: [], pageNo: 0, pageSize: 10, totalElements: 0, totalPages: 0, last: true })
+  const [reportsLoading, setReportsLoading] = useState(false)
+  const [reportsError, setReportsError] = useState(false)
+  const [cancellingReportId, setCancellingReportId] = useState(null)
   const [busy, setBusy] = useState('')
   const [notice, setNotice] = useState(null)
 
@@ -40,6 +73,65 @@ function SettingsPage() {
   const selectTab = (nextTab) => {
     setTab(nextTab)
     setSearchParams({ tab: nextTab }, { replace: true })
+  }
+
+  const loadReports = useCallback(async (page = 0) => {
+    setReportsLoading(true)
+    setReportsError(false)
+    try {
+      const response = await reportApi.getMyReports(page, 10, 'desc')
+      if (!isMountedRef.current) return
+      const data = response?.data || {}
+      const content = Array.isArray(data.content) ? data.content : []
+      setReports(content)
+      setReportsPage({
+        content,
+        pageNo: data.pageNo ?? page,
+        pageSize: data.pageSize ?? 10,
+        totalElements: data.totalElements ?? 0,
+        totalPages: data.totalPages ?? 0,
+        last: data.last ?? true,
+      })
+    } catch (error) {
+      if (!isMountedRef.current) return
+      setReportsError(true)
+      notify(getErrorMessage(error, t('loadReportsFailed') || 'Không thể tải danh sách báo cáo.'), 'error')
+    } finally {
+      if (isMountedRef.current) {
+        setReportsLoading(false)
+      }
+    }
+  }, [notify, t])
+
+  // oxlint-disable-next-line react/set-state-in-effect -- hydrates submitted reports on tab switch
+  useEffect(() => {
+    if (tab === 'reports') {
+      void loadReports(0)
+    }
+  }, [tab, loadReports])
+
+  const handleCancelReport = async (reportId) => {
+    const confirmed = window.confirm(t('confirmCancelReport') || 'Bạn có chắc chắn muốn hủy báo cáo này?')
+    if (!confirmed) return
+
+    setCancellingReportId(reportId)
+    try {
+      const response = await reportApi.cancelReport(reportId)
+      if (!isMountedRef.current) return
+      notify(response?.message || t('reportCancelledSuccess') || 'Đã hủy báo cáo thành công.')
+      const remaining = reports.filter((r) => String(r.id) !== String(reportId))
+      const nextPage = (remaining.length === 0 && reportsPage.pageNo > 0)
+        ? reportsPage.pageNo - 1
+        : reportsPage.pageNo
+      await loadReports(nextPage)
+    } catch (error) {
+      if (!isMountedRef.current) return
+      notify(getErrorMessage(error, t('cancelReportFailed') || 'Không thể hủy báo cáo.'), 'error')
+    } finally {
+      if (isMountedRef.current) {
+        setCancellingReportId(null)
+      }
+    }
   }
 
   const loadProfile = useCallback(async () => {
@@ -177,7 +269,13 @@ function SettingsPage() {
         <aside className="workspace-sidebar">
           <div className="workspace-user"><span>{(user.firstName?.[0] || user.username?.[0] || 'U').toUpperCase()}</span><div><strong>{user.firstName || user.username}</strong><small>@{user.username}</small></div></div>
           <h1>Cài đặt</h1>
-          {[['profile', 'Hồ sơ'], ['addresses', 'Địa chỉ'], ['contact', 'Email & điện thoại'], ['security', 'Bảo mật']].map(([value, label]) => (
+          {[
+            ['profile', t('profile') || 'Hồ sơ'],
+            ['addresses', t('addressSettings') || 'Địa chỉ'],
+            ['contact', t('contactSettings') || 'Email & điện thoại'],
+            ['security', t('securitySettings') || 'Bảo mật'],
+            ['reports', t('myReports') || 'Báo cáo của tôi'],
+          ].map(([value, label]) => (
             <button key={value} className={tab === value ? 'is-active' : ''} type="button" onClick={() => selectTab(value)}>{label}</button>
           ))}
         </aside>
@@ -212,6 +310,151 @@ function SettingsPage() {
           {tab === 'security' && <div className="workspace-section"><header><small>BẢO MẬT</small><h2>Mật khẩu & phiên đăng nhập</h2></header><form className="workspace-form workspace-card" onSubmit={changePassword}><h3>Đổi mật khẩu</h3><label>Mật khẩu hiện tại<input type="password" required value={passwordForm.currentPassword} onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })} /></label><label>Mật khẩu mới<input type="password" minLength="8" required value={passwordForm.newPassword} onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })} /></label><label>Xác nhận mật khẩu<input type="password" minLength="8" required value={passwordForm.confirmPassword} onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })} /></label><button className="workspace-button">Đổi mật khẩu</button></form>
             <div className="danger-zone"><h3>Phiên và tài khoản</h3><p>Đăng xuất mọi thiết bị sẽ vô hiệu hóa toàn bộ refresh token hiện tại.</p><div className="button-row"><button className="workspace-button is-secondary" type="button" onClick={endAllSessions}>Đăng xuất mọi thiết bị</button><button className="workspace-button is-danger" type="button" onClick={removeAccount}>Xóa tài khoản</button></div></div>
           </div>}
+
+          {tab === 'reports' && (
+            <div className="workspace-section">
+              <header>
+                <small>{t('reportsTabBadge') || 'BÁO CÁO'}</small>
+                <h2>{t('myReports') || 'Báo cáo của tôi'}</h2>
+                <p>{t('reportsTabSubtitle') || 'Xem lại các báo cáo vi phạm bạn đã gửi và trạng thái xử lý.'}</p>
+              </header>
+
+              {reportsLoading && (
+                <p className="workspace-empty">{t('loadingReports') || 'Đang tải báo cáo...'}</p>
+              )}
+
+              {!reportsLoading && reportsError && (
+                <div className="workspace-empty" data-testid="reports-error-state">
+                  <p>{t('loadReportsFailed') || 'Không thể tải danh sách báo cáo.'}</p>
+                  <button
+                    className="workspace-button is-secondary is-small"
+                    type="button"
+                    style={{ marginTop: '10px' }}
+                    onClick={() => loadReports(reportsPage.pageNo || 0)}
+                  >
+                    {t('retry') || 'Thử lại'}
+                  </button>
+                </div>
+              )}
+
+              {!reportsLoading && !reportsError && reports.length === 0 && (
+                <p className="workspace-empty">{t('noReports') || 'Chưa có báo cáo nào'}</p>
+              )}
+
+              {!reportsLoading && !reportsError && reports.length > 0 && (
+                <div className="reports-list">
+                  {reports.map((report) => {
+                    const targetUser = report.reportedUser
+                    const targetDisplayName = targetUser?.displayName || [targetUser?.firstName, targetUser?.lastName].filter(Boolean).join(' ').trim() || targetUser?.username || '—'
+                    const reasonMap = {
+                      SPAM: t('reportSpam') || 'Spam hoặc lừa đảo',
+                      HARASSMENT: t('reportHarassment') || 'Quấy rối',
+                      INAPPROPRIATE: t('reportInappropriate') || 'Nội dung không phù hợp',
+                      IMPERSONATION: t('reportImpersonation') || 'Mạo danh',
+                      OTHER: t('reportOther') || 'Lý do khác',
+                    }
+                    const reasonKey = String(report.reason || '').toUpperCase()
+                    const reasonLabel = reasonMap[reasonKey] || report.reason || '—'
+
+                    const statusMap = {
+                      PENDING: t('reportStatusPending') || 'Đang chờ xử lý',
+                      RESOLVED: t('reportStatusResolved') || 'Đã xử lý',
+                      DISMISSED: t('reportStatusDismissed') || 'Đã bác bỏ',
+                    }
+                    const statusKey = String(report.status || 'PENDING').toUpperCase()
+                    const statusLabel = statusMap[statusKey] || report.status
+                    const statusClass = statusKey.toLowerCase()
+
+                    return (
+                      <article key={report.id} className="report-card workspace-card" data-testid={`report-card-${report.id}`}>
+                        <div className="report-card__header">
+                          <div className="report-card__user">
+                            <span className="cw-avatar cw-avatar--small">
+                              {targetUser?.avatar ? (
+                                <img src={targetUser.avatar} alt={targetDisplayName} />
+                              ) : (
+                                <span>{(targetDisplayName[0] || 'U').toUpperCase()}</span>
+                              )}
+                            </span>
+                            <div>
+                              <strong>{targetDisplayName}</strong>
+                              {targetUser?.username && <small>@{targetUser.username}</small>}
+                            </div>
+                          </div>
+                          <span className={`report-status-badge report-status-badge--${statusClass}`}>
+                            <i />
+                            {statusLabel}
+                          </span>
+                        </div>
+
+                        <div className="report-card__body">
+                          <div className="report-card__field">
+                            <span className="report-card__label">{t('reportReason') || 'Lý do'}:</span>
+                            <span className="report-card__value"><strong>{reasonLabel}</strong></span>
+                          </div>
+
+                          <div className="report-card__field">
+                            <span className="report-card__label">{t('reportDetails') || 'Chi tiết'}:</span>
+                            <span className="report-card__value">{report.details || t('noReportDetails') || 'Không có mô tả chi tiết'}</span>
+                          </div>
+
+                          <div className="report-card__field">
+                            <span className="report-card__label">{t('reportDate') || 'Thời gian gửi'}:</span>
+                            <span className="report-card__value">
+                              {formatReportDate(report.createdAt, language)}
+                            </span>
+                          </div>
+
+                          {report.resolutionNote && (
+                            <div className="report-card__resolution">
+                              <strong>{t('adminResolutionNote') || 'Ghi chú xử lý từ kiểm duyệt viên'}:</strong>
+                              <p>{report.resolutionNote}</p>
+                            </div>
+                          )}
+                        </div>
+
+                        {statusKey === 'PENDING' && (
+                          <div className="report-card__footer">
+                            <button
+                              className="workspace-button is-danger is-small"
+                              type="button"
+                              disabled={cancellingReportId !== null}
+                              onClick={() => handleCancelReport(report.id)}
+                            >
+                              {String(cancellingReportId) === String(report.id)
+                                ? (t('cancellingReport') || 'Đang hủy...')
+                                : (t('cancelReport') || 'Hủy báo cáo')}
+                            </button>
+                          </div>
+                        )}
+                      </article>
+                    )
+                  })}
+                </div>
+              )}
+
+              {!reportsLoading && !reportsError && reportsPage.totalPages > 1 && (
+                <div className="reports-pagination" style={{ marginTop: '20px' }}>
+                  <button
+                    type="button"
+                    disabled={reportsPage.pageNo <= 0 || reportsLoading}
+                    onClick={() => loadReports(reportsPage.pageNo - 1)}
+                  >
+                    <ChatIcon name="arrowLeft" size={15} />
+                    {t('prevPage') || 'Trước'}
+                  </button>
+                  <span>{t('pageOf') || 'Trang'} <strong>{reportsPage.pageNo + 1}</strong> / {reportsPage.totalPages}</span>
+                  <button
+                    type="button"
+                    disabled={reportsPage.last || reportsLoading}
+                    onClick={() => loadReports(reportsPage.pageNo + 1)}
+                  >
+                    {t('nextPage') || 'Sau'} <span aria-hidden="true">→</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
 
         </section>
       </div>

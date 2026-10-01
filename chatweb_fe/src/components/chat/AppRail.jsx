@@ -10,6 +10,7 @@ const SETTINGS_ITEMS = [
   ['addresses', 'globe', 'addressSettings'],
   ['contact', 'users', 'contactSettings'],
   ['security', 'shield', 'securitySettings'],
+  ['reports', 'flag', 'myReports'],
 ]
 
 function initials(person) {

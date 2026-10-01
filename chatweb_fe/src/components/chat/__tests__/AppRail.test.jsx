@@ -100,4 +100,30 @@ describe('AppRail Component', () => {
     fireEvent.click(screen.getByTitle('conversations'))
     expect(onSelectSection).toHaveBeenCalledWith('chat')
   })
+
+  it('renders My Reports item in the settings account menu and navigates to reports tab', () => {
+    const onSelectSettings = vi.fn()
+    render(
+      <MemoryRouter>
+        <AppRail
+          activeSection="settings"
+          online={true}
+          onSelectSettings={onSelectSettings}
+        />
+      </MemoryRouter>
+    )
+
+    // Open account menu
+    const menuButton = screen.getByLabelText('accountMenu')
+    fireEvent.click(menuButton)
+
+    // Check myReports item
+    const reportsBtn = screen.getByText('myReports')
+    expect(reportsBtn).toBeInTheDocument()
+
+    // Click myReports
+    fireEvent.click(reportsBtn.closest('button'))
+    expect(onSelectSettings).toHaveBeenCalledWith('reports')
+  })
 })
+
