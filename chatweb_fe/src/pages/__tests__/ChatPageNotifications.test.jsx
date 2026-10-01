@@ -131,7 +131,7 @@ describe('ChatPage Notification Click Navigation Integration', () => {
       if (url.includes('/api/messages/unread-counts')) {
         return Promise.resolve({ data: { unreadCounts: {} } })
       }
-      if (url.includes('/api/systems/message')) {
+      if (url.includes('/api/messages/system')) {
         return Promise.resolve({ data: { content: [], nextCursor: null, hasMore: false } })
       }
       if (url.includes('/api/messages/private?')) {

@@ -21,7 +21,7 @@ import com.web.backend.ratelimit.LimitType;
 
 @Tag(name = "Chat Upload Controller")
 @RestController
-@RequestMapping("/api/chat/")
+@RequestMapping("/api/messages/upload")
 @RequiredArgsConstructor
 @Slf4j(topic = "CHAT-UPLOAD-CONTROLLER")
 public class ChatUploadController {

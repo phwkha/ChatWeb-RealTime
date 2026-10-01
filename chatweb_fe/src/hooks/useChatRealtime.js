@@ -171,7 +171,7 @@ export function useChatRealtime({
     try {
       const query = new URLSearchParams({ size: '30' })
       if (cursor) query.set('cursor', cursor)
-      const res = await apiRequest(`/api/systems/message?${query}`)
+      const res = await apiRequest(`/api/messages/system?${query}`)
       const history = normalizeMessages(res?.data?.content || [])
       setWorldMessages((cur) => {
         const merged = appendOlder ? [...history, ...cur] : [...cur, ...history]

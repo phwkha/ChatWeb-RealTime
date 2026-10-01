@@ -32,7 +32,7 @@ import jakarta.servlet.http.Cookie;
 
 @Tag(name = "Auth Controller")
 @RestController
-@RequestMapping("/api/auth/")
+@RequestMapping("/api/auth")
 @RequiredArgsConstructor
 @Slf4j(topic = "AUTH-CONTROLLER")
 public class AuthController {

@@ -79,7 +79,7 @@ class ChatUploadControllerTest {
         MockMultipartFile file = new MockMultipartFile("image", "test.jpg", "image/jpeg", "image content".getBytes());
         when(storageService.upLoadImage(any(MultipartFile.class))).thenReturn("image_url");
 
-        mockMvc.perform(multipart("/api/chat/image")
+        mockMvc.perform(multipart("/api/messages/upload/image")
                 .file(file)
                 .header("X-Idempotency-Key", "test-idempotency-key"))
                 .andExpect(status().isOk())
@@ -93,7 +93,7 @@ class ChatUploadControllerTest {
         MockMultipartFile file = new MockMultipartFile("video", "test.mp4", "video/mp4", "video content".getBytes());
         when(storageService.uploadVideo(any(MultipartFile.class))).thenReturn("video_url");
 
-        mockMvc.perform(multipart("/api/chat/video")
+        mockMvc.perform(multipart("/api/messages/upload/video")
                 .file(file)
                 .header("X-Idempotency-Key", "test-idempotency-key"))
                 .andExpect(status().isOk())

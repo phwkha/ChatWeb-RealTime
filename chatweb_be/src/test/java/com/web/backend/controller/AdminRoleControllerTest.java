@@ -44,7 +44,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 @ActiveProfiles("test")
-@WebMvcTest(controllers = RoleController.class, excludeAutoConfiguration = {
+@WebMvcTest(controllers = AdminRoleController.class, excludeAutoConfiguration = {
                 SecurityAutoConfiguration.class,
                 SecurityFilterAutoConfiguration.class,
                 OAuth2ClientAutoConfiguration.class,
@@ -53,7 +53,7 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 }, excludeFilters = {
                 @ComponentScan.Filter(type = FilterType.ASSIGNABLE_TYPE, classes = JwtAuthenticationFilter.class)
 })
-class RoleControllerTest {
+class AdminRoleControllerTest {
 
         @Autowired
         private MockMvc mockMvc;
@@ -104,7 +104,7 @@ class RoleControllerTest {
 
                 when(roleService.getAllRoles()).thenReturn(List.of(role));
 
-                mockMvc.perform(get("/api/roles")
+                mockMvc.perform(get("/api/admin/roles")
                                 .principal(mockAuth))
                                 .andExpect(status().isOk())
                                 .andExpect(jsonPath("$.code").value(200))
@@ -120,7 +120,7 @@ class RoleControllerTest {
 
                 when(roleService.getAllPermissions()).thenReturn(List.of(permission));
 
-                mockMvc.perform(get("/api/roles/permissions")
+                mockMvc.perform(get("/api/admin/roles/permissions")
                                 .principal(mockAuth))
                                 .andExpect(status().isOk())
                                 .andExpect(jsonPath("$.code").value(200))
@@ -141,7 +141,7 @@ class RoleControllerTest {
 
                 when(roleService.createRole(any(RoleRequest.class))).thenReturn(roleResponse);
 
-                mockMvc.perform(post("/api/roles")
+                mockMvc.perform(post("/api/admin/roles")
                                 .principal(mockAuth)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(objectMapper.writeValueAsString(request)))
@@ -164,7 +164,7 @@ class RoleControllerTest {
 
                 when(roleService.updateRole(eq(2L), any(RoleRequest.class))).thenReturn(roleResponse);
 
-                mockMvc.perform(put("/api/roles/2")
+                mockMvc.perform(put("/api/admin/roles/2")
                                 .principal(mockAuth)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(objectMapper.writeValueAsString(request)))
@@ -175,7 +175,7 @@ class RoleControllerTest {
 
         @Test
         void testDeleteRole_Success() throws Exception {
-                mockMvc.perform(delete("/api/roles/2")
+                mockMvc.perform(delete("/api/admin/roles/2")
                                 .principal(mockAuth))
                                 .andExpect(status().isOk())
                                 .andExpect(jsonPath("$.code").value(204));

@@ -35,7 +35,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 @ActiveProfiles("test")
-@WebMvcTest(controllers = EmailController.class, excludeAutoConfiguration = {
+@WebMvcTest(controllers = AdminEmailController.class, excludeAutoConfiguration = {
         SecurityAutoConfiguration.class,
         SecurityFilterAutoConfiguration.class,
         OAuth2ClientAutoConfiguration.class,
@@ -44,7 +44,7 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 }, excludeFilters = {
         @ComponentScan.Filter(type = FilterType.ASSIGNABLE_TYPE, classes = JwtAuthenticationFilter.class)
 })
-class EmailControllerTest {
+class AdminEmailControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
@@ -86,7 +86,7 @@ class EmailControllerTest {
         request.setSubject("Test Subject");
         request.setText("Test Content");
 
-        mockMvc.perform(post("/api/email/send")
+        mockMvc.perform(post("/api/admin/emails/send")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())

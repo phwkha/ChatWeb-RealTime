@@ -8,6 +8,7 @@ import com.web.backend.controller.request.RevokeMessageRequest;
 import com.web.backend.controller.response.ApiResponse;
 import com.web.backend.controller.response.ChatMessageResponse;
 import com.web.backend.controller.response.CursorResponse;
+import com.web.backend.controller.response.MessageSystemResponse;
 import com.web.backend.controller.response.UnreadCountsResponse;
 import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.ratelimit.LimitType;
@@ -40,6 +41,7 @@ public class MessageController {
         private static final String SUCCESS_MSG_EDIT_STRING = "success.msg.edit";
         private static final String SUCCESS_MSG_REVOKE_STRING = "success.msg.revoke";
         private static final String SUCCESS_MSG_SEARCH_STRING = "success.msg.search";
+        private static final String SUCCESS_SYS_GET_MSG_STRING = "success.sys.get_msg";
 
         @Operation(summary = "Get private message", description = "API endpoint for get private message")
         @RateLimit(key = "msg_private", limit = 45, period = 60, type = LimitType.USER)
@@ -154,5 +156,17 @@ public class MessageController {
                 return ResponseEntity.ok(
                                 ApiResponse.success(HttpStatus.OK.value(),
                                                 Translator.tolocale(SUCCESS_MSG_REVOKE_STRING), null));
+        }
+
+        @Operation(summary = "Get system messages", description = "API endpoint for get system messages")
+        @GetMapping("/system")
+        public ResponseEntity<ApiResponse<CursorResponse<MessageSystemResponse>>> getSystemMessages(
+                        @RequestParam(required = false) String cursor,
+                        @RequestParam(defaultValue = "20") int size) {
+                CursorResponse<MessageSystemResponse> response = messageService.findSystemMessageWithCursor(cursor, size);
+                return ResponseEntity.ok(ApiResponse.success(
+                                HttpStatus.OK.value(),
+                                Translator.tolocale(SUCCESS_SYS_GET_MSG_STRING),
+                                response));
         }
 }

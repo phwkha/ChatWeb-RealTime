@@ -21,12 +21,12 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-@Tag(name = "Role Controller")
+@Tag(name = "Admin Role Controller")
 @RestController
-@RequestMapping("/api/roles")
+@RequestMapping("/api/admin/roles")
 @RequiredArgsConstructor
-@Slf4j(topic = "ROLE-CONTROLLER")
-public class RoleController {
+@Slf4j(topic = "ADMIN-ROLE-CONTROLLER")
+public class AdminRoleController {
 
     private final RoleService roleService;
 

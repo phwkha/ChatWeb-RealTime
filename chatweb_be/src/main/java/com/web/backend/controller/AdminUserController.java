@@ -21,12 +21,12 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-@Tag(name = "Admin Controller")
+@Tag(name = "Admin User Controller")
 @RestController
 @RequestMapping("/api/admin/users")
 @RequiredArgsConstructor
-@Slf4j(topic = "ADMIN-CONTROLLER")
-public class AdminController {
+@Slf4j(topic = "ADMIN-USER-CONTROLLER")
+public class AdminUserController {
 
         private final AdminService adminService;
 

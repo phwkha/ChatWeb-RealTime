@@ -52,7 +52,7 @@ public class DataSeeder implements CommandLineRunner {
     @Transactional(rollbackFor = Exception.class)
     public void run(String... args) throws Exception {
         log.info("Database seeding started...");
-        // Admin permissions to match AdminController
+        // Admin permissions to match AdminUserController
         PermissionEntity pAdminViewUsers = createPermissionIfNotFound("ADMIN_VIEW_USERS", "Xem danh sách User");
         PermissionEntity pAdminViewOnlineUsers = createPermissionIfNotFound("ADMIN_VIEW_ONLINE_USERS", "Xem User đang online");
         PermissionEntity pAdminViewUserDetail = createPermissionIfNotFound("ADMIN_VIEW_USER_DETAIL", "Xem chi tiết User");

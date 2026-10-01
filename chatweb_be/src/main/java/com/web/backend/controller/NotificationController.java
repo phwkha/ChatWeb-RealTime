@@ -31,7 +31,7 @@ import lombok.extern.slf4j.Slf4j;
 
 @Tag(name = "Notification Controller")
 @RestController
-@RequestMapping({ "/api/notifications" })
+@RequestMapping("/api/notifications")
 @RequiredArgsConstructor
 @Validated
 @Slf4j(topic = "NOTIFICATION-CONTROLLER")

@@ -5,6 +5,7 @@ import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.request.MarkReadRequest;
 import com.web.backend.controller.response.ChatMessageResponse;
 import com.web.backend.controller.response.CursorResponse;
+import com.web.backend.controller.response.MessageSystemResponse;
 import com.web.backend.controller.response.UnreadCountsResponse;
 import com.web.backend.jwt.JwtAuthenticationFilter;
 import com.web.backend.model.postgres.UserEntity;
@@ -197,5 +198,25 @@ class MessageControllerTest {
                                 .andExpect(jsonPath("$.data.content[0].id").value("msg123"))
                                 .andExpect(jsonPath("$.data.content[0].content").value("Hello search!"))
                                 .andExpect(jsonPath("$.data.nextCursor").value("nextCursor123"));
+        }
+
+        @Test
+        void testGetSystemMessages_Success() throws Exception {
+                MessageSystemResponse msg = MessageSystemResponse.builder()
+                                .sender("system")
+                                .content("System update")
+                                .build();
+                CursorResponse<MessageSystemResponse> cursorResponse = new CursorResponse<>(List.of(msg),
+                                "nextCursor123", true);
+
+                when(messageService.findSystemMessageWithCursor(eq("cursor123"), eq(20)))
+                                .thenReturn(cursorResponse);
+
+                mockMvc.perform(get("/api/messages/system")
+                                .param("cursor", "cursor123")
+                                .param("size", "20"))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.code").value(200))
+                                .andExpect(jsonPath("$.data.content[0].sender").value("system"));
         }
 }

@@ -18,9 +18,9 @@ import com.web.backend.ratelimit.LimitType;
 import com.web.backend.ratelimit.RateLimit;
 import org.springframework.web.bind.annotation.*;
 
-@Tag(name = "Search Controller")
+@Tag(name = "User Search Controller")
 @RestController
-@RequestMapping("/api/search/users")
+@RequestMapping("/api/users/search")
 @RequiredArgsConstructor
 public class SearchUserController {
 

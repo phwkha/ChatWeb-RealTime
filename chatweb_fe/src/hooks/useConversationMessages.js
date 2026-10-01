@@ -585,7 +585,7 @@ export function useConversationMessages({
 
     const targetUser = selectedUser
     const fieldName = contentType === 'IMAGE' ? 'image' : 'video'
-    const endpoint = contentType === 'IMAGE' ? '/api/chat/image' : '/api/chat/video'
+    const endpoint = contentType === 'IMAGE' ? '/api/messages/upload/image' : '/api/messages/upload/video'
     const body = new FormData()
     body.append(fieldName, file)
     setUploadingMedia(true)

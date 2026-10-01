@@ -20,7 +20,7 @@ export function useUserDiscovery({
   const loadSuggestions = useCallback(async () => {
     setLoadingSuggestions(true)
     try {
-      const response = await apiRequest('/api/search/users?size=24&sortDir=asc')
+      const response = await apiRequest('/api/users/search?size=24&sortDir=asc')
       setSuggestions(response?.data?.content || [])
     } catch (error) {
       showToast(getErrorMessage(error, t('errorGeneric')), 'error')
@@ -47,7 +47,7 @@ export function useUserDiscovery({
       setSearching(true)
       try {
         const response = await apiRequest(
-          `/api/search/users?keyword=${encodeURIComponent(query)}&size=30`,
+          `/api/users/search?keyword=${encodeURIComponent(query)}&size=30`,
           { signal: controller.signal },
         )
         const normalizedQuery = query.toLocaleLowerCase(language)
