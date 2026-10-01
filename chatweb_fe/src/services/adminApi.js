@@ -33,12 +33,6 @@ export const adminApi = {
     if (cursor) query.set('cursor', cursor)
     return apiRequest(`/api/messages/system?${query}`)
   },
-  advancedSearch: ({ user = [], address = [], page = 0, size = 20 } = {}) => {
-    const query = new URLSearchParams({ page: String(page), size: String(size) })
-    user.filter(Boolean).forEach((item) => query.append('user', item))
-    address.filter(Boolean).forEach((item) => query.append('address', item))
-    return apiRequest(`/api/users/search/filter?${query}`)
-  },
   getReports: (filters = {}) => apiRequest(`/api/admin/reports?${queryString(filters)}`),
   getReportStatistics: () => apiRequest('/api/admin/reports/statistics'),
   getReport: (id) => apiRequest(`/api/admin/reports/${encodeURIComponent(id)}`),

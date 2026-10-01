@@ -13,7 +13,6 @@ import '../styles/admin.css'
 const EMPTY_USER = { username: '', password: '', firstName: '', lastName: '', email: '', phone: '', roleId: '' }
 const EMPTY_ROLE = { name: '', description: '', permissionIds: [] }
 const EMPTY_EMAIL = { to: '', subject: '', text: '' }
-const EMPTY_ADVANCED = { username: '', firstName: '', lastName: '', city: '', country: '' }
 const EMPTY_ANNOUNCEMENT = { content: '', survivalTime: '' }
 const DEFAULT_FILTERS = { keyword: '', role: '', status: '', gender: '', authProvider: '', sorts: 'id:desc', page: 0, size: 20 }
 const DEFAULT_REPORT_FILTERS = { keyword: '', status: '', reason: '', page: 0, size: 20 }
@@ -26,7 +25,6 @@ const NAV_ITEMS = [
   { id: 'users', label: 'Người dùng', icon: 'users', permission: 'ADMIN_VIEW_USERS' },
   { id: 'reports', label: 'Báo cáo vi phạm', icon: 'flag', permission: 'ADMIN_VIEW_REPORTS' },
   { id: 'roles', label: 'Role & quyền', icon: 'settings', permission: 'ROLE_VIEW_ALL' },
-  { id: 'search', label: 'Tìm kiếm nâng cao', icon: 'search' },
   { id: 'email', label: 'Email hệ thống', icon: 'send', permission: 'SEND_EMAIL' },
   { id: 'broadcast', label: 'Thông báo hệ thống', icon: 'globe', permission: 'ADMIN_SEND-MESSAGE' },
 ]
@@ -36,7 +34,6 @@ const SECTION_META = {
   users: ['Quản lý người dùng', 'Tìm kiếm, tạo mới, cập nhật, khóa và quản lý dữ liệu tài khoản.'],
   reports: ['Báo cáo vi phạm', 'Kiểm duyệt và xử lý các báo cáo vi phạm từ người dùng.'],
   roles: ['Role & phân quyền', 'Thiết kế vai trò và kiểm soát chính xác quyền truy cập hệ thống.'],
-  search: ['Tìm kiếm nâng cao', 'Kết hợp điều kiện tài khoản và địa chỉ để truy vấn người dùng.'],
   email: ['Email hệ thống', 'Gửi email văn bản trực tiếp từ hệ thống đến người dùng.'],
   broadcast: ['Thông báo toàn hệ thống', 'Phát và theo dõi thông báo realtime trên kênh thế giới.'],
 }
@@ -105,9 +102,6 @@ function AdminPage() {
   const [filters, setFilters] = useState(DEFAULT_FILTERS)
   const [onlineOnly, setOnlineOnly] = useState(false)
   const [emailForm, setEmailForm] = useState(EMPTY_EMAIL)
-  const [advancedForm, setAdvancedForm] = useState(EMPTY_ADVANCED)
-  const [advancedResults, setAdvancedResults] = useState([])
-  const [advancedPage, setAdvancedPage] = useState(EMPTY_PAGE)
   const [announcements, setAnnouncements] = useState([])
   const [announcementCursor, setAnnouncementCursor] = useState(null)
   const [announcementHasMore, setAnnouncementHasMore] = useState(false)
@@ -367,14 +361,6 @@ function AdminPage() {
   const editRole = (role) => { setEditingRoleId(role.id); setRoleForm({ name: role.name, description: role.description || '', permissionIds: (role.permissions || []).map((permission) => permission.id) }) }
   const deleteRole = async (id) => { if (!window.confirm('Xóa role này?')) return; const response = await run('role-delete', () => adminApi.deleteRole(id), 'Đã xóa role.'); if (response) await loadRoles() }
 
-  const advancedSearch = async (event, page = 0) => {
-    event?.preventDefault()
-    const userCriteria = [advancedForm.username && `username~*${advancedForm.username}*`, advancedForm.firstName && `firstName~*${advancedForm.firstName}*`, advancedForm.lastName && `lastName~*${advancedForm.lastName}*`]
-    const addressCriteria = [advancedForm.city && `city~*${advancedForm.city}*`, advancedForm.country && `country~*${advancedForm.country}*`]
-    const response = await run('advanced-search', () => adminApi.advancedSearch({ user: userCriteria, address: addressCriteria, page, size: 20 }))
-    if (response) { setAdvancedResults(response?.data?.content || []); setAdvancedPage({ ...EMPTY_PAGE, ...response?.data }) }
-  }
-
   const sendEmail = async (event) => { event.preventDefault(); const response = await run('email-send', () => adminApi.sendEmail(emailForm), 'Email đã được đưa vào hàng đợi gửi.'); if (response) setEmailForm(EMPTY_EMAIL) }
   const sendAnnouncement = (event) => { event.preventDefault(); const content = announcementForm.content.trim(); if (!content) return; const survivalTime = announcementForm.survivalTime ? Number(announcementForm.survivalTime) : null; if (sendWorldMessage({ content, survivalTime })) { setAnnouncementForm(EMPTY_ANNOUNCEMENT); notify('Đã phát thông báo toàn hệ thống.') } else notify('Kết nối realtime chưa sẵn sàng. Vui lòng thử lại.', 'error') }
   const handleLogout = async () => { await logout().catch(() => {}); navigate('/login', { replace: true }) }
@@ -398,7 +384,6 @@ function AdminPage() {
         {tab === 'users' && <UsersSection users={users} roles={roles} filters={filters} setFilters={setFilters} onlineOnly={onlineOnly} onToggleOnline={toggleOnlineOnly} onFilter={applyFilters} onCreate={startCreateUser} onOpen={openUser} can={can} busy={busy} page={userPage} onPage={changeUserPage} onLoad={loadUsers} />}
         {tab === 'reports' && <ReportsSection reports={reports} filters={reportFilters} setFilters={setReportFilters} onFilter={applyReportFilters} onOpen={openReportDetail} can={can} busy={busy} page={reportPage} onPage={changeReportPage} onLoad={loadReports} />}
         {tab === 'roles' && <RolesSection roles={roles} permissions={permissions} form={roleForm} setForm={setRoleForm} editingId={editingRoleId} busy={busy} can={can} onEdit={editRole} onDelete={deleteRole} onSave={saveRole} onCancel={() => { setEditingRoleId(null); setRoleForm(EMPTY_ROLE) }} />}
-        {tab === 'search' && <SearchSection form={advancedForm} setForm={setAdvancedForm} results={advancedResults} page={advancedPage} busy={busy} onSearch={advancedSearch} onReset={() => { setAdvancedForm(EMPTY_ADVANCED); setAdvancedResults([]); setAdvancedPage(EMPTY_PAGE) }} onManage={(username) => { selectTab('users'); void openUser(username) }} />}
         {tab === 'email' && <EmailSection form={emailForm} setForm={setEmailForm} busy={busy} onSubmit={sendEmail} />}
         {tab === 'broadcast' && <BroadcastSection form={announcementForm} setForm={setAnnouncementForm} messages={announcements} connectionState={connectionState} busy={busy} hasMore={announcementHasMore} onSubmit={sendAnnouncement} onRefresh={() => loadAnnouncements()} onMore={() => loadAnnouncements(announcementCursor, true)} />}
       </div>
@@ -418,10 +403,6 @@ function UsersSection({ users, roles, filters, setFilters, onlineOnly, onToggleO
 
 function RolesSection({ roles, permissions, form, setForm, editingId, busy, can, onEdit, onDelete, onSave, onCancel }) {
   return <section className="admin-section admin-role-layout"><div className="admin-role-list">{roles.map((role) => <article className="admin-panel" key={role.id}><header><span><ChatIcon name="shield" size={18} /></span><div><h3>{role.name}</h3><small>{(role.permissions || []).length} quyền</small></div></header><p>{role.description || 'Chưa có mô tả.'}</p><div className="admin-role-permissions">{(role.permissions || []).slice(0, 5).map((permission) => <span key={permission.id}>{permission.name}</span>)}{(role.permissions || []).length > 5 && <span>+{role.permissions.length - 5}</span>}</div><footer>{can('ROLE_UPDATE') && <button type="button" onClick={() => onEdit(role)}><ChatIcon name="edit" size={14} />Sửa</button>}{can('ROLE_DELETE') && <button className="is-danger" type="button" onClick={() => void onDelete(role.id)}><ChatIcon name="trash" size={14} />Xóa</button>}</footer></article>)}</div>{(can('ROLE_ADD') || (editingId && can('ROLE_UPDATE'))) && <form className="admin-panel admin-form admin-role-form" onSubmit={onSave}><header><small>ROLE EDITOR</small><h2>{editingId ? 'Cập nhật role' : 'Tạo role mới'}</h2></header><label>Tên role<input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="VD: MODERATOR" /></label><label>Mô tả<textarea rows="3" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label><fieldset><legend>Danh sách permissions</legend><div className="admin-permission-grid">{permissions.map((permission) => <label key={permission.id}><input type="checkbox" checked={form.permissionIds.includes(permission.id)} onChange={(event) => setForm({ ...form, permissionIds: event.target.checked ? [...form.permissionIds, permission.id] : form.permissionIds.filter((id) => id !== permission.id) })} /><span><strong>{permission.name}</strong><small>{permission.description}</small></span></label>)}</div></fieldset><div className="admin-form-actions"><button className="admin-primary-button" disabled={busy === 'role-save'}>{editingId ? 'Lưu thay đổi' : 'Tạo role'}</button>{editingId && <button type="button" onClick={onCancel}>Hủy</button>}</div></form>}</section>
-}
-
-function SearchSection({ form, setForm, results, page, busy, onSearch, onReset, onManage }) {
-  return <section className="admin-section"><form className="admin-panel admin-form admin-advanced-form" onSubmit={(event) => void onSearch(event, 0)}><header><small>SPECIFICATION SEARCH</small><h2>Kết hợp nhiều điều kiện</h2><p>Để trống các trường không cần dùng.</p></header><div className="admin-form-grid">{Object.entries({ username: 'Username chứa', firstName: 'Họ chứa', lastName: 'Tên chứa', city: 'Thành phố chứa', country: 'Quốc gia chứa' }).map(([key, label]) => <label key={key}>{label}<input value={form[key]} onChange={(event) => setForm({ ...form, [key]: event.target.value })} /></label>)}</div><div className="admin-form-actions"><button className="admin-primary-button" disabled={busy === 'advanced-search'}><ChatIcon name="search" size={15} />Tìm kiếm</button><button type="button" onClick={onReset}>Đặt lại</button></div></form><div className="admin-table-card admin-search-results"><div className="admin-table-summary"><span>Kết quả tìm kiếm</span><strong>{page.totalElements || results.length}</strong></div>{results.map((item) => <article className="admin-search-result" key={item.username}><AdminAvatar person={item} size="small" /><div><strong>{displayName(item)}</strong><small>@{item.username}</small></div><StatusBadge status={item.userStatus} /><button type="button" onClick={() => onManage(item.username)}>Quản lý <span>→</span></button></article>)}{!results.length && <EmptyState>Nhập điều kiện để tìm kiếm người dùng.</EmptyState>}<Pagination page={page} onChange={(nextPage) => void onSearch(null, nextPage)} /></div></section>
 }
 
 function EmailSection({ form, setForm, busy, onSubmit }) {
