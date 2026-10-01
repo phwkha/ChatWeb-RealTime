@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import ChatIcon from './ChatIcon.jsx'
 import PersonResult from './PersonResult.jsx'
 
@@ -18,6 +18,11 @@ export const FriendsSection = React.memo(function FriendsSection({
   sentNames = new Set(),
   blockedNames = new Set(),
   t,
+  filters = { gender: 'ALL', city: '', minAge: '', maxAge: '' },
+  hasActiveFilters = false,
+  appliedFilterCount = 0,
+  onApplyFilters,
+  onResetFilters,
   onAcceptFriend,
   onRemoveFriendRelation,
   onUnblockUser,
@@ -25,6 +30,51 @@ export const FriendsSection = React.memo(function FriendsSection({
   onSelectFriend,
   onRefreshSuggestions,
 }) {
+  const [isPopoverOpen, setIsPopoverOpen] = useState(false)
+  const [draftFilters, setDraftFilters] = useState(filters)
+  const filterWrapperRef = useRef(null)
+
+  useEffect(() => {
+    setDraftFilters(filters)
+  }, [filters, isPopoverOpen])
+
+  useEffect(() => {
+    if (!isPopoverOpen) return
+
+    function handleKeyDown(event) {
+      if (event.key === 'Escape') {
+        setIsPopoverOpen(false)
+      }
+    }
+
+    function handleClickOutside(event) {
+      if (filterWrapperRef.current && !filterWrapperRef.current.contains(event.target)) {
+        setIsPopoverOpen(false)
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [isPopoverOpen])
+
+  const isDiscoveryActive = Boolean(searchQuery.trim() || hasActiveFilters)
+
+  const handleApply = () => {
+    onApplyFilters?.(draftFilters)
+    setIsPopoverOpen(false)
+  }
+
+  const handleReset = () => {
+    const emptyFilters = { gender: 'ALL', city: '', minAge: '', maxAge: '' }
+    setDraftFilters(emptyFilters)
+    onResetFilters?.()
+    setIsPopoverOpen(false)
+  }
+
   return (
     <section className="app-section-page friends-section-page" aria-label={t('friends')}>
       <header className="app-section-page__header">
@@ -37,14 +87,125 @@ export const FriendsSection = React.memo(function FriendsSection({
       </header>
 
       <div className="app-section-page__content">
-        <div className="search-input">
-          <ChatIcon name="search" />
-          <input
-            autoFocus
-            value={searchQuery}
-            onChange={(event) => onSearchQueryChange(event.target.value)}
-            placeholder={t('searchHint')}
-          />
+        <div className="friends-search-row">
+          <div className="search-input">
+            <ChatIcon name="search" />
+            <input
+              autoFocus
+              value={searchQuery}
+              onChange={(event) => onSearchQueryChange(event.target.value)}
+              placeholder={t('searchHint')}
+            />
+          </div>
+
+          <div className="filter-wrapper" ref={filterWrapperRef}>
+            <button
+              className={`filter-btn ${isPopoverOpen ? 'is-open' : ''} ${hasActiveFilters ? 'has-active' : ''}`}
+              type="button"
+              aria-label={t('filterUsers')}
+              title={t('filterUsers')}
+              onClick={() => setIsPopoverOpen((prev) => !prev)}
+            >
+              <ChatIcon name="filter" size={18} />
+              {appliedFilterCount > 0 && <span className="filter-badge">{appliedFilterCount}</span>}
+            </button>
+
+            {isPopoverOpen && (
+              <div className="filter-popover" role="dialog" aria-modal="true" aria-label={t('filterUsers')}>
+                <div className="filter-group">
+                  <label className="filter-label">{t('gender')}</label>
+                  <div className="filter-chips">
+                    {[
+                      { key: 'ALL', label: t('genderAll') },
+                      { key: 'MAN', label: t('genderMale') },
+                      { key: 'WOMAN', label: t('genderFemale') },
+                    ].map((g) => (
+                      <button
+                        key={g.key}
+                        type="button"
+                        className={`filter-chip ${draftFilters.gender === g.key ? 'is-active' : ''}`}
+                        onClick={() => setDraftFilters((d) => ({ ...d, gender: g.key }))}
+                      >
+                        {g.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="filter-group">
+                  <label className="filter-label">{t('location')}</label>
+                  <input
+                    className="filter-input"
+                    value={draftFilters.city}
+                    onChange={(e) => setDraftFilters((d) => ({ ...d, city: e.target.value }))}
+                    placeholder={t('locationPlaceholder')}
+                  />
+                  <div className="filter-presets">
+                    {['Hà Nội', 'TP.HCM', 'Đà Nẵng', 'Cần Thơ', 'Hải Phòng'].map((city) => (
+                      <button
+                        key={city}
+                        type="button"
+                        className={`filter-preset-btn ${draftFilters.city === city ? 'is-active' : ''}`}
+                        onClick={() => setDraftFilters((d) => ({ ...d, city }))}
+                      >
+                        {city}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="filter-group">
+                  <label className="filter-label">{t('ageRange')}</label>
+                  <div className="filter-age-inputs">
+                    <input
+                      type="number"
+                      min="1"
+                      max="120"
+                      className="filter-input filter-input--age"
+                      placeholder={t('fromAge')}
+                      value={draftFilters.minAge}
+                      onChange={(e) => setDraftFilters((d) => ({ ...d, minAge: e.target.value }))}
+                    />
+                    <span className="filter-age-sep">-</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="120"
+                      className="filter-input filter-input--age"
+                      placeholder={t('toAge')}
+                      value={draftFilters.maxAge}
+                      onChange={(e) => setDraftFilters((d) => ({ ...d, maxAge: e.target.value }))}
+                    />
+                  </div>
+                  <div className="filter-presets">
+                    {[
+                      { label: '18 - 25', min: '18', max: '25' },
+                      { label: '26 - 35', min: '26', max: '35' },
+                      { label: '36 - 50', min: '36', max: '50' },
+                    ].map((preset) => (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        className={`filter-preset-btn ${draftFilters.minAge === preset.min && draftFilters.maxAge === preset.max ? 'is-active' : ''}`}
+                        onClick={() => setDraftFilters((d) => ({ ...d, minAge: preset.min, maxAge: preset.max }))}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="filter-popover-actions">
+                  <button type="button" className="filter-action-btn filter-action-btn--reset" onClick={handleReset}>
+                    {t('resetFilter')}
+                  </button>
+                  <button type="button" className="filter-action-btn filter-action-btn--apply" onClick={handleApply}>
+                    {t('applyFilter')}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="search-types">
@@ -64,7 +225,7 @@ export const FriendsSection = React.memo(function FriendsSection({
           </button>
         </div>
 
-        {!searchQuery && (
+        {!isDiscoveryActive && (
           <div className="relationship-lists">
             <div className="panel-section">
               <h3>{t('pendingRequests')} <span>{friendRequests.length}</span></h3>
@@ -117,7 +278,7 @@ export const FriendsSection = React.memo(function FriendsSection({
           </div>
         )}
 
-        {!searchQuery && (
+        {!isDiscoveryActive && (
           <div className="panel-section suggestion-section">
             <div className="panel-section__heading">
               <h3>{t('suggestedForYou')} <span>{visibleSuggestions.length}</span></h3>
@@ -151,44 +312,58 @@ export const FriendsSection = React.memo(function FriendsSection({
           </div>
         )}
 
-        <div className="panel-section search-results">
-          {searching && (
-            <div className="panel-loading">
-              <i /><i /><i />
-            </div>
-          )}
-          {!searching && searchQuery && searchResults.length === 0 && (
-            <div className="panel-empty">
-              <ChatIcon name="search" size={30} />
-              <p>{t('noResults')}</p>
-            </div>
-          )}
-          {!searching && searchResults.map((person) => (
-            <PersonResult
-              key={person.username}
-              person={person}
-              actionLabel={
-                blockedNames.has(person.username)
-                  ? t('unblockUser')
-                  : friendNames.has(person.username)
-                    ? t('friends')
-                    : sentNames.has(person.username)
-                      ? t('requested')
-                      : t('addFriend')
+        {isDiscoveryActive && (
+          <div className="panel-section search-results">
+            {searching && (
+              <div className="panel-loading">
+                <i /><i /><i />
+              </div>
+            )}
+            {!searching && searchResults.length === 0 && (
+              <div className="panel-empty">
+                <ChatIcon name="search" size={30} />
+                <p>{t('noResults')}</p>
+              </div>
+            )}
+            {!searching && searchResults.map((person) => {
+              const isBlocked = blockedNames.has(person.username)
+              const isFriend = friendNames.has(person.username)
+              const isSent = sentNames.has(person.username)
+
+              let actionLabel = t('addFriend')
+              let disabled = false
+              let onAction = () => onAddFriend(person)
+              let secondaryActionLabel = ''
+              let onSecondaryAction = undefined
+
+              if (isBlocked) {
+                actionLabel = t('unblockUser')
+                onAction = () => onUnblockUser(person)
+              } else if (isFriend) {
+                actionLabel = t('messageUser')
+                onAction = () => onSelectFriend(person)
+              } else if (isSent) {
+                actionLabel = t('requested')
+                disabled = true
+                secondaryActionLabel = t('cancelRequest')
+                onSecondaryAction = () => onRemoveFriendRelation(person, 'requestCancelled')
               }
-              disabled={
-                !blockedNames.has(person.username)
-                && (friendNames.has(person.username) || sentNames.has(person.username))
-              }
-              onAction={() =>
-                blockedNames.has(person.username)
-                  ? onUnblockUser(person)
-                  : onAddFriend(person)
-              }
-              onSelect={friendNames.has(person.username) ? () => onSelectFriend(person) : undefined}
-            />
-          ))}
-        </div>
+
+              return (
+                <PersonResult
+                  key={person.username}
+                  person={person}
+                  actionLabel={actionLabel}
+                  disabled={disabled}
+                  onAction={onAction}
+                  secondaryActionLabel={secondaryActionLabel}
+                  onSecondaryAction={onSecondaryAction}
+                  onSelect={isFriend ? () => onSelectFriend(person) : undefined}
+                />
+              )
+            })}
+          </div>
+        )}
       </div>
     </section>
   )

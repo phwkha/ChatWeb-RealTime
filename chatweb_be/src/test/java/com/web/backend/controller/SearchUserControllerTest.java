@@ -135,7 +135,7 @@ class SearchUserControllerTest {
                                 .content(List.of(detail))
                                 .build();
 
-                when(searchUserService.advanceSearchWithSpecifications(any(Pageable.class), any(), any()))
+                when(searchUserService.advanceSearchWithSpecifications(any(), any(Pageable.class), any(), any()))
                                 .thenReturn(pageResponse);
 
                 mockMvc.perform(get("/api/users/search/filter")

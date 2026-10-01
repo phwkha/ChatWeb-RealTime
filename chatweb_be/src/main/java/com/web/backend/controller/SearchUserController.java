@@ -57,13 +57,19 @@ public class SearchUserController {
     @RateLimit(key = "search_users_filter", limit = 20, period = 60, type = LimitType.USER)
     @GetMapping("/filter")
     public ResponseEntity<ApiResponse<PageResponse<UserSummaryResponse>>> advanceSearchWithSpecifications(
+            Authentication authentication,
             Pageable pageable,
             @RequestParam(required = false) String[] user,
             @RequestParam(required = false) String[] address) {
 
+        String currentUsername = null;
+        if (authentication != null && authentication.getPrincipal() instanceof UserEntity userEntity) {
+            currentUsername = userEntity.getUsername();
+        }
+
         return ResponseEntity.ok(ApiResponse.success(
                 HttpStatus.OK.value(),
                 Translator.tolocale(SUCCESS_SEARCH_ADVANCE_STRING),
-                searchUserService.advanceSearchWithSpecifications(pageable, user, address)));
+                searchUserService.advanceSearchWithSpecifications(currentUsername, pageable, user, address)));
     }
 }

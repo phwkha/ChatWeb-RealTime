@@ -141,6 +141,7 @@ function ChatPage() {
   const {
     searchQuery, setSearchQuery, searchType, setSearchType,
     searchResults, searching, suggestions, loadingSuggestions, loadSuggestions,
+    filters, hasActiveFilters, appliedFilterCount, applyFilters, resetFilters,
   } = useUserDiscovery({ activeSection, currentUsernameKey, language, showToast, t })
 
   const updatePeerPresence = useCallback((username, online) => {
@@ -414,6 +415,8 @@ function ChatPage() {
           visibleSuggestions={visibleSuggestions} searchResults={searchResults} searching={searching}
           loadingSuggestions={loadingSuggestions} friendNames={friendNames} sentNames={sentNames}
           blockedNames={blockedNames} t={t}
+          filters={filters} hasActiveFilters={hasActiveFilters} appliedFilterCount={appliedFilterCount}
+          onApplyFilters={applyFilters} onResetFilters={resetFilters}
           onAcceptFriend={async (p) => { await acceptFriend(p); selectFriend(p) }}
           onRemoveFriendRelation={removeFriendRelation} onUnblockUser={unblockServerUser}
           onAddFriend={addFriend} onSelectFriend={selectFriend} onRefreshSuggestions={loadSuggestions}
