@@ -251,6 +251,12 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         if (refreshToken == null || refreshToken.isEmpty()) {
             throw new InvalidDataException(Translator.tolocale(ERROR_AUTH_MISSING_REFRESH_STRING));
         }
+
+        TokenResponse graceResponse = resolveGraceTokenIfValid(refreshToken);
+        if (graceResponse != null) {
+            return graceResponse;
+        }
+
         RefreshTokenData tokenData = jwtService.validateRefreshToken(refreshToken);
         String username = tokenData.getUsername();
 
@@ -258,17 +264,8 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                 .orElseThrow(() -> new ResourceNotFoundException(Translator.tolocale(ERROR_USER_NOT_FOUND_STRING)));
 
         Integer currentVersion = user.getTokenVersion() == null ? 0 : user.getTokenVersion();
-        if (!Objects.equals(tokenData.getTokenVersion(), currentVersion)) {
-            jwtService.revokeRefreshToken(refreshToken);
-            log.warn("Refresh token version mismatch for user '{}' [tokenVersion={}, currentVersion={}]",
-                    username, tokenData.getTokenVersion(), currentVersion);
-            throw new AccessForbiddenException(Translator.tolocale(ERROR_AUTH_REFRESH_EXPIRED_STRING));
-        }
-
-        if (user.getUserStatus() == UserStatus.INACTIVE || user.getUserStatus() == UserStatus.LOCKED) {
-            jwtService.revokeRefreshToken(refreshToken);
-            throw new AccessForbiddenException(Translator.tolocale(ERROR_AUTH_ACCOUNT_LOCKED_DELETED_STRING));
-        }
+        validateTokenVersion(user, tokenData.getTokenVersion(), currentVersion, refreshToken);
+        validateUserStatus(user, refreshToken);
 
         jwtService.revokeRefreshToken(refreshToken);
 
@@ -278,10 +275,73 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         String newAccessToken = jwtService.generateAccessToken(user.getUsername(), authorities, currentVersion);
         String newRefreshToken = jwtService.generateRefreshToken(user.getUsername(), currentVersion);
 
-        return TokenResponse.builder()
+        TokenResponse tokenResponse = TokenResponse.builder()
                 .accessToken(newAccessToken)
                 .refreshToken(newRefreshToken)
                 .build();
+
+        jwtService.recordGracePeriod(refreshToken, tokenResponse, 15L);
+
+        return tokenResponse;
+    }
+
+    private TokenResponse resolveGraceTokenIfValid(String refreshToken) {
+        TokenResponse graceResponse = jwtService.getGraceTokenResponse(refreshToken);
+        if (graceResponse == null) {
+            return null;
+        }
+
+        if (isGraceTokenActive(graceResponse)) {
+            return graceResponse;
+        }
+
+        jwtService.revokeRefreshToken(refreshToken);
+        throw new AccessForbiddenException(Translator.tolocale(ERROR_AUTH_REFRESH_EXPIRED_STRING));
+    }
+
+    private boolean isGraceTokenActive(TokenResponse graceResponse) {
+        try {
+            String graceUsername = jwtService.extractUsername(graceResponse.getAccessToken());
+            Integer graceVersion = jwtService.extractClaim(graceResponse.getAccessToken(),
+                    claims -> claims.get("v", Integer.class));
+            UserEntity graceUser = userRepository.findWithAuthoritiesByUsername(graceUsername).orElse(null);
+
+            if (graceUser == null || isUserInactiveOrLocked(graceUser)) {
+                return false;
+            }
+
+            Integer currentVersion = graceUser.getTokenVersion() == null ? 0 : graceUser.getTokenVersion();
+            Integer tokenVersion = graceVersion == null ? 0 : graceVersion;
+            boolean versionMatches = Objects.equals(currentVersion, tokenVersion);
+
+            if (versionMatches) {
+                log.info("Serving refresh token from grace period cache for user '{}'", graceUsername);
+                return true;
+            }
+        } catch (Exception e) {
+            log.warn("Failed to validate grace token: {}", e.getMessage());
+        }
+        return false;
+    }
+
+    private void validateTokenVersion(UserEntity user, Integer tokenVersion, Integer currentVersion, String refreshToken) {
+        if (!Objects.equals(tokenVersion, currentVersion)) {
+            jwtService.revokeRefreshToken(refreshToken);
+            log.warn("Refresh token version mismatch for user '{}' [tokenVersion={}, currentVersion={}]",
+                    user.getUsername(), tokenVersion, currentVersion);
+            throw new AccessForbiddenException(Translator.tolocale(ERROR_AUTH_REFRESH_EXPIRED_STRING));
+        }
+    }
+
+    private void validateUserStatus(UserEntity user, String refreshToken) {
+        if (isUserInactiveOrLocked(user)) {
+            jwtService.revokeRefreshToken(refreshToken);
+            throw new AccessForbiddenException(Translator.tolocale(ERROR_AUTH_ACCOUNT_LOCKED_DELETED_STRING));
+        }
+    }
+
+    private boolean isUserInactiveOrLocked(UserEntity user) {
+        return user.getUserStatus() == UserStatus.INACTIVE || user.getUserStatus() == UserStatus.LOCKED;
     }
 
     @Override

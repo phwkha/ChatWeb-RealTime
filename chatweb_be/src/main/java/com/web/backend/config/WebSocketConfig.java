@@ -41,6 +41,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.socket.messaging.StompSubProtocolErrorHandler;
 import org.springframework.messaging.support.MessageBuilder;
 
+import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.JwtException;
+
 @Configuration
 @EnableWebSocketMessageBroker
 @RequiredArgsConstructor
@@ -60,10 +63,11 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     private static final String WS_LOCALE_ATTR = "WS_LOCALE";
     private static final String ONLINE_USERS_KEY = "online_users";
 
-    private static final String ERR_WS_AUTH_FAILED = "error.ws.auth_failed";
     private static final String ERR_WS_BLACKLISTED = "error.ws.blacklisted";
     private static final String ERR_WS_INVALID_TOKEN_VERSION = "error.ws.invalid_token_version";
     private static final String ERR_WS_MISSING_TOKEN = "error.ws.missing_token";
+    private static final String ERR_AUTH_TOKEN_EXPIRED = "error.auth.token_expired";
+    private static final String ERR_AUTH_TOKEN_INVALID = "error.auth.token_invalid";
 
     @Value("${app.cors.allowed-origins:http://localhost:5173}")
     private String allowedOrigins;
@@ -77,30 +81,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
-        registry.setErrorHandler(new StompSubProtocolErrorHandler() {
-            @Override
-            public Message<byte[]> handleClientMessageProcessingError(Message<byte[]> clientMessage,
-                    Throwable ex) {
-                Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
-                String errorMessage = cause.getMessage();
-                StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.ERROR);
-                accessor.setMessage(errorMessage);
-                accessor.setLeaveMutable(true);
-                byte[] payload;
-                try {
-                    ErrorSocketResponse response = ErrorSocketResponse.builder()
-                            .code(ErrorCode.STOMP_ERROR.getHttpStatus())
-                            .errorCode(ErrorCode.STOMP_ERROR)
-                            .message(errorMessage)
-                            .request(null)
-                            .build();
-                    payload = objectMapper.writeValueAsBytes(response);
-                } catch (Exception e) {
-                    payload = errorMessage != null ? errorMessage.getBytes() : new byte[0];
-                }
-                return MessageBuilder.createMessage(payload, accessor.getMessageHeaders());
-            }
-        });
+        registry.setErrorHandler(createStompErrorHandler());
 
         registry.addEndpoint("/ws")
                 .setAllowedOriginPatterns(allowedOrigins.split(","))
@@ -108,9 +89,84 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                 .withSockJS();
     }
 
+    private StompSubProtocolErrorHandler createStompErrorHandler() {
+        return new StompSubProtocolErrorHandler() {
+            @Override
+            public Message<byte[]> handleClientMessageProcessingError(Message<byte[]> clientMessage, Throwable ex) {
+                Throwable rootCause = extractRootCause(ex);
+                ErrorClassification classification = classifyError(rootCause);
+
+                StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.ERROR);
+                accessor.setMessage(classification.message());
+                accessor.setLeaveMutable(true);
+
+                byte[] payload = serializeErrorPayload(classification);
+                return MessageBuilder.createMessage(payload, accessor.getMessageHeaders());
+            }
+        };
+    }
+
+    private record ErrorClassification(int code, ErrorCode errorCode, String message) {}
+
+    private Throwable extractRootCause(Throwable ex) {
+        Throwable rootCause = ex;
+        while (rootCause.getCause() != null && rootCause.getCause() != rootCause) {
+            rootCause = rootCause.getCause();
+        }
+        return rootCause;
+    }
+
+    private ErrorClassification classifyError(Throwable rootCause) {
+        String msg = rootCause.getMessage();
+        if (isTokenExpiredError(rootCause, msg)) {
+            return new ErrorClassification(4011, ErrorCode.TOKEN_EXPIRED,
+                    Translator.tolocale(ERR_AUTH_TOKEN_EXPIRED));
+        }
+        if (isTokenInvalidError(rootCause, msg)) {
+            return new ErrorClassification(4012, ErrorCode.TOKEN_INVALID,
+                    Translator.tolocale(ERR_AUTH_TOKEN_INVALID));
+        }
+
+        String fallbackMsg = (msg == null || msg.isBlank())
+                ? Translator.tolocale(ERR_AUTH_TOKEN_INVALID)
+                : msg;
+        return new ErrorClassification(ErrorCode.STOMP_ERROR.getHttpStatus(), ErrorCode.STOMP_ERROR, fallbackMsg);
+    }
+
+    private boolean isTokenExpiredError(Throwable rootCause, String message) {
+        return rootCause instanceof ExpiredJwtException
+                || (message != null && (message.contains("expired") || message.contains("hết hạn")));
+    }
+
+    private boolean isTokenInvalidError(Throwable rootCause, String message) {
+        return rootCause instanceof JwtException
+                || (message != null && (message.contains("token_version")
+                        || message.contains("Phiên đăng nhập")
+                        || message.contains("phiên đăng nhập")));
+    }
+
+    private byte[] serializeErrorPayload(ErrorClassification classification) {
+        try {
+            ErrorSocketResponse response = ErrorSocketResponse.builder()
+                    .code(classification.code())
+                    .errorCode(classification.errorCode())
+                    .message(classification.message())
+                    .request(null)
+                    .build();
+            return objectMapper.writeValueAsBytes(response);
+        } catch (Exception e) {
+            return classification.message().getBytes();
+        }
+    }
+
+
     @Override
     public void configureClientInboundChannel(ChannelRegistration registration) {
-        registration.interceptors(new ExecutorChannelInterceptor() {
+        registration.interceptors(createChannelInterceptor());
+    }
+
+    private ExecutorChannelInterceptor createChannelInterceptor() {
+        return new ExecutorChannelInterceptor() {
             @Override
             public Message<?> preSend(Message<?> message, MessageChannel channel) {
                 StompHeaderAccessor accessor = MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
@@ -150,7 +206,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                     Exception ex) {
                 LocaleContextHolder.resetLocaleContext();
             }
-        });
+        };
     }
 
     private void handleLocaleSetup(StompHeaderAccessor accessor) {
@@ -176,11 +232,9 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
             return;
         }
 
-        Map<String, Object> sessionAttributes = accessor.getSessionAttributes();
-        String token = sessionAttributes != null ? (String) sessionAttributes.get("jwt_token_cookie") : null;
-
-        if (token == null) {
-            token = extractTokenFromHeader(accessor);
+        String token = extractTokenFromHeader(accessor);
+        if (token == null && accessor.getSessionAttributes() != null) {
+            token = (String) accessor.getSessionAttributes().get("jwt_token_cookie");
         }
 
         if (token == null) {
@@ -189,10 +243,20 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
         try {
             validateAndAuthenticateToken(token, accessor);
+        } catch (ExpiredJwtException e) {
+            log.warn("WebSocket authentication handshake rejected - token expired: {}", e.getMessage());
+            throw new MessagingException(
+                    Objects.requireNonNull(Translator.tolocale(ERR_AUTH_TOKEN_EXPIRED)), e);
+        } catch (JwtException e) {
+            log.warn("WebSocket authentication handshake rejected - invalid token: {}", e.getMessage());
+            throw new MessagingException(
+                    Objects.requireNonNull(Translator.tolocale(ERR_AUTH_TOKEN_INVALID)), e);
+        } catch (MessagingException e) {
+            throw e;
         } catch (Exception e) {
             log.warn("WebSocket authentication handshake failed: {}", e.getMessage());
             throw new MessagingException(
-                    Objects.requireNonNull(Translator.tolocale(ERR_WS_AUTH_FAILED, e.getMessage())));
+                    Objects.requireNonNull(Translator.tolocale(ERR_AUTH_TOKEN_INVALID)), e);
         }
     }
 
@@ -229,7 +293,8 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         if (tokenVersionInJwt == null || !tokenVersionInJwt.equals(currentVersion)) {
             log.warn("WebSocket token version mismatch for user '{}'", username);
             throw new MessagingException(
-                    Objects.requireNonNull(Translator.tolocale(ERR_WS_INVALID_TOKEN_VERSION)));
+                    Objects.requireNonNull(Translator.tolocale(ERR_WS_INVALID_TOKEN_VERSION)),
+                    new JwtException("invalid_token_version"));
         }
     }
 
@@ -248,7 +313,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
             if (lastUpdate == null || now - lastUpdate > 60_000L) {
                 lastOnlineTimestampMap.put(username, now);
                 try {
-                    redisTemplate.opsForZSet().add(ONLINE_USERS_KEY, username, now);
+                    redisTemplate.opsForZSet().add(ONLINE_USERS_KEY, username, (double) now);
                 } catch (Exception e) {
                     log.warn("Failed to update online timestamp in Redis for user '{}'", username, e);
                 }

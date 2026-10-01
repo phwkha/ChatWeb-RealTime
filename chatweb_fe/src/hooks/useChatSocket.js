@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Client } from '@stomp/stompjs'
 import SockJS from 'sockjs-client'
-import { API_BASE_URL, getAccessToken } from '../services/apiClient.js'
+import { API_BASE_URL, getAccessToken, refreshAccessToken } from '../services/apiClient.js'
 import { normalizeSocketPayload } from '../services/socketPayload.js'
 
 function parseFrame(frame) {
@@ -34,6 +34,9 @@ export function useChatSocket({ enabled, language, subscribeToWorld, onMessage, 
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     }
 
+    let isRefreshingAuth = false
+    let refreshPromiseRef = null
+
     const client = new Client({
       webSocketFactory: () => new SockJS(`${API_BASE_URL}/ws`),
       connectHeaders,
@@ -41,6 +44,22 @@ export function useChatSocket({ enabled, language, subscribeToWorld, onMessage, 
       heartbeatIncoming: 10000,
       heartbeatOutgoing: 10000,
       debug: () => {},
+      beforeConnect: async () => {
+        if (isRefreshingAuth && refreshPromiseRef) {
+          try {
+            await refreshPromiseRef
+          } catch {
+            // ignore
+          }
+        }
+        const currentToken = getAccessToken()
+        if (currentToken) {
+          client.connectHeaders = {
+            ...client.connectHeaders,
+            Authorization: `Bearer ${currentToken}`,
+          }
+        }
+      },
       onConnect: () => {
         if (disposed) return
         setConnectionState('connected')
@@ -54,9 +73,45 @@ export function useChatSocket({ enabled, language, subscribeToWorld, onMessage, 
         isReconnectRef.current = true
         callbacksRef.current.onConnected?.({ isReconnect: wasReconnect })
       },
-      onStompError: (frame) => {
+      onStompError: async (frame) => {
         setConnectionState('disconnected')
-        callbacksRef.current.onError?.(parseFrame(frame))
+        const payload = parseFrame(frame)
+        const errorCode = String(payload?.errorCode || payload?.code || '').toUpperCase()
+        const isAuthError = errorCode === 'TOKEN_EXPIRED' ||
+                            errorCode === 'TOKEN_INVALID' ||
+                            errorCode === '401' ||
+                            errorCode === '4011' ||
+                            errorCode === '4012' ||
+                            payload?.message?.includes('Phiên đăng nhập') ||
+                            payload?.message?.includes('expired')
+
+        if (isAuthError && !disposed) {
+          try {
+            client.reconnectDelay = 0
+            isRefreshingAuth = true
+            refreshPromiseRef = refreshAccessToken()
+            await refreshPromiseRef
+            if (clientRef.current && !disposed) {
+              const newToken = getAccessToken()
+              clientRef.current.connectHeaders = {
+                ...clientRef.current.connectHeaders,
+                ...(newToken ? { Authorization: `Bearer ${newToken}` } : {}),
+              }
+              clientRef.current.reconnectDelay = 3000
+              clientRef.current.activate()
+              return
+            }
+          } catch {
+            // refresh failed - notifySessionExpired() is automatically triggered by apiClient
+          } finally {
+            isRefreshingAuth = false
+            refreshPromiseRef = null
+            if (clientRef.current) {
+              clientRef.current.reconnectDelay = 3000
+            }
+          }
+        }
+        callbacksRef.current.onError?.(payload)
       },
       onWebSocketClose: () => {
         if (!disposed) {

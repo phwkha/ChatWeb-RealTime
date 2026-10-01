@@ -14,6 +14,8 @@ import java.time.Instant;
 @MappedSuperclass
 public abstract class AbstractEntity<T extends Serializable> implements Serializable {
 
+    private static final long serialVersionUID = 1L;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private T id;

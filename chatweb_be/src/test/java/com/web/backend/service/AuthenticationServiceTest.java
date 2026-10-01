@@ -303,6 +303,52 @@ class AuthenticationServiceTest {
         assertEquals("newAccess", response.getAccessToken());
         assertEquals("newRefresh", response.getRefreshToken());
         verify(jwtService).revokeRefreshToken(oldRefreshToken);
+        verify(jwtService).recordGracePeriod(eq(oldRefreshToken), any(TokenResponse.class), eq(15L));
+    }
+
+    @Test
+    void testRefreshToken_InGracePeriod_ReturnsCachedResponse() {
+        // Arrange
+        String oldRefreshToken = "oldRefreshGrace";
+        TokenResponse cachedResponse = TokenResponse.builder()
+                .accessToken("cachedAccess")
+                .refreshToken("cachedRefresh")
+                .build();
+        when(jwtService.getGraceTokenResponse(oldRefreshToken)).thenReturn(cachedResponse);
+        when(jwtService.extractUsername("cachedAccess")).thenReturn("testuser");
+        when(jwtService.extractClaim(eq("cachedAccess"), any())).thenReturn(1);
+        when(userRepository.findWithAuthoritiesByUsername("testuser")).thenReturn(Optional.of(mockUser));
+        mockUser.setUserStatus(UserStatus.ACTIVE);
+        mockUser.setTokenVersion(1);
+
+        // Act
+        TokenResponse response = authenticationService.refreshToken(oldRefreshToken);
+
+        // Assert
+        assertNotNull(response);
+        assertEquals("cachedAccess", response.getAccessToken());
+        assertEquals("cachedRefresh", response.getRefreshToken());
+        verify(jwtService, never()).validateRefreshToken(anyString());
+    }
+
+    @Test
+    void testRefreshToken_InGracePeriod_VersionMismatch_ThrowsAccessForbiddenException() {
+        // Arrange
+        String oldRefreshToken = "oldRefreshGrace";
+        TokenResponse cachedResponse = TokenResponse.builder()
+                .accessToken("cachedAccess")
+                .refreshToken("cachedRefresh")
+                .build();
+        when(jwtService.getGraceTokenResponse(oldRefreshToken)).thenReturn(cachedResponse);
+        when(jwtService.extractUsername("cachedAccess")).thenReturn("testuser");
+        when(jwtService.extractClaim(eq("cachedAccess"), any())).thenReturn(1);
+        when(userRepository.findWithAuthoritiesByUsername("testuser")).thenReturn(Optional.of(mockUser));
+        mockUser.setUserStatus(UserStatus.ACTIVE);
+        mockUser.setTokenVersion(2); // user logged out from all devices, incrementing token version to 2
+
+        // Act & Assert
+        assertThrows(AccessForbiddenException.class, () -> authenticationService.refreshToken(oldRefreshToken));
+        verify(jwtService).revokeRefreshToken(oldRefreshToken);
     }
 
     @Test

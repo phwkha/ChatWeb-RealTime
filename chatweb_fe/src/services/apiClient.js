@@ -40,17 +40,21 @@ const CLIENT_MESSAGES = {
   },
 }
 
-const TECHNICAL_ERROR_PATTERN = /failed to fetch|networkerror|network error|load failed|fetch failed|socket closed|unexpected token|json parse|clipboard unavailable|bad credentials|access is denied|^access denied$|^unauthorized$|^forbidden$|internal server error/i
+const TECHNICAL_ERROR_PATTERN = /failed to fetch|networkerror|network error|load failed|fetch failed|socket closed|unexpected token|json parse|clipboard unavailable|bad credentials|access is denied|^access denied$|^unauthorized$|^forbidden$|internal server error|jwt expired|jwt exception|allowed clock skew|\bjwt\b/i
 
 function fallbackMessage(key = 'generic') {
   const messages = CLIENT_MESSAGES[getApiLanguage()] || CLIENT_MESSAGES.vi
   return messages[key] || messages.generic
 }
 
-function fallbackKeyForCode(code) {
+function fallbackKeyForCode(code, rawMessage = '') {
   const normalizedCode = String(code || '').toUpperCase()
-  if (normalizedCode === 'NETWORK_ERROR') return 'network'
-  if (['4011', '4012', 'TOKEN_EXPIRED', 'TOKEN_INVALID'].includes(normalizedCode)) return 'expired'
+  const lowerMsg = String(rawMessage || '').toLowerCase()
+  if (normalizedCode === 'NETWORK_ERROR' || lowerMsg.includes('failed to fetch') || lowerMsg.includes('network') || lowerMsg.includes('fetch failed')) return 'network'
+  if (['4011', '4012', 'TOKEN_EXPIRED', 'TOKEN_INVALID'].includes(normalizedCode) ||
+      lowerMsg.includes('jwt expired') || lowerMsg.includes('token expired') || lowerMsg.includes('hết hạn')) {
+    return 'expired'
+  }
   if (['400', 'INVALID_INPUT', 'BAD_FORMAT', 'INVALID_DATA', 'CONSTRAINT_VIOLATION', 'ILLEGAL_ARGUMENT', 'ILLEGAL_STATE'].includes(normalizedCode)) return 'invalid'
   if (['401', 'UNAUTHORIZED'].includes(normalizedCode)) return 'unauthorized'
   if (['403', 'ACCESS_FORBIDDEN', 'ACCESS_DENIED'].includes(normalizedCode)) return 'forbidden'
@@ -84,7 +88,7 @@ export function getErrorMessage(error, fallback = '') {
   if (isStructuredServerError && isSafeMessage) return rawMessage
 
   const code = error?.errorCode || error?.code || error?.status
-  const fallbackKey = fallbackKeyForCode(code)
+  const fallbackKey = fallbackKeyForCode(code, rawMessage)
   if (fallbackKey !== 'generic') return fallbackMessage(fallbackKey)
   if (isSafeMessage) return rawMessage
   return fallback || fallbackMessage('generic')
@@ -163,7 +167,31 @@ function updateAccessTokenFromResponse(response) {
   }
 }
 
-async function refreshAccessToken() {
+let sessionExpiredHandler = null
+
+export function setSessionExpiredHandler(handler) {
+  sessionExpiredHandler = handler
+}
+
+export function notifySessionExpired(message) {
+  setAccessToken(null)
+  const expiredMsg = message || fallbackMessage('expired')
+  if (typeof sessionExpiredHandler === 'function') {
+    sessionExpiredHandler(expiredMsg)
+  }
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('chatweb:session-expired', { detail: { message: expiredMsg } }))
+  }
+}
+
+let lastRefreshTime = 0
+
+export async function refreshAccessToken() {
+  const now = Date.now()
+  if (now - lastRefreshTime < 3000 && inMemoryAccessToken) {
+    return { data: inMemoryAccessToken }
+  }
+
   if (!refreshPromise) {
     const refreshOptions = withIdempotencyKey({
       method: 'POST',
@@ -176,6 +204,7 @@ async function refreshAccessToken() {
       updateAccessTokenFromResponse(response)
       const payload = await parseResponse(response)
       if (!response.ok) {
+        notifySessionExpired(payload?.message)
         throw new ApiError(payload?.message || fallbackMessage('expired'), {
           status: response.status,
           code: payload?.code,
@@ -183,6 +212,7 @@ async function refreshAccessToken() {
           fromServer: Boolean(payload?.message),
         })
       }
+      lastRefreshTime = Date.now()
       if (typeof payload?.data === 'string' && payload.data.length > 20) {
         setAccessToken(payload.data)
       }
@@ -236,13 +266,17 @@ export async function apiRequest(path, options = {}) {
     try {
       await refreshAccessToken()
       response = await sendRequest(path, preparedRequestOptions)
-    } catch {
-      // The original response below provides the most relevant request context.
+    } catch (refreshErr) {
+      if (!(refreshErr instanceof ApiError)) {
+        notifySessionExpired(refreshErr?.message)
+      }
     }
   }
 
   const payload = await parseResponse(response)
-  if (payload?.data && typeof payload.data === 'object' && payload.data.accessToken) {
+  if (typeof payload?.data === 'string' && payload.data.length > 20) {
+    setAccessToken(payload.data)
+  } else if (payload?.data && typeof payload.data === 'object' && payload.data.accessToken) {
     setAccessToken(payload.data.accessToken)
   }
 

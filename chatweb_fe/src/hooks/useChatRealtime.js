@@ -276,6 +276,9 @@ export function useChatRealtime({
 
   const handleSocketError = useCallback((error) => {
     const errorCode = String(error?.errorCode || error?.code || error?.status || '').toUpperCase()
+    if (errorCode === 'TOKEN_EXPIRED' || errorCode === 'TOKEN_INVALID' || errorCode === '401' || errorCode === '4011' || errorCode === '4012') {
+      return
+    }
     if (errorCode === 'RATE_LIMITED' || errorCode === '429') {
       removeRateLimitedMessage(error)
       showToast(getErrorMessage(error, t('socketError')), 'error')
