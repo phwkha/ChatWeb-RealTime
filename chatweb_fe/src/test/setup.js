@@ -15,6 +15,7 @@ if (typeof globalThis.BroadcastChannel === 'undefined') {
 // Mock window.scrollTo and Element.scrollIntoView
 if (typeof window !== 'undefined') {
   window.scrollTo = () => {}
+  window.Element.prototype.scrollTo = () => {}
   window.Element.prototype.scrollIntoView = () => {}
 }
 

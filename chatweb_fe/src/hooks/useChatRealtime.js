@@ -67,7 +67,7 @@ export function useChatRealtime({
     && selectedRef.current?.username === username
     && typeof document !== 'undefined'
     && document.visibilityState === 'visible'
-    && document.hasFocus()
+    && (typeof document.hasFocus === 'function' ? document.hasFocus() : true)
   ), [])
 
   const sendRealtimeReceiptImmediate = useCallback((recipient, status, sourceMessage = null, timestamp = null) => {
@@ -115,7 +115,8 @@ export function useChatRealtime({
   const markAsRead = useCallback((sender, force = false) => {
     if (!sender) return
     const currentUnread = Number(unreadCountsRef.current[sender] || 0)
-    if (!force && currentUnread <= 0 && !readAckTimersRef.current.has(sender)) return
+    if (!force && currentUnread <= 0) return
+    unreadCountsRef.current = { ...unreadCountsRef.current, [sender]: 0 }
     setUnreadCounts((cur) => ({ ...cur, [sender]: 0 }))
     if (currentUser?.username) broadcastWatermarkRead(currentUser.username, sender, new Date().toISOString())
     pendingMarkReadRef.current.add(sender)
@@ -300,7 +301,9 @@ export function useChatRealtime({
       }
       const blocked = isIncomingMessageBlocked(blockedMessageIntervals, currentUser?.username, selectedRef.current.username)
       if (!blocked && isActivelyViewingConversation(selectedRef.current.username)) {
-        markAsRead(selectedRef.current.username)
+        if (Number(unreadCountsRef.current[selectedRef.current.username] || 0) > 0) {
+          markAsRead(selectedRef.current.username)
+        }
         sendRealtimeReceipt(selectedRef.current.username, 'READ')
       }
     }
@@ -324,7 +327,9 @@ export function useChatRealtime({
     if (activeSection !== 'chat' || !selected || !username) return
     const blocked = isIncomingMessageBlocked(blockedMessageIntervals, currentUser?.username, username)
     if (!blocked) {
-      markAsRead(username, true)
+      if (Number(unreadCountsRef.current[username] || 0) > 0) {
+        markAsRead(username)
+      }
       sendRealtimeReceipt(username, 'READ')
     }
   }, [activeSection, blockedMessageIntervals, currentUser?.username, markAsRead, selectedUser, selectedUser?.username, sendRealtimeReceipt])
@@ -334,7 +339,7 @@ export function useChatRealtime({
       const selected = selectedRef.current
       if (!selected || !isActivelyViewingConversation(selected.username)) return
       if (isIncomingMessageBlocked(blockedMessageIntervals, currentUser?.username, selected.username)) return
-      if (Number(unreadCounts[selected.username] || 0) <= 0) return
+      if (Number(unreadCountsRef.current[selected.username] || unreadCounts[selected.username] || 0) <= 0) return
       markAsRead(selected.username)
       sendRealtimeReceipt(selected.username, 'READ')
     }
@@ -378,6 +383,7 @@ export function useChatRealtime({
     sendPrivateMessage,
     sendWorldMessage,
     unreadCounts,
+    unreadCountsRef,
     setUnreadCounts,
     typingUsers,
     worldMessages,

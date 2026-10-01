@@ -96,6 +96,12 @@ function ChatPage() {
       const next = new URLSearchParams(prev)
       if (section === 'chat') {
         next.delete('section')
+        const activeUsername = selectedRef.current?.username
+        if (activeUsername) {
+          next.set('user', activeUsername)
+        } else {
+          next.delete('user')
+        }
       } else {
         next.set('section', section)
         next.delete('user')
@@ -175,7 +181,7 @@ function ChatPage() {
   })
 
   const {
-    connectionState, sendPrivateMessage, sendWorldMessage, unreadCounts,
+    connectionState, sendPrivateMessage, sendWorldMessage, unreadCounts, unreadCountsRef,
     typingUsers, worldMessages, worldCursor, worldHasMore, worldNotifications,
     loadWorldHistory, sendTypingStatus, sendReactionControl, markAsRead, sendRealtimeReceipt,
   } = realtime
@@ -239,7 +245,10 @@ function ChatPage() {
     setActiveSection('chat')
     setWorldOpen(false)
     if (friend?.username) {
-      markAsRead(friend.username, true)
+      const unread = Number(unreadCountsRef?.current?.[friend.username] ?? unreadCounts[friend.username] ?? 0)
+      if (unread > 0) {
+        markAsRead(friend.username)
+      }
       sendRealtimeReceipt(friend.username, 'READ')
       messagesStateRef.current?.scrollToBottom(true)
       try {
@@ -253,7 +262,7 @@ function ChatPage() {
         return next
       }, { replace: true })
     }
-  }, [closeContextMenu, markAsRead, sendRealtimeReceipt, setSearchParams])
+  }, [closeContextMenu, markAsRead, sendRealtimeReceipt, setSearchParams, unreadCounts, unreadCountsRef])
 
   const handleNotificationClick = useCallback((notification) => {
     if (!notification) return
