@@ -2,6 +2,7 @@ import React from 'react'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
 import NotificationsSection from '../NotificationsSection.jsx'
+import { CHAT_TRANSLATIONS } from '../../../i18n/chatTranslations.js'
 
 describe('NotificationsSection Component', () => {
   const mockT = (key) => key
@@ -168,5 +169,73 @@ describe('NotificationsSection Component', () => {
     expect(screen.getByText('Bob liked your message')).toBeInTheDocument()
     expect(screen.queryByText('User is online')).toBeNull()
     expect(screen.queryByText('Read receipt status')).toBeNull()
+  })
+
+  it('renders notification content in the selected user language and updates on language switch', () => {
+    const rawNotifications = [
+      {
+        id: 10,
+        type: 'FRIEND_REQUEST',
+        content: 'Lời mời kết bạn mới',
+        isRead: false,
+        createdAt: new Date().toISOString(),
+        senderUsername: 'alice',
+        senderFirstName: 'Alice',
+      },
+      {
+        id: 11,
+        type: 'REACT_MESSAGE',
+        content: 'đã bày tỏ cảm xúc về một tin nhắn',
+        isRead: false,
+        createdAt: new Date().toISOString(),
+        senderUsername: 'bob',
+        senderFirstName: 'Bob',
+      },
+    ]
+
+    const viT = (key) => CHAT_TRANSLATIONS.vi[key] || key
+    const enT = (key) => CHAT_TRANSLATIONS.en[key] || key
+    const jaT = (key) => CHAT_TRANSLATIONS.ja[key] || key
+
+    const { rerender } = render(
+      <NotificationsSection
+        notifications={rawNotifications}
+        unreadCount={2}
+        loading={false}
+        language="vi"
+        t={viT}
+      />
+    )
+
+    expect(screen.getByText('Lời mời kết bạn mới')).toBeInTheDocument()
+    expect(screen.getByText('Đã bày tỏ cảm xúc về một tin nhắn')).toBeInTheDocument()
+
+    // Switch to English
+    rerender(
+      <NotificationsSection
+        notifications={rawNotifications}
+        unreadCount={2}
+        loading={false}
+        language="en"
+        t={enT}
+      />
+    )
+
+    expect(screen.getByText('New friend invite')).toBeInTheDocument()
+    expect(screen.getByText('Reacted to a message')).toBeInTheDocument()
+
+    // Switch to Japanese
+    rerender(
+      <NotificationsSection
+        notifications={rawNotifications}
+        unreadCount={2}
+        loading={false}
+        language="ja"
+        t={jaT}
+      />
+    )
+
+    expect(screen.getByText('新しい友達招待')).toBeInTheDocument()
+    expect(screen.getByText('メッセージにリアクションしました')).toBeInTheDocument()
   })
 })

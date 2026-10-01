@@ -87,12 +87,12 @@ Provides self-service profile updates, credential management, and address book o
 
 ---
 
-### 2.3. User Search (`/api/search`)
+### 2.3. User Search (`/api/users/search`)
 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
-| `GET` | `/api/search/users?keyword={q}` | Basic user search matching usernames, full names, or email addresses. |
-| `GET` | `/api/search/users/filter` | Multi-criteria advanced search combining user attributes and address fields. |
+| `GET` | `/api/users/search?keyword={q}` | Basic user search matching usernames, full names, or email addresses. |
+| `GET` | `/api/users/search/filter` | Multi-criteria advanced search combining user attributes and address fields. |
 
 ---
 
@@ -119,6 +119,7 @@ Provides self-service profile updates, credential management, and address book o
 | `GET` | `/api/messages/private` | Cursor-based paginated chat history (`?user2={recipient}&cursor={cursor}&size={size}`). |
 | `GET` | `/api/messages/unread-counts` | Aggregates unread message counts grouped by conversation partner. |
 | `GET` | `/api/messages/search` | Searches text content within a private conversation (`?user2={recipient}&keyword={q}`). |
+| `GET` | `/api/messages/system` | Cursor-paginated list of active system announcements (`?cursor=&size=20`). |
 | `GET` | `/api/messages/{id}` | Fetches detailed metadata for an individual message. |
 | `POST` | `/api/messages/mark-as-read` | Atomic read receipt watermark upsert (`{ "sender": "...", "conversationId": "..." }`). Updates MongoDB `$max`, evicts unread cache, and dispatches real-time Kafka event. |
 | `POST` | `/api/messages/reaction` | Adds or updates an emoji reaction on a message (`{ "messageId": "...", "reaction": "..." }`). |
@@ -127,38 +128,36 @@ Provides self-service profile updates, credential management, and address book o
 
 ---
 
-### 2.6. Cloud Media Uploads (`/api/chat`)
+### 2.6. Cloud Media Uploads (`/api/messages/upload`)
 
 Processes multipart media uploads to Cloudinary storage with strict security sanitization.
 
 | Method | Endpoint | Allowed Formats & Limits | Description |
 | :--- | :--- | :--- | :--- |
-| `POST` | `/api/chat/image` | JPEG, PNG, WEBP, GIF (Max 20MB). **SVG explicitly disallowed** to prevent Stored XSS attacks. | Uploads image and returns Cloudinary CDN URL. Supports `X-Idempotency-Key`. |
-| `POST` | `/api/chat/video` | MP4, MOV, WEBM (Max 20MB). | Uploads video. Supports `X-Idempotency-Key`. |
-| `POST` | `/api/chat/file` | Documents, PDF, archives (Max 20MB). | Uploads attachment file. Supports `X-Idempotency-Key`. |
+| `POST` | `/api/messages/upload/image` | JPEG, PNG, WEBP, GIF (Max 20MB). **SVG explicitly disallowed** to prevent Stored XSS attacks. | Uploads image and returns Cloudinary CDN URL. Supports `X-Idempotency-Key`. |
+| `POST` | `/api/messages/upload/video` | MP4, MOV, WEBM (Max 20MB). | Uploads video. Supports `X-Idempotency-Key`. |
 
 ---
 
-### 2.7. Role-Based Access Control (`/api/roles`)
+### 2.7. Role-Based Access Control (`/api/admin/roles`)
 
 Restricted to administrative personnel.
 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
-| `GET` | `/api/roles` | Lists all defined system roles (`ROLE_USER`, `ROLE_ADMIN`). |
-| `GET` | `/api/roles/permissions` | Lists all available application permissions. |
-| `POST` | `/api/roles` | Creates a new role and maps associated permissions. |
-| `PUT` | `/api/roles/{id}` | Modifies role name, description, or assigned permissions. |
-| `DELETE` | `/api/roles/{id}` | Deletes a role from the system. |
+| `GET` | `/api/admin/roles` | Lists all defined system roles (`ROLE_USER`, `ROLE_ADMIN`). |
+| `GET` | `/api/admin/roles/permissions` | Lists all available application permissions. |
+| `POST` | `/api/admin/roles` | Creates a new role and maps associated permissions. |
+| `PUT` | `/api/admin/roles/{id}` | Modifies role name, description, or assigned permissions. |
+| `DELETE` | `/api/admin/roles/{id}` | Deletes a role from the system. |
 
 ---
 
-### 2.8. System Announcements & Mailer (`/api/systems`, `/api/email`)
+### 2.8. Administrative Mailer (`/api/admin/emails`)
 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
-| `GET` | `/api/systems/message` | Cursor-paginated list of active system announcements (`?cursor=&size=20`). |
-| `POST` | `/api/email/send` | Dispatches individual email. Requires `SEND_EMAIL` permission. |
+| `POST` | `/api/admin/emails/send` | Dispatches individual email. Requires `SEND_EMAIL` permission. |
 
 ---
 

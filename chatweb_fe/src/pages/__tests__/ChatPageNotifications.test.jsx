@@ -131,7 +131,7 @@ describe('ChatPage Notification Click Navigation Integration', () => {
       if (url.includes('/api/messages/unread-counts')) {
         return Promise.resolve({ data: { unreadCounts: {} } })
       }
-      if (url.includes('/api/systems/message')) {
+      if (url.includes('/api/messages/system')) {
         return Promise.resolve({ data: { content: [], nextCursor: null, hasMore: false } })
       }
       if (url.includes('/api/messages/private?')) {
@@ -248,6 +248,26 @@ describe('ChatPage Notification Click Navigation Integration', () => {
     await waitFor(() => {
       expect(localStorage.getItem(ACTIVE_CONVERSATION_STORAGE_KEY)).toBe('bob')
       expect(screen.getAllByText('Bob Builder').length).toBeGreaterThanOrEqual(1)
+    })
+  })
+
+  it('allows switching from one friend to another friend in the chat sidebar', async () => {
+    render(
+      <MemoryRouter initialEntries={['/chat?user=bob']}>
+        <ChatPage />
+      </MemoryRouter>
+    )
+
+    await waitFor(() => {
+      expect(localStorage.getItem(ACTIVE_CONVERSATION_STORAGE_KEY)).toBe('bob')
+    })
+
+    const charlieButton = screen.getAllByRole('button').find((btn) => btn.textContent.includes('Charlie Chaplin'))
+    expect(charlieButton).toBeTruthy()
+    fireEvent.click(charlieButton)
+
+    await waitFor(() => {
+      expect(localStorage.getItem(ACTIVE_CONVERSATION_STORAGE_KEY)).toBe('charlie')
     })
   })
 

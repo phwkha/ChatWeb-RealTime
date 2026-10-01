@@ -5,9 +5,9 @@ import {
   markNotificationAsRead,
   markAllNotificationsAsRead,
 } from '../services/notificationApi.js'
-import { PERSISTED_NOTIFICATION_TYPES } from '../components/chat/chatUtils.js'
+import { PERSISTED_NOTIFICATION_TYPES, formatNotificationContent } from '../components/chat/chatUtils.js'
 
-export function useNotifications({ enabled = true, currentUser, playNotificationSound, showToast } = {}) {
+export function useNotifications({ enabled = true, activeSection, currentUser, playNotificationSound, showToast, t } = {}) {
   const [notifications, setNotifications] = useState([])
   const [unreadCount, setUnreadCount] = useState(0)
   const [nextCursor, setNextCursor] = useState(null)
@@ -20,41 +20,55 @@ export function useNotifications({ enabled = true, currentUser, playNotification
     notificationsRef.current = notifications
   }, [notifications])
 
-  const callbacksRef = useRef({ playNotificationSound, showToast })
+  const callbacksRef = useRef({ playNotificationSound, showToast, t })
   useEffect(() => {
-    callbacksRef.current = { playNotificationSound, showToast }
-  }, [playNotificationSound, showToast])
+    callbacksRef.current = { playNotificationSound, showToast, t }
+  }, [playNotificationSound, showToast, t])
 
-  const fetchInitial = useCallback(async () => {
+  const listFetchedRef = useRef(false)
+
+  const fetchUnreadCount = useCallback(async () => {
+    if (!enabled) return
+    try {
+      const count = await getUnreadNotificationCount()
+      setUnreadCount(count)
+    } catch {
+      // Ignore count fetch errors
+    }
+  }, [enabled])
+
+  const fetchInitialList = useCallback(async () => {
     if (!enabled) return
     setLoading(true)
     try {
-      const [listResult, countResult] = await Promise.allSettled([
-        getNotifications({ size: 20 }),
-        getUnreadNotificationCount(),
-      ])
-      if (listResult.status === 'fulfilled') {
-        const rawContent = listResult.value.content || []
-        const validNotifications = rawContent.filter((item) => (
-          PERSISTED_NOTIFICATION_TYPES.has(String(item?.type || '').toUpperCase())
-        ))
-        setNotifications(validNotifications)
-        setNextCursor(listResult.value.nextCursor)
-        setHasMore(listResult.value.hasMore)
-      }
-      if (countResult.status === 'fulfilled') {
-        setUnreadCount(countResult.value)
-      }
+      const listResult = await getNotifications({ size: 20 })
+      const rawContent = listResult?.content || []
+      const validNotifications = rawContent.filter((item) => (
+        PERSISTED_NOTIFICATION_TYPES.has(String(item?.type || '').toUpperCase())
+      ))
+      setNotifications(validNotifications)
+      setNextCursor(listResult?.nextCursor || null)
+      setHasMore(Boolean(listResult?.hasMore))
+      listFetchedRef.current = true
     } catch {
-      // Ignore initial notification load errors
+      // Ignore list fetch errors
     } finally {
       setLoading(false)
     }
   }, [enabled])
 
+  // Always fetch unread notification count on mount for badge
   useEffect(() => {
-    void fetchInitial()
-  }, [fetchInitial])
+    void fetchUnreadCount()
+  }, [fetchUnreadCount])
+
+  // Lazy fetch full notifications list only when in notifications section (or if section is unspecified)
+  useEffect(() => {
+    const shouldFetchList = activeSection === 'notifications' || activeSection === undefined
+    if (shouldFetchList && !listFetchedRef.current) {
+      void fetchInitialList()
+    }
+  }, [activeSection, fetchInitialList])
 
   const loadMore = useCallback(async () => {
     if (!hasMore || loadingMore || !nextCursor) return
@@ -83,9 +97,8 @@ export function useNotifications({ enabled = true, currentUser, playNotification
     setNotifications((prev) =>
       prev.map((item) => (item.id === id ? { ...item, isRead: true } : item))
     )
-    if (wasUnread) {
-      setUnreadCount((prev) => Math.max(0, prev - 1))
-    }
+    if (!wasUnread) return
+    setUnreadCount((prev) => Math.max(0, prev - 1))
 
     try {
       await markNotificationAsRead(id)
@@ -128,7 +141,11 @@ export function useNotifications({ enabled = true, currentUser, playNotification
       return null
     }
 
-    const id = socketPayload.id || rawData.id || Date.now()
+    const id = socketPayload.notificationId
+      || socketPayload.id
+      || rawData.notificationId
+      || (type !== 'REACT_MESSAGE' ? rawData.id : null)
+      || Date.now()
     const content = socketPayload.content || socketPayload.message || rawData.content || ''
 
     const newNotification = {
@@ -155,11 +172,19 @@ export function useNotifications({ enabled = true, currentUser, playNotification
       callbacksRef.current.playNotificationSound()
     }
     if (content && callbacksRef.current.showToast) {
-      callbacksRef.current.showToast(content)
+      const toastText = formatNotificationContent(newNotification, callbacksRef.current.t) || content
+      callbacksRef.current.showToast(toastText)
     }
 
     return newNotification
   }, [currentUser?.username])
+
+  const refreshNotifications = useCallback(async () => {
+    void fetchUnreadCount()
+    if (activeSection === 'notifications') {
+      void fetchInitialList()
+    }
+  }, [activeSection, fetchInitialList, fetchUnreadCount])
 
   return {
     notifications,
@@ -173,7 +198,7 @@ export function useNotifications({ enabled = true, currentUser, playNotification
     markAsRead,
     markAllAsRead,
     handleRealtimeNotification,
-    refreshNotifications: fetchInitial,
+    refreshNotifications,
   }
 }
 

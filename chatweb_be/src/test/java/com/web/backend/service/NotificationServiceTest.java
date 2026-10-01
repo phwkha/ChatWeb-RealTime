@@ -252,9 +252,17 @@ class NotificationServiceTest {
 
         when(userRepository.findByUsername("recipientUser")).thenReturn(Optional.of(testUser));
         when(userRepository.findByUsername("senderUser")).thenReturn(Optional.of(sender));
+        when(notificationRepository.save(any(NotificationEntity.class))).thenAnswer(invocation -> {
+            NotificationEntity entity = invocation.getArgument(0);
+            entity.setId(555L);
+            return entity;
+        });
 
-        notificationService.createNotification("senderUser", "recipientUser", NotificationsType.REACT_MESSAGE,
+        NotificationEntity result = notificationService.createNotification("senderUser", "recipientUser", NotificationsType.REACT_MESSAGE,
                 NotificationTargetType.MESSAGE, "msg_123", "User reacted to your message");
+
+        assertThat(result).isNotNull();
+        assertThat(result.getId()).isEqualTo(555L);
 
         ArgumentCaptor<NotificationEntity> captor = ArgumentCaptor.forClass(NotificationEntity.class);
         verify(notificationRepository).save(captor.capture());
@@ -274,9 +282,17 @@ class NotificationServiceTest {
     @Test
     void createNotification_SystemNotification_NullSenderSuccess() {
         when(userRepository.findByUsername("recipientUser")).thenReturn(Optional.of(testUser));
+        when(notificationRepository.save(any(NotificationEntity.class))).thenAnswer(invocation -> {
+            NotificationEntity entity = invocation.getArgument(0);
+            entity.setId(777L);
+            return entity;
+        });
 
-        notificationService.createNotification(null, "recipientUser", NotificationsType.STATUS_MESSAGE,
+        NotificationEntity result = notificationService.createNotification(null, "recipientUser", NotificationsType.STATUS_MESSAGE,
                 NotificationTargetType.SYSTEM, null, "System maintenance at 00:00");
+
+        assertThat(result).isNotNull();
+        assertThat(result.getId()).isEqualTo(777L);
 
         ArgumentCaptor<NotificationEntity> captor = ArgumentCaptor.forClass(NotificationEntity.class);
         verify(notificationRepository).save(captor.capture());
@@ -295,9 +311,10 @@ class NotificationServiceTest {
     void createNotification_RecipientNotFound_LogsWarningAndDoesNotSave() {
         when(userRepository.findByUsername("unknownUser")).thenReturn(Optional.empty());
 
-        notificationService.createNotification("senderUser", "unknownUser", NotificationsType.FRIEND_REQUEST,
+        NotificationEntity result = notificationService.createNotification("senderUser", "unknownUser", NotificationsType.FRIEND_REQUEST,
                 NotificationTargetType.USER, "senderUser", "Friend request");
 
+        assertThat(result).isNull();
         verify(notificationRepository, never()).save(any());
         verify(redisTemplate, never()).delete(anyString());
     }

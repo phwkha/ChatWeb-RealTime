@@ -70,6 +70,9 @@ public class UserEntity extends AbstractEntity<Long> implements UserDetails {
     @Enumerated(EnumType.STRING)
     private GenderType gender;
 
+    @Column(name = "language", length = 10)
+    private String language = "vi";
+
     @Column(name = "token_version", columnDefinition = "integer default 0")
     private Integer tokenVersion = 0;
 

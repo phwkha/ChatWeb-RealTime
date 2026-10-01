@@ -10,6 +10,7 @@ const SETTINGS_ITEMS = [
   ['addresses', 'globe', 'addressSettings'],
   ['contact', 'users', 'contactSettings'],
   ['security', 'shield', 'securitySettings'],
+  ['reports', 'flag', 'myReports'],
 ]
 
 function initials(person) {
@@ -90,7 +91,7 @@ export default function AppRail({
     <Brand className="chat-brand" />
     <nav aria-label="Chat navigation">
       <button className={`${activeSection === 'chat' ? 'is-active ' : ''}rail-badge`} type="button" title={t('conversations')} onClick={() => selectSection('chat')}><ChatIcon name="chat" />{totalUnreadMessages > 0 && <span>{totalUnreadMessages > 99 ? '99+' : totalUnreadMessages}</span>}</button>
-      <button className={`${activeSection === 'friends' ? 'is-active ' : ''}rail-badge`} type="button" title={t('friends')} onClick={() => selectSection('friends')}><ChatIcon name="users" />{friendRequestCount > 0 && <span>{friendRequestCount > 99 ? '99+' : friendRequestCount}</span>}</button>
+      <button className={`${activeSection === 'friends' ? 'is-active' : ''}`} type="button" title={t('friends')} onClick={() => selectSection('friends')}><ChatIcon name="users" /></button>
       <button className={`${activeSection === 'notifications' ? 'is-active ' : ''}rail-badge`} type="button" title={t('notifications')} onClick={() => selectSection('notifications')}>
         <ChatIcon name="bell" />
         {unreadNotificationCount > 0 && (

@@ -63,6 +63,14 @@ public class ChatConsumer {
                 conversationKey, action, sender, recipient);
         try {
             ChatMessageResponse messageResponse = messageMapper.avroToResponse(message);
+            if (messageResponse == null) {
+                return;
+            }
+            Long notificationId = message.getNotificationId();
+            if (notificationId != null) {
+                messageResponse.setNotificationId(notificationId);
+            }
+
             if (action == ActionType.CREATE) {
                 webSocketRoutingService.routeMessage(recipient, QUEUE_MESSAGES_STRING, messageResponse);
                 if (messageResponse.getMessageType() != MessageType.TYPING) {
@@ -76,6 +84,8 @@ public class ChatConsumer {
 
                 SocketNotificationResponse<ChatMessageResponse> notification = SocketNotificationResponse
                         .<ChatMessageResponse>builder()
+                        .id(notificationId)
+                        .notificationId(notificationId)
                         .type(metadata.type())
                         .relatedUsername(sender)
                         .message(Translator.tolocale(metadata.messageKey()))

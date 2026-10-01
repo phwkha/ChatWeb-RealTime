@@ -1,6 +1,6 @@
 import React from 'react'
-import { render, screen, waitFor, act } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { render, screen, waitFor, act, fireEvent } from '@testing-library/react'
+import { MemoryRouter, useSearchParams } from 'react-router-dom'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import ChatPage, { ACTIVE_CONVERSATION_STORAGE_KEY } from '../ChatPage.jsx'
 import * as apiClient from '../../services/apiClient.js'
@@ -80,7 +80,7 @@ describe('ChatPage Conversation Persistence', () => {
       if (url.includes('/api/messages/unread-counts')) {
         return Promise.resolve({ data: { unreadCounts: {} } })
       }
-      if (url.includes('/api/systems/message')) {
+      if (url.includes('/api/messages/system')) {
         return Promise.resolve({ data: { content: [], nextCursor: null, hasMore: false } })
       }
       if (url.includes('/api/messages/private?')) {
@@ -171,4 +171,160 @@ describe('ChatPage Conversation Persistence', () => {
     )
     expect(messageCalls.length).toBe(1)
   })
+
+  it('preserves friends section on reload even if localStorage has active conversation', async () => {
+    localStorage.setItem(ACTIVE_CONVERSATION_STORAGE_KEY, 'bob')
+
+    render(
+      <MemoryRouter initialEntries={['/chat?section=friends']}>
+        <ChatPage />
+      </MemoryRouter>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('region', { name: 'friends' })).toBeInTheDocument()
+    })
+
+    // Must NOT restore conversation with bob in ChatHeader
+    expect(screen.queryByText('searchMessages')).not.toBeInTheDocument()
+    // Bob should only appear once in sidebar, not in ChatHeader
+    expect(screen.getAllByText('Bob Builder')).toHaveLength(1)
+  })
+
+  it('preserves notifications section on reload even if localStorage has active conversation', async () => {
+    localStorage.setItem(ACTIVE_CONVERSATION_STORAGE_KEY, 'bob')
+
+    render(
+      <MemoryRouter initialEntries={['/chat?section=notifications']}>
+        <ChatPage />
+      </MemoryRouter>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('region', { name: 'notifications' })).toBeInTheDocument()
+    })
+
+    // Must NOT restore conversation with bob in ChatHeader
+    expect(screen.queryByText('searchMessages')).not.toBeInTheDocument()
+    // Bob should only appear once in sidebar, not in ChatHeader
+    expect(screen.getAllByText('Bob Builder')).toHaveLength(1)
+  })
+
+  it('does not eagerly fetch friend requests or notifications list on initial chat load', async () => {
+    render(
+      <MemoryRouter initialEntries={['/chat']}>
+        <ChatPage />
+      </MemoryRouter>
+    )
+
+    await waitFor(() => {
+      const calls = vi.mocked(apiClient.apiRequest).mock.calls.map(([url]) => String(url))
+      expect(calls.some((u) => u.includes('/api/friends?'))).toBe(true)
+    })
+
+    const allCalls = vi.mocked(apiClient.apiRequest).mock.calls.map(([url]) => String(url))
+    expect(allCalls.some((u) => u.includes('/api/friends/requests?'))).toBe(false)
+    expect(allCalls.some((u) => u.includes('/api/friends/sent?'))).toBe(false)
+    expect(allCalls.some((u) => u.includes('/api/friends/blocked?'))).toBe(false)
+    expect(allCalls.some((u) => u.includes('/api/notifications?'))).toBe(false)
+  })
+
+  function LocationWatcher() {
+    const [searchParams] = useSearchParams()
+    return (
+      <div style={{ display: 'none' }}>
+        <span data-testid="current-user-param">{searchParams.get('user') || ''}</span>
+        <span data-testid="current-section-param">{searchParams.get('section') || ''}</span>
+      </div>
+    )
+  }
+
+  it('restores ?user=<username> in URL when switching back to chat section while a conversation is open', async () => {
+    render(
+      <MemoryRouter initialEntries={['/chat?user=bob']}>
+        <LocationWatcher />
+        <ChatPage />
+      </MemoryRouter>
+    )
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Bob Builder').length).toBeGreaterThanOrEqual(2)
+      expect(screen.getByTestId('current-user-param').textContent).toBe('bob')
+    })
+
+    // Click Friends in rail
+    fireEvent.click(screen.getByTitle('friends'))
+    await waitFor(() => {
+      expect(screen.getByTestId('current-section-param').textContent).toBe('friends')
+      expect(screen.getByTestId('current-user-param').textContent).toBe('')
+    })
+
+    // Click Conversations in rail to return to chat
+    fireEvent.click(screen.getByTitle('conversations'))
+    await waitFor(() => {
+      expect(screen.getByTestId('current-section-param').textContent).toBe('')
+      expect(screen.getByTestId('current-user-param').textContent).toBe('bob')
+    })
+  })
+
+  it('does NOT call mark-as-read API when selecting a friend who has zero unread messages', async () => {
+    render(
+      <MemoryRouter initialEntries={['/chat']}>
+        <ChatPage />
+      </MemoryRouter>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Bob Builder')).toBeInTheDocument()
+    })
+
+    // Clear calls made during initial load
+    vi.mocked(apiClient.apiRequest).mockClear()
+
+    // Click Bob Builder (has 0 unread messages)
+    fireEvent.click(screen.getByText('Bob Builder'))
+
+    // Wait past the 250ms debounce time
+    await new Promise((r) => setTimeout(r, 300))
+
+    const markReadCalls = vi.mocked(apiClient.apiRequest).mock.calls.filter(([url]) =>
+      typeof url === 'string' && url.includes('/api/messages/mark-as-read')
+    )
+    expect(markReadCalls).toHaveLength(0)
+  })
+
+  it('calls mark-as-read API when selecting a friend who has unread messages', async () => {
+    vi.mocked(apiClient.apiRequest).mockImplementation((url) => {
+      if (url.includes('/api/friends?')) {
+        return Promise.resolve({ data: { content: [{ username: 'bob', firstName: 'Bob', lastName: 'Builder' }] } })
+      }
+      if (url.includes('/api/messages/unread-counts')) {
+        return Promise.resolve({ data: { unreadCounts: { bob: 3 } } })
+      }
+      return Promise.resolve({ data: {} })
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/chat']}>
+        <ChatPage />
+      </MemoryRouter>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Bob Builder')).toBeInTheDocument()
+    })
+
+    // Click Bob Builder (has 3 unread messages)
+    fireEvent.click(screen.getByText('Bob Builder'))
+
+    await waitFor(() => {
+      const markReadCalls = vi.mocked(apiClient.apiRequest).mock.calls.filter(([url, opts]) =>
+        typeof url === 'string' && url.includes('/api/messages/mark-as-read')
+      )
+      expect(markReadCalls.length).toBeGreaterThanOrEqual(1)
+    })
+  })
 })
+
+
+

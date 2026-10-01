@@ -113,7 +113,7 @@ export function useConversationMessages({
   const scrollToBottom = useCallback((instant = true) => {
     const stream = messageStreamRef.current
     if (!stream) return
-    if (instant) {
+    if (instant || typeof stream.scrollTo !== 'function') {
       stream.scrollTop = stream.scrollHeight
     } else {
       stream.scrollTo({ top: stream.scrollHeight, behavior: 'smooth' })
@@ -401,7 +401,11 @@ export function useConversationMessages({
 
     const isNearBottom = stream.scrollHeight - stream.scrollTop - stream.clientHeight < 250
     if (isNearBottom) {
-      stream.scrollTo({ top: stream.scrollHeight, behavior: 'smooth' })
+      if (typeof stream.scrollTo === 'function') {
+        stream.scrollTo({ top: stream.scrollHeight, behavior: 'smooth' })
+      } else {
+        stream.scrollTop = stream.scrollHeight
+      }
     }
   }, [activeMessages.length, conversationPages, loadingConversation, selectedUser?.username, selectedUserIsTyping])
 
@@ -581,7 +585,7 @@ export function useConversationMessages({
 
     const targetUser = selectedUser
     const fieldName = contentType === 'IMAGE' ? 'image' : 'video'
-    const endpoint = contentType === 'IMAGE' ? '/api/chat/image' : '/api/chat/video'
+    const endpoint = contentType === 'IMAGE' ? '/api/messages/upload/image' : '/api/messages/upload/video'
     const body = new FormData()
     body.append(fieldName, file)
     setUploadingMedia(true)

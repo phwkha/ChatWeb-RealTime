@@ -18,12 +18,12 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.web.bind.annotation.RestController;
 
-@Tag(name = "Email Controller")
+@Tag(name = "Admin Email Controller")
 @RestController
-@RequestMapping("/api/email")
+@RequestMapping("/api/admin/emails")
 @RequiredArgsConstructor
-@Slf4j(topic = "EMAIL-CONTROLLER")
-public class EmailController {
+@Slf4j(topic = "ADMIN-EMAIL-CONTROLLER")
+public class AdminEmailController {
 
     private final EmailService emailService;
 

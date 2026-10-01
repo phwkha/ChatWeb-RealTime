@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS users (
     avatar VARCHAR(255),
     birthday DATE,
     gender VARCHAR(50),
+    language VARCHAR(10) DEFAULT 'vi',
     token_version INTEGER DEFAULT 0,
     create_at TIMESTAMP WITH TIME ZONE,
     update_at TIMESTAMP WITH TIME ZONE,

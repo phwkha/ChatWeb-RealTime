@@ -74,7 +74,7 @@ class SearchUserServiceTest {
         when(userRepository.findAll(ArgumentMatchers.<Specification<UserEntity>>any(), any(Pageable.class))).thenReturn(page);
         when(userMapper.toUserSummaryResponse(activeUser)).thenReturn(mock(UserSummaryResponse.class));
 
-        PageResponse<UserSummaryResponse> res = searchUserService.advanceSearchWithSpecifications(PageRequest.of(0, 10),
+        PageResponse<UserSummaryResponse> res = searchUserService.advanceSearchWithSpecifications(null, PageRequest.of(0, 10),
                 null, null);
         assertThat(res.getTotalElements()).isEqualTo(1L);
     }
@@ -85,7 +85,7 @@ class SearchUserServiceTest {
         when(userRepository.findAll(ArgumentMatchers.<Specification<UserEntity>>any(), any(Pageable.class))).thenReturn(page);
         when(userMapper.toUserSummaryResponse(activeUser)).thenReturn(mock(UserSummaryResponse.class));
 
-        PageResponse<UserSummaryResponse> res = searchUserService.advanceSearchWithSpecifications(PageRequest.of(0, 10),
+        PageResponse<UserSummaryResponse> res = searchUserService.advanceSearchWithSpecifications(null, PageRequest.of(0, 10),
                 new String[] {}, new String[] {});
         assertThat(res.getTotalElements()).isEqualTo(1L);
     }
@@ -99,8 +99,30 @@ class SearchUserServiceTest {
         String[] userFilters = { "username:test", "age>18" };
         String[] addressFilters = { "city:hanoi" };
 
-        PageResponse<UserSummaryResponse> res = searchUserService.advanceSearchWithSpecifications(PageRequest.of(0, 10),
+        PageResponse<UserSummaryResponse> res = searchUserService.advanceSearchWithSpecifications(null, PageRequest.of(0, 10),
                 userFilters, addressFilters);
+        assertThat(res.getTotalElements()).isEqualTo(1L);
+    }
+
+    @Test
+    void testAdvanceSearchWithSpecifications_WithCurrentUser() {
+        Page<UserEntity> page = new PageImpl<>(List.of(activeUser));
+        when(userRepository.findAll(ArgumentMatchers.<Specification<UserEntity>>any(), any(Pageable.class))).thenReturn(page);
+        when(userMapper.toUserSummaryResponse(activeUser)).thenReturn(mock(UserSummaryResponse.class));
+
+        PageResponse<UserSummaryResponse> res = searchUserService.advanceSearchWithSpecifications(
+                "auth_user", PageRequest.of(0, 10), new String[] { "gender:MAN" }, new String[] { "city:hanoi" });
+        assertThat(res.getTotalElements()).isEqualTo(1L);
+    }
+
+    @Test
+    void testAdvanceSearchWithSpecifications_Anonymous() {
+        Page<UserEntity> page = new PageImpl<>(List.of(activeUser));
+        when(userRepository.findAll(ArgumentMatchers.<Specification<UserEntity>>any(), any(Pageable.class))).thenReturn(page);
+        when(userMapper.toUserSummaryResponse(activeUser)).thenReturn(mock(UserSummaryResponse.class));
+
+        PageResponse<UserSummaryResponse> res = searchUserService.advanceSearchWithSpecifications(
+                null, PageRequest.of(0, 10), null, null);
         assertThat(res.getTotalElements()).isEqualTo(1L);
     }
 }

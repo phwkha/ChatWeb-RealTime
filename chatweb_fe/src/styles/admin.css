@@ -139,7 +139,7 @@ body:has(.admin-shell), body:has(.admin-denied) { margin: 0; background: var(--a
 .admin-status--resolved i { background: var(--admin-cyan); }
 .admin-status--dismissed { background: #eef2f6; color: #68778b; }
 .admin-status--dismissed i { background: #98a4b3; }
-.admin-user-table article > button, .admin-search-result > button { padding: 7px 0; border: 0; background: transparent; color: var(--admin-accent); cursor: pointer; font-size: 8px; font-weight: 800; text-align: right; }
+.admin-user-table article > button { padding: 7px 0; border: 0; background: transparent; color: var(--admin-accent); cursor: pointer; font-size: 8px; font-weight: 800; text-align: right; }
 .admin-user-table article > button:disabled { opacity: .4; cursor: not-allowed; }
 .admin-pagination { display: flex; min-height: 54px; padding: 9px 15px; align-items: center; justify-content: flex-end; gap: 12px; background: #fbfcfe; }
 .admin-pagination button { display: inline-flex; min-height: 32px; padding: 0 9px; align-items: center; gap: 5px; border: 1px solid var(--admin-line); border-radius: 8px; background: white; color: #5e6d82; cursor: pointer; font-size: 8px; font-weight: 750; }
@@ -177,13 +177,6 @@ body:has(.admin-shell), body:has(.admin-denied) { margin: 0; background: var(--a
 .admin-permission-grid strong, .admin-permission-grid small { display: block; overflow: hidden; text-overflow: ellipsis; }
 .admin-permission-grid strong { font-size: 7px; }
 .admin-permission-grid small { margin-top: 3px; color: #8b97a8; font-size: 7px; }
-.admin-advanced-form { margin-bottom: 16px; }
-.admin-search-results { overflow: hidden; }
-.admin-search-result { display: grid; min-height: 62px; padding: 9px 16px; grid-template-columns: auto 1fr auto 75px; align-items: center; gap: 11px; border-bottom: 1px solid #edf1f5; }
-.admin-search-result > div { min-width: 0; }
-.admin-search-result strong, .admin-search-result small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.admin-search-result strong { font-size: 10px; }
-.admin-search-result small { color: #8492a5; font-size: 8px; }
 
 .admin-communication-layout { display: grid; grid-template-columns: minmax(380px, .9fr) minmax(360px, 1.1fr); gap: 16px; align-items: start; }
 .admin-email-section { width: min(820px, 100%); }

@@ -71,11 +71,14 @@ public class SearchUserServiceImpl implements SearchUserService {
 
     @Override
     @Transactional(readOnly = true)
-    public PageResponse<UserSummaryResponse> advanceSearchWithSpecifications(Pageable pageable, String[] user,
+    public PageResponse<UserSummaryResponse> advanceSearchWithSpecifications(String currentUsername, Pageable pageable,
+            String[] user,
             String[] address) {
 
         Specification<UserEntity> finalSpec = UserSearchSpecifications.isRole(ROLE_USER_STRING)
-                .and(UserSearchSpecifications.isNotStatus(UserStatus.INACTIVE));
+                .and(UserSearchSpecifications.isNotStatus(UserStatus.INACTIVE))
+                .and(UserSearchSpecifications.isNotCurrentUsername(currentUsername))
+                .and(UserSearchSpecifications.notBlockedWith(currentUsername));
 
         SearchSpecificationsBuilder userBuilder = buildSpecifications(user);
         if (!userBuilder.params.isEmpty()) {

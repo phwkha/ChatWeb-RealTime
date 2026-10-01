@@ -12,6 +12,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import org.springframework.context.ApplicationEventPublisher;
@@ -48,6 +49,7 @@ import com.web.backend.exception.custom.SystemOverloadException;
 import com.web.backend.kafka.avro.ChatMessageAvro;
 import com.web.backend.kafka.producer.ChatProducer;
 import com.web.backend.mapper.MessageMapper;
+import com.web.backend.model.postgres.NotificationEntity;
 import com.web.backend.model.mongodb.ChatMessage;
 import com.web.backend.model.mongodb.ReadReceipt;
 import com.web.backend.model.mongodb.SystemMessage;
@@ -154,11 +156,11 @@ public class MessageServiceImpl implements MessageService {
         String conversationId = generateConversationId(currentUser, otherUser);
         Pageable pageable = PageRequest.of(0, pageSize + 1, Sort.by(Sort.Direction.DESC, TIMESTAMP_STRING));
 
-        String escapedKeyword = escapeRegex(keyword.trim());
+        Pattern searchPattern = Pattern.compile(Pattern.quote(keyword.trim()), Pattern.CASE_INSENSITIVE);
         Criteria criteria = Criteria.where(FIELD_CONVERSATION_ID_STRING).is(conversationId)
                 .and(FIELD_MESSAGE_TYPE_STRING).is(MessageType.CHAT)
                 .and(FIELD_IS_DELETED_STRING).is(false)
-                .and(FIELD_CONTENT_STRING).regex(escapedKeyword, "i");
+                .and(FIELD_CONTENT_STRING).regex(searchPattern);
 
         if (cursorStr != null && !cursorStr.isEmpty()) {
             Instant cursorTime = Instant.parse(cursorStr);
@@ -223,13 +225,12 @@ public class MessageServiceImpl implements MessageService {
 
         List<UnreadCountProjection> dbResults = messageRepository.countUnreadMessagesBySender(recipientUsername);
 
-        Map<String, Long> resultMap = new HashMap<>();
-        Map<String, Object> redisMap = new HashMap<>();
-
-        for (UnreadCountProjection r : dbResults) {
-            resultMap.put(r.sender(), r.count());
-            redisMap.put(r.sender(), r.count());
-        }
+        Map<String, Long> resultMap = dbResults.stream()
+                .collect(Collectors.toMap(
+                        UnreadCountProjection::sender,
+                        UnreadCountProjection::count,
+                        (existing, replacement) -> replacement));
+        Map<String, Object> redisMap = new HashMap<>(resultMap);
 
         if (!redisMap.isEmpty()) {
             try {
@@ -405,22 +406,34 @@ public class MessageServiceImpl implements MessageService {
         putMessageIfCached(convId, msg);
 
         String messageAuthor = msg.getSender();
+        Long notificationId = null;
         if (isNewReaction && messageAuthor != null && !messageAuthor.equals(senderUsername)) {
             String content = Translator.tolocale(SYS_MSG_REACT_MESSAGE_STRING);
-            notificationService.createNotification(
+            NotificationEntity entity = notificationService.createNotification(
                     senderUsername,
                     messageAuthor,
                     NotificationsType.REACT_MESSAGE,
                     NotificationTargetType.MESSAGE,
                     msg.getId(),
                     content);
+            if (entity != null) {
+                notificationId = entity.getId();
+            }
         }
 
         ChatMessageAvro payload = messageMapper.toAvro(msg);
         payload.setActionType(ActionType.REACT.name());
+        payload.setNotificationId(notificationId);
         chatProducer.sendChatMessage(payload);
 
-        return mapToEnrichedResponse(msg);
+        ChatMessageResponse response = mapToEnrichedResponse(msg);
+        if (response == null) {
+            return null;
+        }
+        if (notificationId != null) {
+            response.setNotificationId(notificationId);
+        }
+        return response;
     }
 
     private String generateConversationId(String user1, String user2) {
@@ -477,11 +490,10 @@ public class MessageServiceImpl implements MessageService {
 
             List<Object> redisObjects = redisTemplate.opsForHash().multiGet(hashKey, messageIds);
             List<ChatMessage> messages = new ArrayList<>();
-            for (Object obj : redisObjects) {
-                if (obj != null) {
+            redisObjects.forEach(obj -> {
+                if (obj != null)
                     messages.add((ChatMessage) obj);
-                }
-            }
+            });
             return messages;
         } catch (Exception e) {
             log.warn("Failed to fetch messages from Redis cache for conv '{}'", conversationId, e);
@@ -500,13 +512,10 @@ public class MessageServiceImpl implements MessageService {
         List<ChatMessage> dbMessages = messageRepository.findByConversationId(conversationId, pageable);
         List<ChatMessage> redisMessages = fetchMessagesFromRedisCache(conversationId, 0, -1);
 
-        Map<String, ChatMessage> uniqueMessagesMap = new LinkedHashMap<>();
-        for (ChatMessage msg : redisMessages) {
-            uniqueMessagesMap.put(msg.getId(), msg);
-        }
-        for (ChatMessage msg : dbMessages) {
-            uniqueMessagesMap.putIfAbsent(msg.getId(), msg);
-        }
+        Map<String, ChatMessage> uniqueMessagesMap = new LinkedHashMap<>(
+                redisMessages.stream()
+                        .collect(Collectors.toMap(ChatMessage::getId, msg -> msg, (a, b) -> a, LinkedHashMap::new)));
+        dbMessages.forEach(msg -> uniqueMessagesMap.putIfAbsent(msg.getId(), msg));
 
         return uniqueMessagesMap.values().stream()
                 .sorted(Comparator.comparing(ChatMessage::getTimestamp).reversed())
@@ -541,6 +550,9 @@ public class MessageServiceImpl implements MessageService {
         List<ChatMessageResponse> responseList = messages.stream()
                 .map(msg -> {
                     ChatMessageResponse response = messageMapper.toResponse(msg);
+                    if (response == null) {
+                        return null;
+                    }
                     String recipient = msg.getRecipient();
                     Instant recipientReadTime = recipient != null && recipient.equals(user1) ? user1LastRead
                             : user2LastRead;
@@ -552,6 +564,7 @@ public class MessageServiceImpl implements MessageService {
                     }
                     return response;
                 })
+                .filter(Objects::nonNull)
                 .toList();
 
         return new CursorResponse<>(responseList, nextCursor, hasMore);
@@ -615,12 +628,5 @@ public class MessageServiceImpl implements MessageService {
         }
         response.setStatus(resolveCurrentStatus(message));
         return response;
-    }
-
-    private String escapeRegex(String input) {
-        if (input == null) {
-            return "";
-        }
-        return input.replaceAll("[\\\\^$.|?*+(){}\\[\\]]", "\\\\$0");
     }
 }

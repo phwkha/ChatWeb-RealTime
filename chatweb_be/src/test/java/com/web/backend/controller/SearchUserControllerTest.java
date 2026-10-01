@@ -89,7 +89,7 @@ class SearchUserControllerTest {
                 when(searchUserService.searchUsers(isNull(), eq("keyword"), eq(0), eq(10), eq("desc")))
                                 .thenReturn(pageResponse);
 
-                mockMvc.perform(get("/api/search/users")
+                mockMvc.perform(get("/api/users/search")
                                 .param("keyword", "keyword")
                                 .param("page", "0")
                                 .param("size", "10")
@@ -113,10 +113,10 @@ class SearchUserControllerTest {
                                 .content(List.of(summary))
                                 .build();
 
-                when(searchUserService.searchUsers(eq("testuser"), eq("keyword"), eq(0), eq(10), eq("desc")))
+                when(searchUserService.searchUsers("testuser", "keyword", 0, 10, "desc"))
                                 .thenReturn(pageResponse);
 
-                mockMvc.perform(get("/api/search/users")
+                mockMvc.perform(get("/api/users/search")
                                 .principal(mockAuth)
                                 .param("keyword", "keyword")
                                 .param("page", "0")
@@ -135,10 +135,10 @@ class SearchUserControllerTest {
                                 .content(List.of(detail))
                                 .build();
 
-                when(searchUserService.advanceSearchWithSpecifications(any(Pageable.class), any(), any()))
+                when(searchUserService.advanceSearchWithSpecifications(any(), any(Pageable.class), any(), any()))
                                 .thenReturn(pageResponse);
 
-                mockMvc.perform(get("/api/search/users/filter")
+                mockMvc.perform(get("/api/users/search/filter")
                                 .param("user", "name:test")
                                 .param("address", "city:hanoi"))
                                 .andExpect(status().isOk())

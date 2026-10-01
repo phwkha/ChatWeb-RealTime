@@ -3,6 +3,7 @@ import { apiRequest } from './apiClient.js'
 export const accountApi = {
   getProfile: () => apiRequest('/api/users/profile'),
   updateProfile: (body) => apiRequest('/api/users/profile', { method: 'PUT', body }),
+  updateLanguage: (language) => apiRequest('/api/users/language', { method: 'PATCH', body: { language } }),
   updateAvatar: (file) => {
     const body = new FormData()
     body.append('file', file)

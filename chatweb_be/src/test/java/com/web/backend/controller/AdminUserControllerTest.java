@@ -44,7 +44,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @ActiveProfiles("test")
-@WebMvcTest(controllers = AdminController.class, excludeAutoConfiguration = {
+@WebMvcTest(controllers = AdminUserController.class, excludeAutoConfiguration = {
                 SecurityAutoConfiguration.class,
                 SecurityFilterAutoConfiguration.class,
                 OAuth2ClientAutoConfiguration.class,
@@ -53,7 +53,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 }, excludeFilters = {
                 @ComponentScan.Filter(type = FilterType.ASSIGNABLE_TYPE, classes = JwtAuthenticationFilter.class)
 })
-class AdminControllerTest {
+class AdminUserControllerTest {
 
         @Autowired
         private MockMvc mockMvc;
@@ -141,7 +141,7 @@ class AdminControllerTest {
                                 .content(List.of(summary))
                                 .build();
 
-                when(adminService.getOnlineUsers(eq(0), eq(10))).thenReturn(pageResponse);
+                when(adminService.getOnlineUsers(0, 10)).thenReturn(pageResponse);
 
                 mockMvc.perform(get("/api/admin/users/online")
                                 .principal(mockAuth)

@@ -21,6 +21,8 @@ public interface UserService {
 
     UserDetailResponse updateUser(String username, UpdateUserRequest request);
 
+    void updateLanguage(String username, String language);
+
     String updateAvatar(UserEntity user, MultipartFile avatarFile);
 
     void initiateEmailChange(UserEntity user, String newEmail, String currentPassword);

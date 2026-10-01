@@ -22,22 +22,16 @@ export const adminApi = {
   getAddress: (username, id) => apiRequest(`/api/admin/users/${encodeURIComponent(username)}/addresses/${encodeURIComponent(id)}`),
   updateAddress: (username, id, body) => apiRequest(`/api/admin/users/${encodeURIComponent(username)}/addresses/${encodeURIComponent(id)}`, { method: 'PUT', body }),
   deleteAddress: (username, id) => apiRequest(`/api/admin/users/${encodeURIComponent(username)}/addresses/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-  getRoles: () => apiRequest('/api/roles'),
-  getPermissions: () => apiRequest('/api/roles/permissions'),
-  createRole: (body) => apiRequest('/api/roles', { method: 'POST', body }),
-  updateRole: (id, body) => apiRequest(`/api/roles/${encodeURIComponent(id)}`, { method: 'PUT', body }),
-  deleteRole: (id) => apiRequest(`/api/roles/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-  sendEmail: (body) => apiRequest('/api/email/send', { method: 'POST', body }),
+  getRoles: () => apiRequest('/api/admin/roles'),
+  getPermissions: () => apiRequest('/api/admin/roles/permissions'),
+  createRole: (body) => apiRequest('/api/admin/roles', { method: 'POST', body }),
+  updateRole: (id, body) => apiRequest(`/api/admin/roles/${encodeURIComponent(id)}`, { method: 'PUT', body }),
+  deleteRole: (id) => apiRequest(`/api/admin/roles/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  sendEmail: (body) => apiRequest('/api/admin/emails/send', { method: 'POST', body }),
   getSystemMessages: (cursor = null, size = 20) => {
     const query = new URLSearchParams({ size: String(size) })
     if (cursor) query.set('cursor', cursor)
-    return apiRequest(`/api/systems/message?${query}`)
-  },
-  advancedSearch: ({ user = [], address = [], page = 0, size = 20 } = {}) => {
-    const query = new URLSearchParams({ page: String(page), size: String(size) })
-    user.filter(Boolean).forEach((item) => query.append('user', item))
-    address.filter(Boolean).forEach((item) => query.append('address', item))
-    return apiRequest(`/api/search/users/filter?${query}`)
+    return apiRequest(`/api/messages/system?${query}`)
   },
   getReports: (filters = {}) => apiRequest(`/api/admin/reports?${queryString(filters)}`),
   getReportStatistics: () => apiRequest('/api/admin/reports/statistics'),
