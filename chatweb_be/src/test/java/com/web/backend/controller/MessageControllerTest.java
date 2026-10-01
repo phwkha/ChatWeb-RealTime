@@ -108,8 +108,8 @@ class MessageControllerTest {
                 CursorResponse<ChatMessageResponse> cursorResponse = new CursorResponse<>(List.of(chatResponse),
                                 "nextCursor123", true);
 
-                when(messageService.findPrivateMessageWithCursor(eq("testuser"), eq("otheruser"), eq("cursor123"),
-                                eq(20)))
+                when(messageService.findPrivateMessageWithCursor("testuser", "otheruser", "cursor123",
+                                20))
                                 .thenReturn(cursorResponse);
 
                 mockMvc.perform(get("/api/messages/private")
@@ -183,8 +183,8 @@ class MessageControllerTest {
                 CursorResponse<ChatMessageResponse> cursorResponse = new CursorResponse<>(List.of(chatResponse),
                                 "nextCursor123", true);
 
-                when(messageService.searchMessages(eq("testuser"), eq("otheruser"), eq("Hello"), eq("cursor123"),
-                                eq(20)))
+                when(messageService.searchMessages("testuser", "otheruser", "Hello", "cursor123",
+                                20))
                                 .thenReturn(cursorResponse);
 
                 mockMvc.perform(get("/api/messages/search")
@@ -209,7 +209,7 @@ class MessageControllerTest {
                 CursorResponse<MessageSystemResponse> cursorResponse = new CursorResponse<>(List.of(msg),
                                 "nextCursor123", true);
 
-                when(messageService.findSystemMessageWithCursor(eq("cursor123"), eq(20)))
+                when(messageService.findSystemMessageWithCursor("cursor123", 20))
                                 .thenReturn(cursorResponse);
 
                 mockMvc.perform(get("/api/messages/system")

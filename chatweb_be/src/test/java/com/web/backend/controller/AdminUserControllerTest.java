@@ -141,7 +141,7 @@ class AdminUserControllerTest {
                                 .content(List.of(summary))
                                 .build();
 
-                when(adminService.getOnlineUsers(eq(0), eq(10))).thenReturn(pageResponse);
+                when(adminService.getOnlineUsers(0, 10)).thenReturn(pageResponse);
 
                 mockMvc.perform(get("/api/admin/users/online")
                                 .principal(mockAuth)

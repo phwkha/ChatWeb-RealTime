@@ -178,7 +178,7 @@ class UserControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
 
-        verify(userService).changePassword(eq(mockUser), eq("oldPass123!"), eq("newPass123!"));
+        verify(userService).changePassword(mockUser, "oldPass123!", "newPass123!");
     }
 
     @Test

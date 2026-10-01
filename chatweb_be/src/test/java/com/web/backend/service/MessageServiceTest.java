@@ -588,7 +588,7 @@ class MessageServiceTest {
         when(hashOperations.entries("unread_counts:recipient")).thenReturn(cachedCounts);
 
         UnreadCountsResponse response = messageService.getUnreadMessageCounts("recipient");
-        assertThat(response.getUnreadCounts().get("senderA")).isEqualTo(5L);
+        assertThat(response.getUnreadCounts()).containsEntry("senderA", 5L);
         verify(messageRepository, never()).countUnreadMessagesBySender(anyString());
     }
 
@@ -604,7 +604,7 @@ class MessageServiceTest {
         when(messageRepository.countUnreadMessagesBySender("recipient")).thenReturn(List.of(proj));
 
         UnreadCountsResponse response = messageService.getUnreadMessageCounts("recipient");
-        assertThat(response.getUnreadCounts().get("senderB")).isEqualTo(3L);
+        assertThat(response.getUnreadCounts()).containsEntry("senderB", 3L);
         verify(hashOperations).putAll(eq("unread_counts:recipient"), anyMap());
     }
 

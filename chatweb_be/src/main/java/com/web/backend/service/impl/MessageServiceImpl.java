@@ -12,6 +12,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import org.springframework.context.ApplicationEventPublisher;
@@ -155,11 +156,11 @@ public class MessageServiceImpl implements MessageService {
         String conversationId = generateConversationId(currentUser, otherUser);
         Pageable pageable = PageRequest.of(0, pageSize + 1, Sort.by(Sort.Direction.DESC, TIMESTAMP_STRING));
 
-        String escapedKeyword = escapeRegex(keyword.trim());
+        Pattern searchPattern = Pattern.compile(Pattern.quote(keyword.trim()), Pattern.CASE_INSENSITIVE);
         Criteria criteria = Criteria.where(FIELD_CONVERSATION_ID_STRING).is(conversationId)
                 .and(FIELD_MESSAGE_TYPE_STRING).is(MessageType.CHAT)
                 .and(FIELD_IS_DELETED_STRING).is(false)
-                .and(FIELD_CONTENT_STRING).regex(escapedKeyword, "i");
+                .and(FIELD_CONTENT_STRING).regex(searchPattern);
 
         if (cursorStr != null && !cursorStr.isEmpty()) {
             Instant cursorTime = Instant.parse(cursorStr);
@@ -627,12 +628,5 @@ public class MessageServiceImpl implements MessageService {
         }
         response.setStatus(resolveCurrentStatus(message));
         return response;
-    }
-
-    private String escapeRegex(String input) {
-        if (input == null) {
-            return "";
-        }
-        return input.replaceAll("[\\\\^$.|?*+(){}\\[\\]]", "\\\\$0");
     }
 }

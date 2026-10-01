@@ -55,7 +55,8 @@ public class FriendConsumer {
         Long notificationId = null;
 
         if (type == NotificationsType.FRIEND_REQUEST || type == NotificationsType.FRIEND_ACCEPTED) {
-            String content = buildResponse(type, friendEvent.senderDisplayName()).getMessage();
+            SocketNotificationResponse<?> resp = buildResponse(type, friendEvent.senderDisplayName());
+            String content = (resp != null) ? resp.getMessage() : "";
             NotificationEntity saved = notificationService.createNotification(
                     friendEvent.senderUsername(),
                     friendEvent.recipientUsername(),

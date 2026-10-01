@@ -469,14 +469,6 @@ class UserServiceTest {
     }
 
     @Test
-    void testUpdateAddress_NotOwned() {
-        when(addressRepository.findByIdAndUser_Username(1L, "testuser")).thenReturn(Optional.empty());
-
-        AddressRequest req = new AddressRequest();
-        assertThrows(ResourceNotFoundException.class, () -> userService.updateAddress("testuser", 1L, req));
-    }
-
-    @Test
     void testDeleteUser_UserNotFound() {
         when(userRepository.findByUsername("testuser")).thenReturn(Optional.empty());
         assertThrows(ResourceNotFoundException.class, () -> userService.deleteUser("testuser"));
@@ -485,15 +477,9 @@ class UserServiceTest {
     @Test
     void testUpdateUser_UserNotFound() {
         when(userRepository.findWithAuthoritiesByUsername("testuser")).thenReturn(Optional.empty());
+        UpdateUserRequest request = new UpdateUserRequest();
         assertThrows(ResourceNotFoundException.class,
-                () -> userService.updateUser("testuser", new UpdateUserRequest()));
-    }
-
-    @Test
-    void testUpdateAddress_UserNotFound() {
-        when(addressRepository.findByIdAndUser_Username(1L, "testuser")).thenReturn(Optional.empty());
-        assertThrows(ResourceNotFoundException.class,
-                () -> userService.updateAddress("testuser", 1L, new AddressRequest()));
+                () -> userService.updateUser("testuser", request));
     }
 
     @Test

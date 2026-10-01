@@ -113,7 +113,7 @@ class SearchUserControllerTest {
                                 .content(List.of(summary))
                                 .build();
 
-                when(searchUserService.searchUsers(eq("testuser"), eq("keyword"), eq(0), eq(10), eq("desc")))
+                when(searchUserService.searchUsers("testuser", "keyword", 0, 10, "desc"))
                                 .thenReturn(pageResponse);
 
                 mockMvc.perform(get("/api/users/search")
