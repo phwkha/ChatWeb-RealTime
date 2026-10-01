@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { apiRequest, setAccessToken } from '../services/apiClient.js'
+import { apiRequest, setAccessToken, setSessionExpiredHandler } from '../services/apiClient.js'
 import { AuthContext } from './auth-context.js'
 
 function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [isInitializing, setIsInitializing] = useState(true)
+  const [sessionExpiredMessage, setSessionExpiredMessage] = useState('')
 
   const refreshUser = useCallback(async () => {
     try {
@@ -29,12 +30,32 @@ function AuthProvider({ children }) {
     refreshUser().finally(() => setIsInitializing(false))
   }, [refreshUser])
 
+  useEffect(() => {
+    const handleSessionExpired = (event) => {
+      const msg = event?.detail?.message || 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.'
+      setSessionExpiredMessage(msg)
+      setAccessToken(null)
+      setUser(null)
+    }
+    if (typeof setSessionExpiredHandler === 'function') {
+      setSessionExpiredHandler(handleSessionExpired)
+    }
+    window.addEventListener('chatweb:session-expired', handleSessionExpired)
+    return () => {
+      if (typeof setSessionExpiredHandler === 'function') {
+        setSessionExpiredHandler(null)
+      }
+      window.removeEventListener('chatweb:session-expired', handleSessionExpired)
+    }
+  }, [])
+
   const login = useCallback(async (credentials) => {
     const response = await apiRequest('/api/auth/login', {
       method: 'POST',
       body: credentials,
       skipRefresh: true,
     })
+    setSessionExpiredMessage('')
     setUser(response?.data || null)
     return response
   }, [])
@@ -81,10 +102,16 @@ function AuthProvider({ children }) {
     return response
   }, [])
 
+  const clearSessionExpiredMessage = useCallback(() => {
+    setSessionExpiredMessage('')
+  }, [])
+
   const value = useMemo(() => ({
     user,
     isAuthenticated: Boolean(user),
     isInitializing,
+    sessionExpiredMessage,
+    clearSessionExpiredMessage,
     login,
     logout,
     logoutEverywhere,
@@ -93,7 +120,7 @@ function AuthProvider({ children }) {
     register,
     resendOtp,
     verifyAccount,
-  }), [deleteAccount, isInitializing, login, logout, logoutEverywhere, refreshUser, register, resendOtp, user, verifyAccount])
+  }), [clearSessionExpiredMessage, deleteAccount, isInitializing, login, logout, logoutEverywhere, refreshUser, register, resendOtp, sessionExpiredMessage, user, verifyAccount])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

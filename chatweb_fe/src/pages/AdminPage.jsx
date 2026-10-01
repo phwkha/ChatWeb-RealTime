@@ -187,6 +187,10 @@ function AdminPage() {
   }, [])
 
   const handleSocketError = useCallback((error) => {
+    const errorCode = String(error?.errorCode || error?.code || error?.status || '').toUpperCase()
+    if (errorCode === 'TOKEN_EXPIRED' || errorCode === 'TOKEN_INVALID' || errorCode === '401' || errorCode === '4011' || errorCode === '4012') {
+      return
+    }
     notify(getErrorMessage(error, 'Kết nối thông báo realtime gặp sự cố.'), 'error')
   }, [notify])
 

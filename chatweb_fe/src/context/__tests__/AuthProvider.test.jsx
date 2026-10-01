@@ -8,6 +8,8 @@ vi.mock('../../services/apiClient.js', () => ({
   apiRequest: vi.fn(),
   setAccessToken: vi.fn(),
   getAccessToken: vi.fn(() => 'mock-token'),
+  setSessionExpiredHandler: vi.fn(),
+  notifySessionExpired: vi.fn(),
 }))
 
 function TestConsumer() {

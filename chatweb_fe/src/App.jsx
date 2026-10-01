@@ -31,7 +31,7 @@ function PublicOnlyRoute({ children }) {
 }
 
 function ProtectedRoute({ children }) {
-  const { user, isInitializing } = useAuth()
+  const { user, isInitializing, sessionExpiredMessage } = useAuth()
 
   if (isInitializing) {
     return (
@@ -42,7 +42,8 @@ function ProtectedRoute({ children }) {
     )
   }
 
-  return user ? children : <Navigate to="/login" replace state={{ error: 'Vui lòng đăng nhập để mở trò chuyện.' }} />
+  const redirectError = sessionExpiredMessage || 'Vui lòng đăng nhập để mở trò chuyện.'
+  return user ? children : <Navigate to="/login" replace state={{ error: redirectError }} />
 }
 
 function App() {
