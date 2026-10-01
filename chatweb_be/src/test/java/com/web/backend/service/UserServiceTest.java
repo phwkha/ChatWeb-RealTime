@@ -502,4 +502,22 @@ class UserServiceTest {
         assertThrows(AccessForbiddenException.class, () -> userService.changePassword(activeUser, "old", "new"));
     }
 
+    @Test
+    void testUpdateLanguage_Success() {
+        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(activeUser));
+        when(userRepository.save(any(UserEntity.class))).thenAnswer(i -> i.getArgument(0));
+
+        userService.updateLanguage("testuser", "en");
+
+        assertEquals("en", activeUser.getLanguage());
+        verify(userRepository).save(activeUser);
+    }
+
+    @Test
+    void testUpdateLanguage_UserNotFound() {
+        when(userRepository.findByUsername("unknown")).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () -> userService.updateLanguage("unknown", "en"));
+        verify(userRepository, never()).save(any());
+    }
 }

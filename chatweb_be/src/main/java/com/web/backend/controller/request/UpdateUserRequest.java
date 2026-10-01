@@ -15,4 +15,7 @@ public class UpdateUserRequest {
     private String phone;
     private LocalDate birthday;
     private GenderType gender;
+
+    @Pattern(regexp = "^(vi|en|ja)$", message = "{valid.language_invalid}")
+    private String language;
 }

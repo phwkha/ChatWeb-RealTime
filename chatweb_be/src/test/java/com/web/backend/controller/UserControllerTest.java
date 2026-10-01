@@ -342,4 +342,39 @@ class UserControllerTest {
 
         verify(userService).resendPhoneChangeOtp(mockUser);
     }
+
+    @Test
+    void testUpdateLanguage_Success() throws Exception {
+        UpdateLanguageRequest request = new UpdateLanguageRequest("en");
+
+        mockMvc.perform(patch("/api/users/language")
+                .principal(mockAuth)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk());
+
+        verify(userService).updateLanguage("testuser", "en");
+    }
+
+    @Test
+    void testUpdateLanguage_InvalidLanguage() throws Exception {
+        UpdateLanguageRequest request = new UpdateLanguageRequest("invalid_lang");
+
+        mockMvc.perform(patch("/api/users/language")
+                .principal(mockAuth)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void testUpdateLanguage_BlankLanguage() throws Exception {
+        UpdateLanguageRequest request = new UpdateLanguageRequest("");
+
+        mockMvc.perform(patch("/api/users/language")
+                .principal(mockAuth)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
 }

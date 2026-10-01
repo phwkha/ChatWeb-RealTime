@@ -43,6 +43,7 @@ public class UserController {
         private static final String SUCCESS_USER_OTP_PHONE_SENT_STRING = "success.user.otp_phone_sent";
         private static final String SUCCESS_USER_PHONE_UPDATED_STRING = "success.user.phone_updated";
         private static final String SUCCESS_USER_OTP_PHONE_RESENT_STRING = "success.user.otp_phone_resent";
+        private static final String SUCCESS_USER_UPDATE_LANGUAGE_STRING = "success.user.update_language";
 
         @Operation(summary = "Get current user", description = "API endpoint for get current user")
         @GetMapping("/me")
@@ -77,6 +78,22 @@ public class UserController {
                 UserDetailResponse updatedUser = userService.updateUser(username, updateUserRequest);
                 return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(),
                                 Translator.tolocale(SUCCESS_USER_UPDATE_PROFILE_STRING), updatedUser));
+        }
+
+        @Operation(summary = "Update language", description = "API endpoint for update user preferred language")
+        @PatchMapping("/language")
+        public ResponseEntity<ApiResponse<Void>> updateLanguage(
+                        @RequestBody @Valid UpdateLanguageRequest request,
+                        Authentication authentication) {
+
+                UserEntity userEntityPrincipal = (UserEntity) authentication.getPrincipal();
+                String username = userEntityPrincipal.getUsername();
+
+                log.debug("User '{}' updating language to '{}'", username, request.getLanguage());
+
+                userService.updateLanguage(username, request.getLanguage());
+                return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(),
+                                Translator.tolocale(SUCCESS_USER_UPDATE_LANGUAGE_STRING), null));
         }
 
         @Operation(summary = "Update avatar", description = "API endpoint for update avatar")

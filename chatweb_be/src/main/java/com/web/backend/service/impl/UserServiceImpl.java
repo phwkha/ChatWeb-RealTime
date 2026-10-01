@@ -145,6 +145,18 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    @Transactional
+    @CacheEvict(value = USER_DETAILS_STRING, key = USERNAME_STRING)
+    public void updateLanguage(String username, String language) {
+        UserEntity userEntity = userRepository.findByUsername(username)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        Translator.tolocale(ERROR_USER_NOT_FOUND_WITH_STRING, username)));
+
+        userEntity.setLanguage(language);
+        userRepository.save(userEntity);
+    }
+
+    @Override
     @CacheEvict(value = USER_DETAILS_STRING, key = USER_USERNAME_STRING)
     @Transactional
     public String updateAvatar(UserEntity user, MultipartFile avatarFile) {

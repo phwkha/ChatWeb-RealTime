@@ -41,6 +41,8 @@ public class UserResponse {
 
     private GenderType gender;
 
+    private String language;
+
     private Instant createAt;
 
     private Instant updateAt;
