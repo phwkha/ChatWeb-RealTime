@@ -4,6 +4,7 @@ import Brand from '../components/Brand.jsx'
 import ChatIcon from '../components/chat/ChatIcon.jsx'
 import { useAuth } from '../context/auth-context.js'
 import { useLanguage } from '../context/language-context.js'
+import { useConfirm } from '../context/ConfirmDialogContext.jsx'
 import { useChatSocket } from '../hooks/useChatSocket.js'
 import { adminApi } from '../services/adminApi.js'
 import { getErrorMessage } from '../services/apiClient.js'
@@ -83,7 +84,8 @@ function Pagination({ page, onChange }) {
 
 function AdminPage() {
   const { user, logout } = useAuth()
-  const { language } = useLanguage()
+  const { language, t } = useLanguage()
+  const confirm = useConfirm()
   const navigate = useNavigate()
   const [tab, setTab] = useState('dashboard')
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
@@ -297,7 +299,14 @@ function AdminPage() {
   }
 
   const deleteReport = async (reportId) => {
-    if (!window.confirm('Bạn có chắc chắn muốn xóa bản ghi báo cáo này?')) return
+    const ok = await confirm({
+      title: 'Xóa báo cáo',
+      message: 'Bạn có chắc chắn muốn xóa bản ghi báo cáo này?',
+      confirmText: 'Xóa',
+      cancelText: 'Hủy',
+      tone: 'danger',
+    })
+    if (!ok) return
     const response = await run('report-delete', () => adminApi.deleteReport(reportId), 'Đã xóa báo cáo.')
     if (response) {
       setReportDrawerOpen(false)
@@ -346,7 +355,18 @@ function AdminPage() {
     if (!selectedUser) return
     const username = selectedUser.username
     const operations = { lock: () => adminApi.lockUser(username), unlock: () => adminApi.unlockUser(username), avatar: () => adminApi.deleteAvatar(username), delete: () => adminApi.deleteUser(username) }
-    if (['delete', 'avatar'].includes(action) && !window.confirm(action === 'delete' ? `Xóa tài khoản @${username}?` : `Xóa avatar của @${username}?`)) return
+    if (['delete', 'avatar'].includes(action)) {
+      const isDelete = action === 'delete'
+      const ok = await confirm({
+        title: isDelete ? 'Xóa người dùng' : 'Xóa ảnh đại diện',
+        message: isDelete ? `Bạn có chắc chắn muốn xóa tài khoản @${username}?` : `Bạn có chắc chắn muốn xóa ảnh đại diện của @${username}?`,
+        detail: `@${username}`,
+        confirmText: 'Xóa',
+        cancelText: 'Hủy',
+        tone: 'danger',
+      })
+      if (!ok) return
+    }
     const response = await run(`user-${action}`, operations[action], 'Thao tác thành công.')
     if (!response) return
     if (action === 'delete') closeUserEditor(); else await openUser(username)
@@ -355,7 +375,20 @@ function AdminPage() {
 
   const beginAddressEdit = async (id) => { if (!selectedUser) return; const response = await run('address-detail', () => adminApi.getAddress(selectedUser.username, id)); if (response?.data) setEditingAddress(response.data) }
   const saveAddress = async (event) => { event.preventDefault(); if (!selectedUser || !editingAddress) return; const response = await run('address-save', () => adminApi.updateAddress(selectedUser.username, editingAddress.id, addressPayload(editingAddress)), 'Đã cập nhật địa chỉ.'); if (response) await openUser(selectedUser.username) }
-  const deleteAddress = async (id) => { if (!selectedUser || !window.confirm('Xóa địa chỉ của người dùng này?')) return; const response = await run('address-delete', () => adminApi.deleteAddress(selectedUser.username, id), 'Đã xóa địa chỉ.'); if (response) await openUser(selectedUser.username) }
+  const deleteAddress = async (id) => {
+    if (!selectedUser) return
+    const ok = await confirm({
+      title: 'Xóa địa chỉ',
+      message: 'Xóa địa chỉ của người dùng này?',
+      detail: `@${selectedUser.username}`,
+      confirmText: 'Xóa',
+      cancelText: 'Hủy',
+      tone: 'danger',
+    })
+    if (!ok) return
+    const response = await run('address-delete', () => adminApi.deleteAddress(selectedUser.username, id), 'Đã xóa địa chỉ.')
+    if (response) await openUser(selectedUser.username)
+  }
 
   const saveRole = async (event) => {
     event.preventDefault(); const body = { ...roleForm, permissionIds: roleForm.permissionIds.map(Number) }
@@ -363,7 +396,18 @@ function AdminPage() {
     if (response) { setRoleForm(EMPTY_ROLE); setEditingRoleId(null); await loadRoles() }
   }
   const editRole = (role) => { setEditingRoleId(role.id); setRoleForm({ name: role.name, description: role.description || '', permissionIds: (role.permissions || []).map((permission) => permission.id) }) }
-  const deleteRole = async (id) => { if (!window.confirm('Xóa role này?')) return; const response = await run('role-delete', () => adminApi.deleteRole(id), 'Đã xóa role.'); if (response) await loadRoles() }
+  const deleteRole = async (id) => {
+    const ok = await confirm({
+      title: 'Xóa vai trò',
+      message: 'Bạn có chắc chắn muốn xóa role này?',
+      confirmText: 'Xóa',
+      cancelText: 'Hủy',
+      tone: 'danger',
+    })
+    if (!ok) return
+    const response = await run('role-delete', () => adminApi.deleteRole(id), 'Đã xóa role.')
+    if (response) await loadRoles()
+  }
 
   const sendEmail = async (event) => { event.preventDefault(); const response = await run('email-send', () => adminApi.sendEmail(emailForm), 'Email đã được đưa vào hàng đợi gửi.'); if (response) setEmailForm(EMPTY_EMAIL) }
   const sendAnnouncement = (event) => { event.preventDefault(); const content = announcementForm.content.trim(); if (!content) return; const survivalTime = announcementForm.survivalTime ? Number(announcementForm.survivalTime) : null; if (sendWorldMessage({ content, survivalTime })) { setAnnouncementForm(EMPTY_ANNOUNCEMENT); notify('Đã phát thông báo toàn hệ thống.') } else notify('Kết nối realtime chưa sẵn sàng. Vui lòng thử lại.', 'error') }

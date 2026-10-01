@@ -24,6 +24,12 @@ vi.mock('../../context/language-context.js', () => ({
   useLanguage: vi.fn(),
 }))
 
+const mockConfirm = vi.fn().mockResolvedValue(true)
+vi.mock('../../context/ConfirmDialogContext.jsx', () => ({
+  useConfirm: () => mockConfirm,
+  ConfirmDialogProvider: ({ children }) => children,
+}))
+
 describe('SettingsPage Reports Tab', () => {
   const mockUser = { username: 'testuser', firstName: 'Test', lastName: 'User', role: 'USER' }
   const mockT = (key) => key
@@ -67,6 +73,7 @@ describe('SettingsPage Reports Tab', () => {
 
   beforeEach(() => {
     vi.restoreAllMocks()
+    mockConfirm.mockReset().mockResolvedValue(true)
     vi.mocked(authContext.useAuth).mockReturnValue({
       user: mockUser,
       refreshUser: vi.fn(),
@@ -152,7 +159,7 @@ describe('SettingsPage Reports Tab', () => {
       message: 'reportCancelledSuccess',
     })
 
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    mockConfirm.mockResolvedValueOnce(true)
 
     render(
       <MemoryRouter initialEntries={['/settings?tab=reports']}>
@@ -169,7 +176,7 @@ describe('SettingsPage Reports Tab', () => {
 
     fireEvent.click(cancelButtons[0])
 
-    expect(confirmSpy).toHaveBeenCalled()
+    expect(mockConfirm).toHaveBeenCalled()
     await waitFor(() => {
       expect(cancelReportSpy).toHaveBeenCalledWith(101)
     })
@@ -177,14 +184,12 @@ describe('SettingsPage Reports Tab', () => {
     await waitFor(() => {
       expect(getMyReportsSpy).toHaveBeenCalledTimes(2)
     })
-
-    confirmSpy.mockRestore()
   })
 
   it('does not cancel if user declines confirmation', async () => {
     vi.spyOn(reportApi, 'getMyReports').mockResolvedValue({ data: mockReportsData })
     const cancelReportSpy = vi.spyOn(reportApi, 'cancelReport')
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    mockConfirm.mockResolvedValueOnce(false)
 
     render(
       <MemoryRouter initialEntries={['/settings?tab=reports']}>
@@ -199,10 +204,8 @@ describe('SettingsPage Reports Tab', () => {
     const cancelButtons = screen.getAllByRole('button', { name: 'cancelReport' })
     fireEvent.click(cancelButtons[0])
 
-    expect(confirmSpy).toHaveBeenCalled()
+    expect(mockConfirm).toHaveBeenCalled()
     expect(cancelReportSpy).not.toHaveBeenCalled()
-
-    confirmSpy.mockRestore()
   })
 
   it('does not allow cancel action for RESOLVED or DISMISSED reports', async () => {
@@ -233,7 +236,7 @@ describe('SettingsPage Reports Tab', () => {
   it('handles cancellation error gracefully by displaying notification', async () => {
     vi.spyOn(reportApi, 'getMyReports').mockResolvedValue({ data: mockReportsData })
     vi.spyOn(reportApi, 'cancelReport').mockRejectedValue(new Error('Network error'))
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    mockConfirm.mockResolvedValueOnce(true)
 
     render(
       <MemoryRouter initialEntries={['/settings?tab=reports']}>
@@ -252,8 +255,6 @@ describe('SettingsPage Reports Tab', () => {
       expect(screen.getByRole('status')).toBeInTheDocument()
       expect(cancelButtons[0]).not.toBeDisabled()
     })
-
-    confirmSpy.mockRestore()
   })
 
   it('renders pagination controls and navigates between pages', async () => {
@@ -341,7 +342,7 @@ describe('SettingsPage Reports Tab', () => {
     }
     const getMyReportsSpy = vi.spyOn(reportApi, 'getMyReports').mockResolvedValue({ data: page1Data })
     vi.spyOn(reportApi, 'cancelReport').mockResolvedValue({ code: 200, message: 'Cancelled' })
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    mockConfirm.mockResolvedValueOnce(true)
 
     render(
       <MemoryRouter initialEntries={['/settings?tab=reports']}>
@@ -360,8 +361,6 @@ describe('SettingsPage Reports Tab', () => {
     await waitFor(() => {
       expect(getMyReportsSpy).toHaveBeenLastCalledWith(0, 10, 'desc')
     })
-
-    confirmSpy.mockRestore()
   })
 
   it('displays error state with retry button when getMyReports fails, and recovers on retry', async () => {
