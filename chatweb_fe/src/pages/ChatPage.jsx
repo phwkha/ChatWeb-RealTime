@@ -184,14 +184,14 @@ function ChatPage() {
   const {
     connectionState, sendPrivateMessage, sendWorldMessage, unreadCounts, unreadCountsRef,
     typingUsers, worldMessages, worldCursor, worldHasMore, worldNotifications,
-    loadWorldHistory, sendTypingStatus, sendReactionControl, markAsRead, sendRealtimeReceipt,
+    loadWorldHistory, sendTypingStatus, markAsRead,
   } = realtime
 
   const selectedUserIsTyping = Boolean(typingUsers[selectedUsername])
 
   const messagesState = useConversationMessages({
     user: currentUser, selectedUser, activeSection, connectionState, blockedMessageIntervals,
-    sendPrivateMessage, sendTypingStatus, sendReactionControl, showToast, t,
+    sendPrivateMessage, sendTypingStatus, showToast, t,
     selectedUserIsTyping,
   })
 
@@ -250,7 +250,6 @@ function ChatPage() {
       if (unread > 0) {
         markAsRead(friend.username)
       }
-      sendRealtimeReceipt(friend.username, 'READ')
       messagesStateRef.current?.scrollToBottom(true)
       try {
         localStorage.setItem(ACTIVE_CONVERSATION_STORAGE_KEY, friend.username)
@@ -263,7 +262,7 @@ function ChatPage() {
         return next
       }, { replace: true })
     }
-  }, [closeContextMenu, markAsRead, sendRealtimeReceipt, setSearchParams, unreadCounts, unreadCountsRef])
+  }, [closeContextMenu, markAsRead, setSearchParams, unreadCounts, unreadCountsRef])
 
   const handleNotificationClick = useCallback((notification) => {
     if (!notification) return

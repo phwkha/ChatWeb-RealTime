@@ -2,8 +2,6 @@ export const FRIEND_EVENT_TYPES = new Set([
   'FRIEND_REQUEST', 'FRIEND_ACCEPTED', 'YOU_ACCEPTED', 'UNFRIENDED',
   'REQUEST_CANCELLED', 'REQUEST_REJECTED', 'USER_ONLINE', 'USER_OFFLINE',
 ])
-export const RECEIPT_PREFIX = '__CHATWEB_RECEIPT__:'
-export const REACTION_PREFIX = '__CHATWEB_REACTION__:'
 export const TYPING_PREFIX = '__CHATWEB_TYPING__:'
 export const STATUS_RANK = { SENDING: 0, SENT: 1, DELIVERED: 2, READ: 3 }
 export const REACTION_OPTIONS = [
@@ -113,26 +111,6 @@ export function upsertMessage(list, incoming) {
 
 export function mergeMessageLists(current, incoming) {
   return (incoming || []).reduce((merged, message) => upsertMessage(merged, message), current || [])
-}
-
-export function parseRealtimeReceipt(content) {
-  if (!String(content || '').startsWith(RECEIPT_PREFIX)) return null
-  try {
-    const receipt = JSON.parse(String(content).slice(RECEIPT_PREFIX.length))
-    return ['DELIVERED', 'READ'].includes(receipt?.status) ? receipt : null
-  } catch {
-    return null
-  }
-}
-
-export function parseRealtimeReaction(content) {
-  if (!String(content || '').startsWith(REACTION_PREFIX)) return null
-  try {
-    const reaction = JSON.parse(String(content).slice(REACTION_PREFIX.length))
-    return reaction?.message?.id ? reaction.message : null
-  } catch {
-    return null
-  }
 }
 
 export function parseRealtimeTyping(content) {

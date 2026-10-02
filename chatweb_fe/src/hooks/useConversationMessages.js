@@ -22,7 +22,6 @@ export function useConversationMessages({
   blockedMessageIntervals,
   sendPrivateMessage,
   sendTypingStatus,
-  sendReactionControl,
   showToast,
   t,
   selectedUserIsTyping,
@@ -716,7 +715,6 @@ export function useConversationMessages({
         ...current,
         [selectedUser.username]: upsertMessage(current[selectedUser.username] || [], updatedMessage),
       }))
-      sendReactionControl(selectedUser.username, updatedMessage)
     } catch (error) {
       setMessagesByUser((current) => ({
         ...current,

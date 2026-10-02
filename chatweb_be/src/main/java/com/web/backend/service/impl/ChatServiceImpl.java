@@ -84,7 +84,9 @@ public class ChatServiceImpl implements ChatService {
 
     @Override
     public void sendPrivateMessage(String sender, ChatMessageRequest request) {
-        checkRateLimit(sender);
+        if (request.getMessageType() == MessageType.CHAT) {
+            checkRateLimit(sender);
+        }
 
         if (request.getLocalId() != null && !request.getLocalId().trim().isEmpty()) {
             String dedupKey = WS_DEDUP_PREFIX_STRING + sender + DELIMITER_COLON_STRING + request.getLocalId();

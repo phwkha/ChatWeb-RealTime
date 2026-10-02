@@ -401,4 +401,29 @@ class ChatServiceTest {
         assertThatThrownBy(() -> chatService.sendPrivateMessage("sender", request))
                 .isInstanceOf(InvalidDataException.class);
     }
+
+    @Test
+    void testSendPrivateMessage_TypingMessage_ExemptFromRateLimit() {
+        when(userRepository.findUserStatusByUsername("recipient")).thenReturn(Optional.of(UserStatus.ACTIVE));
+        when(friendService.isFriend("sender", "recipient")).thenReturn(true);
+
+        ChatMessageRequest request = new ChatMessageRequest();
+        request.setRecipient("recipient");
+        request.setContent("typing...");
+        request.setMessageType(MessageType.TYPING);
+
+        ChatMessage chatMessage = new ChatMessage();
+        chatMessage.setMessageType(MessageType.TYPING);
+        when(messageMapper.toEntity(request)).thenReturn(chatMessage);
+
+        @SuppressWarnings("unchecked")
+        SendResult<String, ChatMessageAvro> sendResult = mock(SendResult.class, RETURNS_DEEP_STUBS);
+        CompletableFuture<SendResult<String, ChatMessageAvro>> future = CompletableFuture.completedFuture(sendResult);
+        when(chatProducer.sendChatMessage(any())).thenReturn(future);
+
+        chatService.sendPrivateMessage("sender", request);
+
+        verify(rateLimitingService, never()).isAllowed(anyString(), anyInt(), anyLong());
+        verify(chatProducer).sendChatMessage(any(ChatMessageAvro.class));
+    }
 }

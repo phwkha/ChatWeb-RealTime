@@ -6,15 +6,11 @@ import {
   isDisplayableChatMessage,
   isIncomingMessageBlocked,
   normalizeMessages,
-  parseRealtimeReaction,
-  parseRealtimeReceipt,
   parseRealtimeTyping,
   promoteStatuses,
   upsertMessage,
   FRIEND_EVENT_TYPES,
-  RECEIPT_PREFIX,
   TYPING_PREFIX,
-  REACTION_PREFIX,
   WATERMARK_CHANNEL_NAME,
 } from '../components/chat/chatUtils.js'
 
@@ -51,8 +47,6 @@ export function useChatRealtime({
   const readAckTimersRef = useRef(new Map())
   const pendingMarkReadRef = useRef(new Set())
   const unreadCountsRef = useRef({})
-  const pendingReceiptsRef = useRef(new Map())
-  const receiptDebounceTimersRef = useRef(new Map())
   const hasConnectedOnceRef = useRef(false)
 
   const currentUsernameKey = String(currentUser?.username || '').trim().toLocaleLowerCase('en-US')
@@ -69,48 +63,6 @@ export function useChatRealtime({
     && document.visibilityState === 'visible'
     && (typeof document.hasFocus === 'function' ? document.hasFocus() : true)
   ), [])
-
-  const sendRealtimeReceiptImmediate = useCallback((recipient, status, sourceMessage = null, timestamp = null) => {
-    if (!recipient || !socketSenderRef.current) return false
-    return socketSenderRef.current({
-      recipient,
-      content: `${RECEIPT_PREFIX}${JSON.stringify({
-        status,
-        statusTimestamp: timestamp || new Date().toISOString(),
-        messageId: sourceMessage?.id || null,
-        localId: sourceMessage?.localId || null,
-      })}`,
-      contentType: 'TEXT',
-      messageType: 'TYPING',
-    })
-  }, [])
-
-  const flushPendingReceipts = useCallback(() => {
-    pendingReceiptsRef.current.forEach((pending, recipient) => {
-      window.clearTimeout(receiptDebounceTimersRef.current.get(recipient))
-      receiptDebounceTimersRef.current.delete(recipient)
-      sendRealtimeReceiptImmediate(recipient, pending.status, pending.sourceMessage, pending.timestamp)
-    })
-    pendingReceiptsRef.current.clear()
-  }, [sendRealtimeReceiptImmediate])
-
-  const sendRealtimeReceipt = useCallback((recipient, status, sourceMessage = null) => {
-    if (!recipient || !socketSenderRef.current) return false
-    if (status !== 'READ') return sendRealtimeReceiptImmediate(recipient, status, sourceMessage)
-    pendingReceiptsRef.current.set(recipient, { status, sourceMessage, timestamp: new Date().toISOString() })
-    if (!receiptDebounceTimersRef.current.has(recipient)) {
-      const timer = window.setTimeout(() => {
-        receiptDebounceTimersRef.current.delete(recipient)
-        const pending = pendingReceiptsRef.current.get(recipient)
-        if (pending) {
-          pendingReceiptsRef.current.delete(recipient)
-          sendRealtimeReceiptImmediate(recipient, pending.status, pending.sourceMessage, pending.timestamp)
-        }
-      }, 250)
-      receiptDebounceTimersRef.current.set(recipient, timer)
-    }
-    return true
-  }, [sendRealtimeReceiptImmediate])
 
   const markAsRead = useCallback((sender, force = false) => {
     if (!sender) return
@@ -157,16 +109,6 @@ export function useChatRealtime({
     })
   }, [])
 
-  const sendReactionControl = useCallback((recipient, message) => {
-    if (!recipient || !message?.id || !socketSenderRef.current) return false
-    return socketSenderRef.current({
-      recipient,
-      content: `${REACTION_PREFIX}${JSON.stringify({ message })}`,
-      contentType: 'TEXT',
-      messageType: 'TYPING',
-    })
-  }, [])
-
   const loadWorldHistory = useCallback(async (cursor = null, appendOlder = false) => {
     try {
       const query = new URLSearchParams({ size: '30' })
@@ -189,28 +131,17 @@ export function useChatRealtime({
     if (!message?.sender || !message?.recipient || !currentUser) return
     const peer = message.sender === currentUser.username ? message.recipient : message.sender
     if (message.messageType === 'TYPING') {
-      const receipt = parseRealtimeReceipt(message.content)
-      if (receipt && message.sender !== currentUser.username) {
-        setMessagesByUser((cur) => ({
-          ...cur,
-          [message.sender]: promoteStatuses((cur[message.sender] || []).map((ex) => (
-            receipt.messageId && receipt.localId && ex.localId === receipt.localId ? { ...ex, id: receipt.messageId } : ex
-          )), currentUser.username, receipt.status, receipt.statusTimestamp),
-        }))
-        return
-      }
-      const reactionMessage = parseRealtimeReaction(message.content)
-      if (reactionMessage && message.sender !== currentUser.username) {
-        const reactionPeer = reactionMessage.sender === currentUser.username ? reactionMessage.recipient : reactionMessage.sender
-        setMessagesByUser((cur) => ({ ...cur, [reactionPeer]: upsertMessage(cur[reactionPeer] || [], reactionMessage) }))
-        return
-      }
       if (message.sender !== currentUser.username) {
         const typing = parseRealtimeTyping(message.content)
-        setTypingUsers((cur) => ({ ...cur, [message.sender]: typing?.active !== false }))
-        window.clearTimeout(typingTimeoutsRef.current.get(message.sender))
-        const timeout = window.setTimeout(() => setTypingUsers((cur) => ({ ...cur, [message.sender]: false })), typing?.active === false ? 0 : 3500)
-        typingTimeoutsRef.current.set(message.sender, timeout)
+        if (typing) {
+          setTypingUsers((cur) => ({ ...cur, [message.sender]: typing.active !== false }))
+          window.clearTimeout(typingTimeoutsRef.current.get(message.sender))
+          const timeout = window.setTimeout(
+            () => setTypingUsers((cur) => ({ ...cur, [message.sender]: false })),
+            typing.active === false ? 0 : 3500
+          )
+          typingTimeoutsRef.current.set(message.sender, timeout)
+        }
       }
       return
     }
@@ -221,11 +152,10 @@ export function useChatRealtime({
     if (message.sender !== currentUser.username) {
       playInboxSound()
       const isViewing = isActivelyViewingConversation(peer)
-      sendRealtimeReceipt(peer, isViewing ? 'READ' : 'DELIVERED', message)
       if (isViewing) markAsRead(peer, true)
       else setUnreadCounts((cur) => ({ ...cur, [peer]: (cur[peer] || 0) + 1 }))
     }
-  }, [blockedMessageIntervals, currentUser, isActivelyViewingConversation, markAsRead, playInboxSound, sendRealtimeReceipt, setMessagesByUser, updatePeerPresence])
+  }, [blockedMessageIntervals, currentUser, isActivelyViewingConversation, markAsRead, playInboxSound, setMessagesByUser, updatePeerPresence])
 
   const handleNotification = useCallback(async (notification) => {
     if (!notification?.type) return
@@ -307,10 +237,9 @@ export function useChatRealtime({
         if (Number(unreadCountsRef.current[selectedRef.current.username] || 0) > 0) {
           markAsRead(selectedRef.current.username)
         }
-        sendRealtimeReceipt(selectedRef.current.username, 'READ')
       }
     }
-  }, [blockedMessageIntervals, currentUser?.username, isActivelyViewingConversation, loadConversation, markAsRead, sendRealtimeReceipt])
+  }, [blockedMessageIntervals, currentUser?.username, isActivelyViewingConversation, loadConversation, markAsRead])
 
   const { connectionState, sendPrivateMessage, sendWorldMessage } = useChatSocket({
     enabled: Boolean(currentUser), language, subscribeToWorld: true,
@@ -333,9 +262,8 @@ export function useChatRealtime({
       if (Number(unreadCountsRef.current[username] || 0) > 0) {
         markAsRead(username)
       }
-      sendRealtimeReceipt(username, 'READ')
     }
-  }, [activeSection, blockedMessageIntervals, currentUser?.username, markAsRead, selectedUser, selectedUser?.username, sendRealtimeReceipt])
+  }, [activeSection, blockedMessageIntervals, currentUser?.username, markAsRead, selectedUser, selectedUser?.username])
 
   useEffect(() => {
     const markVisibleAsRead = () => {
@@ -344,7 +272,6 @@ export function useChatRealtime({
       if (isIncomingMessageBlocked(blockedMessageIntervals, currentUser?.username, selected.username)) return
       if (Number(unreadCountsRef.current[selected.username] || unreadCounts[selected.username] || 0) <= 0) return
       markAsRead(selected.username)
-      sendRealtimeReceipt(selected.username, 'READ')
     }
     window.addEventListener('focus', markVisibleAsRead)
     document.addEventListener('visibilitychange', markVisibleAsRead)
@@ -352,7 +279,7 @@ export function useChatRealtime({
       window.removeEventListener('focus', markVisibleAsRead)
       document.removeEventListener('visibilitychange', markVisibleAsRead)
     }
-  }, [blockedMessageIntervals, currentUser?.username, isActivelyViewingConversation, markAsRead, sendRealtimeReceipt, unreadCounts])
+  }, [blockedMessageIntervals, currentUser?.username, isActivelyViewingConversation, markAsRead, unreadCounts])
 
   useEffect(() => {
     if (typeof window === 'undefined' || !window.BroadcastChannel) return
@@ -371,15 +298,15 @@ export function useChatRealtime({
   }, [currentUser?.username])
 
   useEffect(() => {
-    const handleUnload = () => { flushPendingReceipts(); flushPendingMarkAsRead() }
+    const handleUnload = () => { flushPendingMarkAsRead() }
     window.addEventListener('beforeunload', handleUnload)
     window.addEventListener('pagehide', handleUnload)
     return () => {
       window.removeEventListener('beforeunload', handleUnload)
       window.removeEventListener('pagehide', handleUnload)
-      flushPendingReceipts(); flushPendingMarkAsRead()
+      flushPendingMarkAsRead()
     }
-  }, [flushPendingMarkAsRead, flushPendingReceipts])
+  }, [flushPendingMarkAsRead])
 
   return {
     connectionState,
@@ -395,9 +322,7 @@ export function useChatRealtime({
     worldNotifications,
     loadWorldHistory,
     markAsRead,
-    sendRealtimeReceipt,
     sendTypingStatus,
-    sendReactionControl,
   }
 }
 
