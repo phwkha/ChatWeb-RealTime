@@ -144,7 +144,10 @@ export const ChatArea = React.memo(function ChatArea({
             connectionState={connectionState}
             language={language}
             t={t}
-            onContextMenu={openContextMenu}
+            onContextMenu={(event, message, messageKey) => {
+              setReactionPickerMessageId(null)
+              openContextMenu(event, message, messageKey)
+            }}
             onToggleReaction={toggleReaction}
             onRetry={retryFailedMessage}
             onBeginEdit={beginMessageEdit}

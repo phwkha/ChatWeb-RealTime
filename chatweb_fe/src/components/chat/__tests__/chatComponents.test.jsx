@@ -8,6 +8,7 @@ import MessageComposer from '../MessageComposer.jsx'
 import ConfirmActionDialog from '../dialogs/ConfirmActionDialog.jsx'
 import RevokeMessageDialog from '../dialogs/RevokeMessageDialog.jsx'
 import ReportUserDialog from '../dialogs/ReportUserDialog.jsx'
+import MessageContextMenu from '../MessageContextMenu.jsx'
 
 describe('Extracted Chat Components', () => {
   const mockT = (key) => key
@@ -220,5 +221,141 @@ describe('Extracted Chat Components', () => {
 
     fireEvent.click(screen.getByText('cancel'))
     expect(onClose).toHaveBeenCalled()
+  })
+
+  it('renders MessageItem in editing mode and triggers save and cancel', () => {
+    const onSaveEdit = vi.fn()
+    const onCancelEdit = vi.fn()
+    const onChangeEditContent = vi.fn()
+    const message = {
+      id: 'msg-1',
+      sender: 'bob',
+      content: 'Original text',
+      timestamp: new Date().toISOString(),
+      status: 'SENT',
+    }
+
+    render(
+      <MessageItem
+        message={message}
+        messageKey="msg-1"
+        selectedUser={{ username: 'alice' }}
+        user={{ username: 'bob' }}
+        isMine={true}
+        isGrouped={false}
+        isSearchTarget={false}
+        showActions={false}
+        showDetails={false}
+        isReactionPickerOpen={false}
+        isEditHistoryOpen={false}
+        isEditing={true}
+        editingContent="Updated text"
+        reactionSubmitting={false}
+        messageActionPending={false}
+        connectionState="connected"
+        language="en"
+        t={mockT}
+        onContextMenu={() => {}}
+        onBubbleClick={() => {}}
+        onBubbleKeyDown={() => {}}
+        onToggleReactionPicker={() => {}}
+        onToggleEditHistory={() => {}}
+        onSelectReaction={() => {}}
+        onRetry={() => {}}
+        onBeginEdit={() => {}}
+        onSaveEdit={onSaveEdit}
+        onCancelEdit={onCancelEdit}
+        onChangeEditContent={onChangeEditContent}
+      />
+    )
+
+    const input = screen.getByDisplayValue('Updated text')
+    expect(input).toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('save'))
+    expect(onSaveEdit).toHaveBeenCalledWith(message)
+
+    fireEvent.click(screen.getByText('cancel'))
+    expect(onCancelEdit).toHaveBeenCalled()
+  })
+
+  it('triggers onContextMenu when more button in reaction-picker is clicked', () => {
+    const onContextMenu = vi.fn()
+    const message = {
+      id: 'msg-1',
+      sender: 'alice',
+      content: 'Hello',
+      timestamp: new Date().toISOString(),
+      status: 'SENT',
+    }
+
+    render(
+      <MessageItem
+        message={message}
+        messageKey="msg-1"
+        selectedUser={{ username: 'alice' }}
+        user={{ username: 'bob' }}
+        isMine={false}
+        isGrouped={false}
+        isSearchTarget={false}
+        showActions={false}
+        showDetails={false}
+        isReactionPickerOpen={true}
+        isEditHistoryOpen={false}
+        isEditing={false}
+        editingContent=""
+        reactionSubmitting={false}
+        messageActionPending={false}
+        connectionState="connected"
+        language="en"
+        t={mockT}
+        onContextMenu={onContextMenu}
+        onBubbleClick={() => {}}
+        onBubbleKeyDown={() => {}}
+        onToggleReactionPicker={() => {}}
+        onToggleEditHistory={() => {}}
+        onSelectReaction={() => {}}
+        onRetry={() => {}}
+        onBeginEdit={() => {}}
+        onSaveEdit={() => {}}
+        onCancelEdit={() => {}}
+        onChangeEditContent={() => {}}
+      />
+    )
+
+    const moreBtn = screen.getByLabelText('messageMenu')
+    expect(moreBtn).toBeInTheDocument()
+
+    fireEvent.click(moreBtn)
+    expect(onContextMenu).toHaveBeenCalledWith(expect.anything(), message, 'msg-1')
+  })
+
+  it('calls onClose and onBeginEdit when edit is clicked in MessageContextMenu', () => {
+    const onClose = vi.fn()
+    const onBeginEdit = vi.fn()
+    const message = {
+      id: 'msg-1',
+      sender: 'bob',
+      content: 'Edit me',
+      contentType: 'TEXT',
+    }
+
+    render(
+      <MessageContextMenu
+        menu={{ message, x: 100, y: 100 }}
+        user={{ username: 'bob' }}
+        t={mockT}
+        onClose={onClose}
+        onBeginEdit={onBeginEdit}
+        onToggleReaction={() => {}}
+        onCopy={() => {}}
+        onReply={() => {}}
+        onRevoke={() => {}}
+      />
+    )
+
+    fireEvent.click(screen.getByText('editMessage'))
+    expect(onClose).toHaveBeenCalled()
+    expect(onBeginEdit).toHaveBeenCalledWith(message)
   })
 })

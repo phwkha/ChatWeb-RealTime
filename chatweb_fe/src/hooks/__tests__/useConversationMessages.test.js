@@ -391,4 +391,71 @@ describe('useConversationMessages', () => {
 
     document.body.removeChild(mockEl)
   })
+
+  it('saves message edit via PUT /api/messages/edit without error when passed message directly', async () => {
+    vi.mocked(apiClient.apiRequest).mockImplementation((url) => {
+      if (url.includes('/api/messages/private')) {
+        return Promise.resolve({
+          data: {
+            content: [{ id: 'msg-1', sender: 'alice', recipient: 'bob', content: 'Original text' }],
+            nextCursor: null,
+            hasMore: false,
+          },
+        })
+      }
+      if (url === '/api/messages/edit') {
+        return Promise.resolve({
+          data: { id: 'msg-1', sender: 'alice', recipient: 'bob', content: 'Edited Hello' },
+          message: 'Message edited successfully',
+        })
+      }
+      return Promise.resolve({ data: null })
+    })
+
+    const user = { username: 'alice' }
+    const selectedUser = { username: 'bob' }
+    const showToast = vi.fn()
+
+    const { result } = renderHook(() =>
+      useConversationMessages({
+        user,
+        selectedUser,
+        activeSection: 'chat',
+        connectionState: 'connected',
+        blockedMessageIntervals: {},
+        sendPrivateMessage: vi.fn(),
+        sendTypingStatus: vi.fn(),
+        showToast,
+        t: (k) => k,
+        selectedUserIsTyping: false,
+      })
+    )
+
+    const message = { id: 'msg-1', sender: 'alice', content: 'Original text' }
+    act(() => {
+      result.current.beginMessageEdit(message)
+    })
+    expect(result.current.editingMessageId).toBe('msg-1')
+    expect(result.current.editingMessageContent).toBe('Original text')
+
+    act(() => {
+      result.current.setEditingMessageContent('Edited Hello')
+    })
+
+    await act(async () => {
+      await result.current.saveMessageEdit(message)
+    })
+
+    expect(apiClient.apiRequest).toHaveBeenCalledWith('/api/messages/edit', {
+      method: 'PUT',
+      body: {
+        messageId: 'msg-1',
+        recipient: 'bob',
+        newContent: 'Edited Hello',
+      },
+    })
+    expect(result.current.editingMessageId).toBeNull()
+    expect(result.current.editingMessageContent).toBe('')
+    expect(showToast).toHaveBeenCalledWith('Message edited successfully')
+  })
 })

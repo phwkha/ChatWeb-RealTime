@@ -70,7 +70,15 @@ export const MessageContextMenu = React.memo(function MessageContextMenu({
         </button>
       )}
       {isMine && isText && (
-        <button type="button" role="menuitem" disabled={messageActionPending} onClick={() => onBeginEdit(message)}>
+        <button
+          type="button"
+          role="menuitem"
+          disabled={messageActionPending}
+          onClick={() => {
+            onClose()
+            onBeginEdit(message)
+          }}
+        >
           <ChatIcon name="edit" size={16} />
           <span>{t('editMessage')}</span>
         </button>
