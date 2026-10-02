@@ -401,7 +401,7 @@ body:has(.chat-app) { overflow: hidden; background: var(--cw-canvas); }
 .message-file-name { display: block; max-width: 340px; overflow: hidden; font-size: 9px; opacity: .75; text-overflow: ellipsis; white-space: nowrap; }
 .message-content small { margin-top: 4px; color: #aaaab2; font-size: 8px; }
 .message-details { animation: cw-message-detail-in 140ms ease; }
-.chat-app .message-edited-label { margin-top: 3px; padding: 0 1px; border: 0; background: transparent; color: var(--cw-purple); cursor: pointer; font-size: 7px; font-style: normal; font-weight: 650; line-height: 1.25; text-decoration: underline; text-decoration-color: currentColor; text-decoration-thickness: 1px; text-underline-offset: 2px; transition: color 140ms ease, opacity 140ms ease; }
+.chat-app .message-edited-label { margin-top: 0; margin-bottom: 2px; padding: 0 2px; border: 0; background: transparent; color: var(--cw-purple); cursor: pointer; font-size: 7.5px; font-style: normal; font-weight: 650; line-height: 1.25; text-decoration: underline; text-decoration-color: currentColor; text-decoration-thickness: 1px; text-underline-offset: 2px; transition: color 140ms ease, opacity 140ms ease; }
 .chat-app .message-edited-label:hover { color: var(--cw-purple-dark); opacity: .82; }
 .chat-app .message-edited-label[aria-expanded="true"] { color: var(--cw-purple-dark); font-weight: 750; }
 .message-edit-history { position: absolute; bottom: calc(100% + 9px); left: 0; z-index: 20; width: min(330px, 72vw); max-height: 290px; overflow: hidden; border: 1px solid #e3e1ea; border-radius: 13px; background: white; color: var(--cw-ink); box-shadow: 0 18px 42px rgba(27,23,48,.18); text-align: left; animation: cw-message-history-in 170ms ease; }
