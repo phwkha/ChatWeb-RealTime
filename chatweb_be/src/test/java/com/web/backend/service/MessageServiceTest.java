@@ -225,6 +225,49 @@ class MessageServiceTest {
     }
 
     @Test
+    void testReactToMessage_OwnMessage_CreatesNotificationForRecipient() {
+        ReactionRequest request = new ReactionRequest();
+        request.setRecipient("recipient");
+        request.setMessageId("msg123");
+        request.setReactionType(com.web.backend.common.ReactionType.HEART);
+
+        when(friendService.isFriend("sender", "recipient")).thenReturn(true);
+
+        ChatMessage message = new ChatMessage();
+        message.setId("msg123");
+        message.setSender("sender");
+        message.setRecipient("recipient");
+        message.setConversationId("recipient_sender");
+        when(messageRepository.findById("msg123")).thenReturn(Optional.of(message));
+
+        ChatMessageAvro mockAvro = new ChatMessageAvro();
+        when(messageMapper.toAvro(any(ChatMessage.class))).thenReturn(mockAvro);
+        when(messageMapper.toResponse(any(ChatMessage.class))).thenReturn(ChatMessageResponse.builder().id("msg123").build());
+
+        com.web.backend.model.postgres.NotificationEntity savedNotification = com.web.backend.model.postgres.NotificationEntity.builder().build();
+        savedNotification.setId(777L);
+        when(notificationService.createNotification(
+                eq("sender"),
+                eq("recipient"),
+                eq(com.web.backend.common.NotificationsType.REACT_MESSAGE),
+                eq(com.web.backend.common.NotificationTargetType.MESSAGE),
+                eq("msg123"),
+                anyString()
+        )).thenReturn(savedNotification);
+
+        ChatMessageResponse response = messageService.reactToMessage("sender", request);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getNotificationId()).isEqualTo(777L);
+
+        org.mockito.ArgumentCaptor<ChatMessageAvro> captor = org.mockito.ArgumentCaptor.forClass(ChatMessageAvro.class);
+        verify(chatProducer).sendChatMessage(captor.capture());
+        ChatMessageAvro sentPayload = captor.getValue();
+        assertThat(sentPayload.getNotificationId()).isEqualTo(777L);
+        assertThat(sentPayload.getActionBy()).isEqualTo("sender");
+    }
+
+    @Test
     void testReactToMessage_Forbidden_DifferentConversation() {
         ReactionRequest request = new ReactionRequest();
         request.setRecipient("recipient");

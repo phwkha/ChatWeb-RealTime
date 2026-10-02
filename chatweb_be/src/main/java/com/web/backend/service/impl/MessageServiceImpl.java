@@ -407,13 +407,15 @@ public class MessageServiceImpl implements MessageService {
 
         putMessageIfCached(convId, msg);
 
-        String messageAuthor = msg.getSender();
+        String notificationRecipient = senderUsername.equals(msg.getSender())
+                ? msg.getRecipient()
+                : msg.getSender();
         Long notificationId = null;
-        if (isNewReaction && messageAuthor != null && !messageAuthor.equals(senderUsername)) {
+        if (isNewReaction && notificationRecipient != null && !notificationRecipient.equals(senderUsername)) {
             String content = Translator.tolocale(SYS_MSG_REACT_MESSAGE_STRING);
             NotificationEntity entity = notificationService.createNotification(
                     senderUsername,
-                    messageAuthor,
+                    notificationRecipient,
                     NotificationsType.REACT_MESSAGE,
                     NotificationTargetType.MESSAGE,
                     msg.getId(),
