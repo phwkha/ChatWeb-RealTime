@@ -69,6 +69,11 @@ public class ChatServiceImpl implements ChatService {
     private static final String RATE_LIMIT_WS_SEND_KEY_STRING = "ws_chat_send";
     private static final int RATE_LIMIT_WS_SEND_LIMIT = 30;
     private static final int RATE_LIMIT_WS_SEND_PERIOD_SECONDS = 60;
+
+    private static final String RATE_LIMIT_WS_TYPING_KEY_STRING = "ws_chat_typing";
+    private static final int RATE_LIMIT_WS_TYPING_LIMIT = 60;
+    private static final int RATE_LIMIT_WS_TYPING_PERIOD_SECONDS = 60;
+
     private static final String ERROR_RATE_LIMIT_STRING = "error.auth.too_many_attempts";
 
     private static final Set<MessageType> ALLOWED_PRIVATE_MESSAGE_TYPES = Set.of(MessageType.CHAT, MessageType.TYPING);
@@ -84,23 +89,48 @@ public class ChatServiceImpl implements ChatService {
 
     @Override
     public void sendPrivateMessage(String sender, ChatMessageRequest request) {
-        if (request.getMessageType() == MessageType.CHAT) {
-            checkRateLimit(sender);
+        validateMessageType(request);
+        applyRateLimit(sender, request.getMessageType());
+
+        if (isDuplicateMessage(sender, request.getLocalId())) {
+            log.warn("Duplicate WebSocket message detected: sender='{}', localId='{}'", sender,
+                    request.getLocalId());
+            return;
         }
 
-        if (request.getLocalId() != null && !request.getLocalId().trim().isEmpty()) {
-            String dedupKey = WS_DEDUP_PREFIX_STRING + sender + DELIMITER_COLON_STRING + request.getLocalId();
-            Boolean isNew = stringRedisTemplate.opsForValue()
-                    .setIfAbsent(dedupKey, "1", java.time.Duration.ofSeconds(WS_DEDUP_TTL_SECONDS));
-            if (Boolean.FALSE.equals(isNew)) {
-                log.warn("Duplicate WebSocket message detected: sender='{}', localId='{}'", sender,
-                        request.getLocalId());
-                return;
-            }
-        }
         validatePrivateMessageRequest(sender, request);
         String convId = generateConversationId(sender, request.getRecipient());
         ChatMessage chatMsg = buildChatMessage(sender, request, convId);
+        publishChatMessage(chatMsg, convId, sender, request);
+    }
+
+    private void validateMessageType(ChatMessageRequest request) {
+        if (request == null || request.getMessageType() == null
+                || !ALLOWED_PRIVATE_MESSAGE_TYPES.contains(request.getMessageType())) {
+            throw new InvalidDataException(Translator.tolocale(ERROR_MSG_INVALID_TYPE_STRING), request);
+        }
+    }
+
+    private void applyRateLimit(String sender, MessageType messageType) {
+        if (messageType == MessageType.CHAT) {
+            checkRateLimit(sender);
+        } else if (messageType == MessageType.TYPING) {
+            checkTypingRateLimit(sender);
+        }
+    }
+
+    private boolean isDuplicateMessage(String sender, String localId) {
+        if (localId == null || localId.trim().isEmpty()) {
+            return false;
+        }
+        String dedupKey = WS_DEDUP_PREFIX_STRING + sender + DELIMITER_COLON_STRING + localId;
+        Boolean isNew = stringRedisTemplate.opsForValue()
+                .setIfAbsent(dedupKey, "1", java.time.Duration.ofSeconds(WS_DEDUP_TTL_SECONDS));
+        return Boolean.FALSE.equals(isNew);
+    }
+
+    private void publishChatMessage(ChatMessage chatMsg, String convId, String sender,
+            ChatMessageRequest request) {
         try {
             if (chatMsg.getMessageType() == MessageType.CHAT) {
                 cacheMessageToRedis(chatMsg);
@@ -108,24 +138,29 @@ public class ChatServiceImpl implements ChatService {
             ChatMessageAvro payload = messageMapper.toAvro(chatMsg);
             payload.setLocalId(request.getLocalId());
             payload.setActionType(ActionType.CREATE.name());
-            chatProducer.sendChatMessage(payload).whenComplete((result, ex) -> {
-                if (ex != null) {
-                    if (chatMsg.getMessageType() == MessageType.CHAT) {
-                        log.error("Failed to publish message '{}' to Kafka", chatMsg.getId(), ex);
-                        rollbackRedisCache(convId, chatMsg);
-                        webSocketErrorHandler.handleChatError(sender, request,
-                                Translator.tolocale(ERROR_MSG_SYSTEM_OVERLOAD_STRING));
-                    }
-                } else if (chatMsg.getMessageType() == MessageType.CHAT) {
-                    log.debug("Published message '{}' to Kafka successfully", chatMsg.getId());
-                }
-            });
+            chatProducer.sendChatMessage(payload).whenComplete((result, ex) ->
+                    handleKafkaPublishResult(chatMsg, convId, sender, request, ex));
         } catch (Exception syncEx) {
             log.error("Synchronous error publishing message '{}' to Kafka", chatMsg.getId(), syncEx);
             if (chatMsg.getMessageType() == MessageType.CHAT) {
                 rollbackRedisCache(convId, chatMsg);
             }
             throw new SystemOverloadException(Translator.tolocale(ERROR_MSG_SYSTEM_OVERLOAD_STRING), request, syncEx);
+        }
+    }
+
+    private void handleKafkaPublishResult(ChatMessage chatMsg, String convId, String sender,
+            ChatMessageRequest request, Throwable ex) {
+        if (chatMsg.getMessageType() != MessageType.CHAT) {
+            return;
+        }
+        if (ex != null) {
+            log.error("Failed to publish message '{}' to Kafka", chatMsg.getId(), ex);
+            rollbackRedisCache(convId, chatMsg);
+            webSocketErrorHandler.handleChatError(sender, request,
+                    Translator.tolocale(ERROR_MSG_SYSTEM_OVERLOAD_STRING));
+        } else {
+            log.debug("Published message '{}' to Kafka successfully", chatMsg.getId());
         }
     }
 
@@ -266,6 +301,15 @@ public class ChatServiceImpl implements ChatService {
                 targetKey, RATE_LIMIT_WS_SEND_LIMIT, RATE_LIMIT_WS_SEND_PERIOD_SECONDS);
         if (!allowed) {
             throw new TooManyRequestsException(ERROR_RATE_LIMIT_STRING, RATE_LIMIT_WS_SEND_PERIOD_SECONDS);
+        }
+    }
+
+    private void checkTypingRateLimit(String sender) {
+        String targetKey = RATE_LIMIT_WS_TYPING_KEY_STRING + DELIMITER_COLON_STRING + sender;
+        boolean allowed = rateLimitingService.isAllowed(
+                targetKey, RATE_LIMIT_WS_TYPING_LIMIT, RATE_LIMIT_WS_TYPING_PERIOD_SECONDS);
+        if (!allowed) {
+            throw new TooManyRequestsException(ERROR_RATE_LIMIT_STRING, RATE_LIMIT_WS_TYPING_PERIOD_SECONDS);
         }
     }
 
