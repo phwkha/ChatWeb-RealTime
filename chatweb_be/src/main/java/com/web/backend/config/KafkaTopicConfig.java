@@ -21,6 +21,9 @@ public class KafkaTopicConfig {
     @Value("${spring.kafka.topic.friend.friend-topic}")
     private String friendTopic;
 
+    @Value("${spring.kafka.topic.update-message.update}")
+    private String updateMessageTopic;
+
     @Bean
     public NewTopic chatMessagesTopicBean() {
         return TopicBuilder.name(chatMessagesTopic)
@@ -57,6 +60,14 @@ public class KafkaTopicConfig {
     public NewTopic chatMessagesDltTopicBean() {
         return TopicBuilder.name(chatMessagesTopic + "-save-dlt")
                 .partitions(12)
+                .replicas(2)
+                .build();
+    }
+
+    @Bean
+    public NewTopic updateMessageTopicBean() {
+        return TopicBuilder.name(updateMessageTopic)
+                .partitions(6)
                 .replicas(2)
                 .build();
     }
