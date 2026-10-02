@@ -132,6 +132,7 @@ class ChatConsumerTest {
                 message.setRecipient("userB");
                 message.setContent("Edited Content");
                 message.setActionType(ActionType.EDIT.name());
+                message.setActionBy("userA");
 
                 ChatMessageResponse response = ChatMessageResponse.builder()
                                 .id("msg1")
@@ -145,12 +146,11 @@ class ChatConsumerTest {
 
                 chatConsumer.listenChatMessages(message, "conv_key");
 
-                verify(webSocketRoutingService).routeMessage(eq("userA"), eq("/queue/notifications"),
-                                argThat((SocketNotificationResponse<?> notif) -> notif
-                                                .getType() == NotificationsType.EDIT_MESSAGE));
                 verify(webSocketRoutingService).routeMessage(eq("userB"), eq("/queue/notifications"),
                                 argThat((SocketNotificationResponse<?> notif) -> notif
-                                                .getType() == NotificationsType.EDIT_MESSAGE));
+                                                .getType() == NotificationsType.EDIT_MESSAGE
+                                                && "userA".equals(notif.getRelatedUsername())));
+                verify(webSocketRoutingService, never()).routeMessage(eq("userA"), anyString(), any());
         }
 
         @Test
@@ -161,6 +161,7 @@ class ChatConsumerTest {
                 message.setRecipient("userB");
                 message.setContent("");
                 message.setActionType(ActionType.REVOKE.name());
+                message.setActionBy("userA");
 
                 ChatMessageResponse response = ChatMessageResponse.builder()
                                 .id("msg1")
@@ -173,12 +174,11 @@ class ChatConsumerTest {
 
                 chatConsumer.listenChatMessages(message, "conv_key");
 
-                verify(webSocketRoutingService).routeMessage(eq("userA"), eq("/queue/notifications"),
-                                argThat((SocketNotificationResponse<?> notif) -> notif
-                                                .getType() == NotificationsType.REVOKE_MESSAGE));
                 verify(webSocketRoutingService).routeMessage(eq("userB"), eq("/queue/notifications"),
                                 argThat((SocketNotificationResponse<?> notif) -> notif
-                                                .getType() == NotificationsType.REVOKE_MESSAGE));
+                                                .getType() == NotificationsType.REVOKE_MESSAGE
+                                                && "userA".equals(notif.getRelatedUsername())));
+                verify(webSocketRoutingService, never()).routeMessage(eq("userA"), anyString(), any());
         }
 
         @Test
@@ -188,6 +188,7 @@ class ChatConsumerTest {
                 message.setSender("userA");
                 message.setRecipient("userB");
                 message.setActionType(ActionType.REACT.name());
+                message.setActionBy("userB");
                 message.setNotificationId(999L);
 
                 ChatMessageResponse response = ChatMessageResponse.builder()
@@ -207,11 +208,37 @@ class ChatConsumerTest {
                                 argThat((SocketNotificationResponse<?> notif) -> notif
                                                 .getType() == NotificationsType.REACT_MESSAGE
                                                 && Long.valueOf(999L).equals(notif.getId())
-                                                && Long.valueOf(999L).equals(notif.getNotificationId())));
+                                                && Long.valueOf(999L).equals(notif.getNotificationId())
+                                                && "userB".equals(notif.getRelatedUsername())));
+                verify(webSocketRoutingService, never()).routeMessage(eq("userB"), anyString(), any());
+        }
+
+        @Test
+        void testListenChatMessages_NullActionBy_DefaultsToSender() throws Exception {
+                ChatMessageAvro message = new ChatMessageAvro();
+                message.setId("msg1");
+                message.setSender("userA");
+                message.setRecipient("userB");
+                message.setContent("Edited Content");
+                message.setActionType(ActionType.EDIT.name());
+                message.setActionBy(null);
+
+                ChatMessageResponse response = ChatMessageResponse.builder()
+                                .id("msg1")
+                                .sender("userA")
+                                .recipient("userB")
+                                .content("Edited Content")
+                                .isEdited(true)
+                                .build();
+
+                when(messageMapper.avroToResponse(message)).thenReturn(response);
+
+                chatConsumer.listenChatMessages(message, "conv_key");
+
                 verify(webSocketRoutingService).routeMessage(eq("userB"), eq("/queue/notifications"),
                                 argThat((SocketNotificationResponse<?> notif) -> notif
-                                                .getType() == NotificationsType.REACT_MESSAGE
-                                                && Long.valueOf(999L).equals(notif.getId())
-                                                && Long.valueOf(999L).equals(notif.getNotificationId())));
+                                                .getType() == NotificationsType.EDIT_MESSAGE
+                                                && "userA".equals(notif.getRelatedUsername())));
+                verify(webSocketRoutingService, never()).routeMessage(eq("userA"), anyString(), any());
         }
 }

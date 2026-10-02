@@ -81,7 +81,9 @@ public class ChatConsumer {
                 }
             } else {
                 UpdateMetadata metadata = resolveUpdateMetadata(action);
-                String actionPerformer = message.getActionBy();
+                String actionPerformer = (message.getActionBy() != null && !message.getActionBy().isBlank())
+                        ? message.getActionBy()
+                        : sender;
                 String otherParticipant = actionPerformer.equals(sender) ? recipient : sender;
 
                 SocketNotificationResponse<ChatMessageResponse> notification = SocketNotificationResponse
