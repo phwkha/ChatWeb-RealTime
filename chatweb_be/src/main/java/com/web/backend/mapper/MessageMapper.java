@@ -26,6 +26,9 @@ public interface MessageMapper {
     @Mapping(target = "reactions", ignore = true)
     ChatMessage toEntity(ChatMessageRequest request);
 
+    @Mapping(target = "isEdited", source = "edited")
+    @Mapping(target = "isDeleted", source = "deleted")
+    @Mapping(target = "isReacted", source = "reacted")
     ChatMessageResponse toResponse(ChatMessage entity);
 
     MessageSystemResponse systemMessageToResponse(SystemMessage entity);
