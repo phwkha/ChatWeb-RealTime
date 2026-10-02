@@ -29,6 +29,22 @@ public class EmailConsumer {
     @RetryableTopic(attempts = "10", backoff = @Backoff(delay = 30000), sameIntervalTopicReuseStrategy = SameIntervalTopicReuseStrategy.SINGLE_TOPIC, dltStrategy = DltStrategy.NO_DLT, autoCreateTopics = "true")
     @KafkaListener(topics = "${spring.kafka.topic.email.email-topic}", groupId = "${spring.kafka.topic.email.group-id}", containerFactory = "emailKafkaListenerContainerFactory")
     public void consumeEmailTask(EmailPayload emailEvent, Acknowledgment ack) {
+        if (emailEvent == null) {
+            log.warn("Received null EmailPayload poison pill event, discarding and acknowledging");
+            if (ack != null) {
+                ack.acknowledge();
+            }
+            return;
+        }
+
+        if (emailEvent.to() == null || emailEvent.to().isBlank()) {
+            log.warn("Received malformed EmailPayload with null or blank recipient: '{}', discarding and acknowledging", emailEvent);
+            if (ack != null) {
+                ack.acknowledge();
+            }
+            return;
+        }
+
         log.debug("Consumed email task: type='{}', recipient='{}'", emailEvent.type(), emailEvent.to());
 
         if (OTP_STRING.equals(emailEvent.type())) {
@@ -37,7 +53,9 @@ public class EmailConsumer {
             emailService.sendTextEmail(emailEvent.to(), emailEvent.subject(), emailEvent.content());
         }
 
-        ack.acknowledge();
+        if (ack != null) {
+            ack.acknowledge();
+        }
         log.info("Email task processed successfully for recipient '{}' [type={}]", emailEvent.to(), emailEvent.type());
     }
 }

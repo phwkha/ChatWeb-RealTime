@@ -21,21 +21,54 @@ export function useChatConnections({
   const [actionPending, setActionPending] = useState(false)
   const [connectionsLoaded, setConnectionsLoaded] = useState(false)
 
+  const isMountedRef = useRef(true)
+  const abortControllerRef = useRef(null)
   const friendSyncTimersRef = useRef([])
   const currentUsernameKey = String(currentUser?.username || '').trim().toLocaleLowerCase('en-US')
   const requestsLoadedRef = useRef(false)
 
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+        abortControllerRef.current = null
+      }
+      friendSyncTimersRef.current.forEach((timer) => window.clearTimeout(timer))
+      friendSyncTimersRef.current = []
+    }
+  }, [])
+
+  useEffect(() => {
+    requestsLoadedRef.current = false
+    if (isMountedRef.current) {
+      setBlockedMessageIntervals(readBlockedMessageIntervals())
+    }
+  }, [currentUser?.username])
+
   const saveBlockedIntervals = useCallback((nextPreferences) => {
-    setBlockedMessageIntervals(nextPreferences)
-    localStorage.setItem(BLOCKED_MESSAGES_STORAGE_KEY, JSON.stringify(nextPreferences))
+    if (isMountedRef.current) {
+      setBlockedMessageIntervals(nextPreferences)
+    }
+    try {
+      localStorage.setItem(BLOCKED_MESSAGES_STORAGE_KEY, JSON.stringify(nextPreferences))
+    } catch (error) {
+      console.warn('Failed to save blocked message intervals to localStorage:', error)
+    }
   }, [])
 
   const loadFriendsOnly = useCallback(async () => {
     try {
       const friendsRes = await apiRequest('/api/friends?size=100')
+      if (!isMountedRef.current) return
       setFriends(friendsRes?.data?.content || [])
+    } catch (error) {
+      if (error?.name === 'AbortError') return
     } finally {
-      setConnectionsLoaded(true)
+      if (isMountedRef.current) {
+        setConnectionsLoaded(true)
+      }
     }
   }, [])
 
@@ -47,13 +80,16 @@ export function useChatConnections({
         apiRequest('/api/friends/sent?size=100'),
         apiRequest('/api/friends/blocked?size=100'),
       ])
+      if (!isMountedRef.current) return
       if (friendsRes.status === 'fulfilled') setFriends(friendsRes.value?.data?.content || [])
       if (requestsRes.status === 'fulfilled') setFriendRequests(requestsRes.value?.data?.content || [])
       if (sentRes.status === 'fulfilled') setSentRequests(sentRes.value?.data?.content || [])
       if (blockedRes.status === 'fulfilled') setBlockedUsers(blockedRes.value?.data?.content || [])
       requestsLoadedRef.current = true
     } finally {
-      setConnectionsLoaded(true)
+      if (isMountedRef.current) {
+        setConnectionsLoaded(true)
+      }
     }
   }, [])
 
@@ -69,6 +105,7 @@ export function useChatConnections({
     friendSyncTimersRef.current.forEach((timer) => window.clearTimeout(timer))
     friendSyncTimersRef.current = [
       window.setTimeout(() => {
+        if (!isMountedRef.current) return
         void loadConnections()
       }, 250),
     ]
@@ -78,14 +115,15 @@ export function useChatConnections({
     void loadConnections()
     return () => {
       friendSyncTimersRef.current.forEach((timer) => window.clearTimeout(timer))
+      friendSyncTimersRef.current = []
     }
-  }, [loadConnections])
+  }, [loadConnections, currentUser?.username])
 
   useEffect(() => {
     if (activeSection === 'friends' && !requestsLoadedRef.current) {
       void loadFriendsAndRelationships()
     }
-  }, [activeSection, loadFriendsAndRelationships])
+  }, [activeSection, loadFriendsAndRelationships, currentUser?.username])
 
   const addFriend = useCallback(async (person) => {
     if (String(person?.username || '').trim().toLocaleLowerCase('en-US') === currentUsernameKey) {
@@ -97,10 +135,12 @@ export function useChatConnections({
         method: 'POST',
         body: { targetUsername: person.username },
       })
+      if (!isMountedRef.current) return false
       setSentRequests((current) => [...current, person])
       showToast(response?.message || t('requested'))
       return true
     } catch (error) {
+      if (!isMountedRef.current) return false
       showToast(getErrorMessage(error, t('errorGeneric')), 'error')
       return false
     }
@@ -112,10 +152,12 @@ export function useChatConnections({
         method: 'POST',
         body: { targetUsername: person.username },
       })
+      if (!isMountedRef.current) return false
       showToast(response?.message || t('accept'))
       await loadConnections()
       return true
     } catch (error) {
+      if (!isMountedRef.current) return false
       showToast(getErrorMessage(error, t('errorGeneric')), 'error')
       return false
     }
@@ -126,10 +168,12 @@ export function useChatConnections({
       const response = await apiRequest(`/api/friends/${encodeURIComponent(person.username)}`, {
         method: 'DELETE',
       })
+      if (!isMountedRef.current) return false
       await loadConnections()
       showToast(response?.message || t(successKey))
       return true
     } catch (error) {
+      if (!isMountedRef.current) return false
       showToast(getErrorMessage(error, t('actionFailed')), 'error')
       return false
     }
@@ -140,16 +184,24 @@ export function useChatConnections({
       const response = await apiRequest(`/api/friends/unblock/${encodeURIComponent(person.username)}`, {
         method: 'POST',
       })
+      if (!isMountedRef.current) return false
       setBlockedUsers((current) => current.filter((b) => b.username !== person.username))
       const prefKey = conversationPreferenceKey(currentUser?.username, person.username)
       const intervals = [...(blockedMessageIntervals[prefKey] || [])]
-      const lastInterval = intervals[intervals.length - 1]
-      if (lastInterval?.to == null) lastInterval.to = Date.now()
+      if (intervals.length > 0) {
+        const lastIndex = intervals.length - 1
+        const lastInterval = { ...intervals[lastIndex] }
+        if (lastInterval.to == null) {
+          lastInterval.to = Date.now()
+          intervals[lastIndex] = lastInterval
+        }
+      }
       saveBlockedIntervals({ ...blockedMessageIntervals, [prefKey]: intervals })
       scheduleConnectionSync()
       showToast(response?.message || t('unblockedUserSuccess'))
       return true
     } catch (error) {
+      if (!isMountedRef.current) return false
       showToast(getErrorMessage(error, t('actionFailed')), 'error')
       return false
     }
@@ -164,6 +216,7 @@ export function useChatConnections({
         const response = await apiRequest(`/api/friends/block/${encodeURIComponent(targetUsername)}`, {
           method: 'POST',
         })
+        if (!isMountedRef.current) return
         const prefKey = conversationPreferenceKey(currentUser?.username, targetUsername)
         const intervals = [...(blockedMessageIntervals[prefKey] || []), { from: Date.now(), to: null }]
         saveBlockedIntervals({ ...blockedMessageIntervals, [prefKey]: intervals })
@@ -175,14 +228,18 @@ export function useChatConnections({
         const response = await apiRequest(`/api/friends/${encodeURIComponent(targetUsername)}`, {
           method: 'DELETE',
         })
+        if (!isMountedRef.current) return
         if (onAfterRemoveConversation) onAfterRemoveConversation(targetUsername)
         scheduleConnectionSync()
         showToast(response?.message || t('unfriend'))
       }
     } catch (error) {
+      if (!isMountedRef.current) return
       showToast(getErrorMessage(error, t('actionFailed')), 'error')
     } finally {
-      setActionPending(false)
+      if (isMountedRef.current) {
+        setActionPending(false)
+      }
     }
   }, [actionPending, blockedMessageIntervals, currentUser?.username, onAfterRemoveConversation, saveBlockedIntervals, scheduleConnectionSync, showToast, t])
 
@@ -190,11 +247,14 @@ export function useChatConnections({
     if (!selectedUser) return
     try {
       await apiRequest(`/api/friends/unblock/${encodeURIComponent(selectedUser.username)}`, { method: 'POST' })
+      if (!isMountedRef.current) return
       setBlockedUsers((current) => current.filter((p) => p.username !== selectedUser.username))
     } catch (error) {
+      if (!isMountedRef.current) return
       showToast(getErrorMessage(error, t('actionFailed')), 'error')
       return
     }
+    if (!isMountedRef.current) return
     const prefKey = conversationPreferenceKey(currentUser?.username, selectedUser.username)
     const intervals = [...(blockedMessageIntervals[prefKey] || [])]
     const lastInterval = intervals[intervals.length - 1]

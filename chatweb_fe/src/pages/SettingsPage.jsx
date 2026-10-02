@@ -4,6 +4,7 @@ import AppRail from '../components/chat/AppRail.jsx'
 import ChatIcon from '../components/chat/ChatIcon.jsx'
 import { useAuth } from '../context/auth-context.js'
 import { useLanguage } from '../context/language-context.js'
+import { useConfirm } from '../context/ConfirmDialogContext.jsx'
 import { accountApi } from '../services/accountApi.js'
 import { getErrorMessage } from '../services/apiClient.js'
 import { reportApi } from '../services/reportApi.js'
@@ -30,6 +31,7 @@ function formatReportDate(dateString, lang) {
 function SettingsPage() {
   const { user, refreshUser, logoutEverywhere, deleteAccount } = useAuth()
   const { t, language } = useLanguage()
+  const confirm = useConfirm()
   const navigate = useNavigate()
   const isMountedRef = useRef(true)
   useEffect(() => {
@@ -111,7 +113,13 @@ function SettingsPage() {
   }, [tab, loadReports])
 
   const handleCancelReport = async (reportId) => {
-    const confirmed = window.confirm(t('confirmCancelReport') || 'Bạn có chắc chắn muốn hủy báo cáo này?')
+    const confirmed = await confirm({
+      title: t('cancelReport') || 'Hủy báo cáo',
+      message: t('confirmCancelReport') || 'Bạn có chắc chắn muốn hủy báo cáo này?',
+      confirmText: t('confirm') || 'Xác nhận',
+      cancelText: t('cancel') || 'Hủy',
+      tone: 'danger',
+    })
     if (!confirmed) return
 
     setCancellingReportId(reportId)
@@ -198,7 +206,14 @@ function SettingsPage() {
   }
 
   const removeAddress = async (id) => {
-    if (!window.confirm('Xóa địa chỉ này?')) return
+    const ok = await confirm({
+      title: 'Xóa địa chỉ',
+      message: 'Bạn có chắc chắn muốn xóa địa chỉ này khỏi tài khoản?',
+      confirmText: t('delete') || 'Xóa',
+      cancelText: t('cancel') || 'Hủy',
+      tone: 'danger',
+    })
+    if (!ok) return
     const response = await run('address-delete', () => accountApi.deleteAddress(id), 'Đã xóa địa chỉ.')
     if (response) await loadProfile()
   }
@@ -245,13 +260,29 @@ function SettingsPage() {
   }
 
   const endAllSessions = async () => {
-    if (!window.confirm('Đăng xuất tài khoản khỏi tất cả thiết bị?')) return
+    const ok = await confirm({
+      title: 'Đăng xuất tất cả thiết bị',
+      message: 'Tài khoản của bạn sẽ bị đăng xuất khỏi tất cả các trình duyệt và thiết bị khác.',
+      confirmText: 'Đăng xuất',
+      cancelText: t('cancel') || 'Hủy',
+      tone: 'danger',
+      icon: 'logout',
+    })
+    if (!ok) return
     await logoutEverywhere().catch(() => {})
     navigate('/login', { replace: true, state: { message: 'Đã đăng xuất khỏi tất cả thiết bị.' } })
   }
 
   const removeAccount = async () => {
-    if (!window.confirm('Xóa tài khoản là thao tác không thể hoàn tác. Bạn chắc chắn chứ?')) return
+    const ok = await confirm({
+      title: 'Xóa tài khoản vĩnh viễn',
+      message: 'Xóa tài khoản là thao tác không thể hoàn tác. Bạn chắc chắn chứ?',
+      confirmText: 'Xóa tài khoản',
+      cancelText: t('cancel') || 'Hủy',
+      tone: 'danger',
+      icon: 'trash',
+    })
+    if (!ok) return
     try {
       await deleteAccount()
       navigate('/home', { replace: true })

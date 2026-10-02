@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { useAuth } from './context/auth-context.js'
 import AuthProvider from './context/AuthProvider.jsx'
 import { LanguageProvider } from './context/LanguageProvider.jsx'
+import { ConfirmDialogProvider } from './context/ConfirmDialogContext.jsx'
 import LandingPage from './pages/LandingPage.jsx'
 import ExperiencePage from './pages/ExperiencePage.jsx'
 import SecurityPage from './pages/SecurityPage.jsx'
@@ -50,21 +51,23 @@ function App() {
   return (
     <AuthProvider>
       <LanguageProvider>
-        <Routes>
-          <Route path="/" element={<Navigate to="/home" replace />} />
-          <Route path="/home" element={<LandingPage />} />
-          <Route path="/experience" element={<ExperiencePage />} />
-          <Route path="/security" element={<SecurityPage />} />
-          <Route path="/chat" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
-          <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
-          <Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
-          <Route path="/login" element={<PublicOnlyRoute><LoginPage /></PublicOnlyRoute>} />
-          <Route path="/register" element={<PublicOnlyRoute><RegisterPage /></PublicOnlyRoute>} />
-          <Route path="/forgot-password" element={<PublicOnlyRoute><ForgotPasswordPage /></PublicOnlyRoute>} />
-          <Route path="/verify-account" element={<VerifyAccountPage />} />
-          <Route path="/oauth2/redirect" element={<OAuthCallbackPage />} />
-          <Route path="*" element={<Navigate to="/home" replace />} />
-        </Routes>
+        <ConfirmDialogProvider>
+          <Routes>
+            <Route path="/" element={<Navigate to="/home" replace />} />
+            <Route path="/home" element={<LandingPage />} />
+            <Route path="/experience" element={<ExperiencePage />} />
+            <Route path="/security" element={<SecurityPage />} />
+            <Route path="/chat" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
+            <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+            <Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
+            <Route path="/login" element={<PublicOnlyRoute><LoginPage /></PublicOnlyRoute>} />
+            <Route path="/register" element={<PublicOnlyRoute><RegisterPage /></PublicOnlyRoute>} />
+            <Route path="/forgot-password" element={<PublicOnlyRoute><ForgotPasswordPage /></PublicOnlyRoute>} />
+            <Route path="/verify-account" element={<VerifyAccountPage />} />
+            <Route path="/oauth2/redirect" element={<OAuthCallbackPage />} />
+            <Route path="*" element={<Navigate to="/home" replace />} />
+          </Routes>
+        </ConfirmDialogProvider>
       </LanguageProvider>
     </AuthProvider>
   )

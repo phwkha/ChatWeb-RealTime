@@ -397,8 +397,55 @@ class ChatServiceTest {
         request.setRecipient("recipient");
         request.setContent("Hello!");
         request.setMessageType(null);
+        request.setLocalId("loc-123");
 
         assertThatThrownBy(() -> chatService.sendPrivateMessage("sender", request))
                 .isInstanceOf(InvalidDataException.class);
+
+        verify(rateLimitingService, never()).isAllowed(anyString(), anyInt(), anyLong());
+        verify(valueOperations, never()).setIfAbsent(anyString(), anyString(), any(Duration.class));
+    }
+
+    @Test
+    void testSendPrivateMessage_TypingMessage_Allowed() {
+        when(userRepository.findUserStatusByUsername("recipient")).thenReturn(Optional.of(UserStatus.ACTIVE));
+        when(friendService.isFriend("sender", "recipient")).thenReturn(true);
+        when(rateLimitingService.isAllowed(eq("ws_chat_typing:sender"), eq(60), eq(60L))).thenReturn(true);
+
+        ChatMessageRequest request = new ChatMessageRequest();
+        request.setRecipient("recipient");
+        request.setContent("typing...");
+        request.setMessageType(MessageType.TYPING);
+
+        ChatMessage chatMessage = new ChatMessage();
+        chatMessage.setMessageType(MessageType.TYPING);
+        when(messageMapper.toEntity(request)).thenReturn(chatMessage);
+
+        @SuppressWarnings("unchecked")
+        SendResult<String, ChatMessageAvro> sendResult = mock(SendResult.class, RETURNS_DEEP_STUBS);
+        CompletableFuture<SendResult<String, ChatMessageAvro>> future = CompletableFuture.completedFuture(sendResult);
+        when(chatProducer.sendChatMessage(any())).thenReturn(future);
+
+        chatService.sendPrivateMessage("sender", request);
+
+        verify(rateLimitingService).isAllowed(eq("ws_chat_typing:sender"), eq(60), eq(60L));
+        verify(rateLimitingService, never()).isAllowed(eq("ws_chat_send:sender"), anyInt(), anyLong());
+        verify(chatProducer).sendChatMessage(any(ChatMessageAvro.class));
+    }
+
+    @Test
+    void testSendPrivateMessage_TypingRateLimitExceeded_ThrowsTooManyRequestsException() {
+        when(rateLimitingService.isAllowed(eq("ws_chat_typing:sender"), eq(60), eq(60L))).thenReturn(false);
+
+        ChatMessageRequest request = new ChatMessageRequest();
+        request.setRecipient("recipient");
+        request.setContent("typing...");
+        request.setMessageType(MessageType.TYPING);
+
+        assertThatThrownBy(() -> chatService.sendPrivateMessage("sender", request))
+                .isInstanceOf(TooManyRequestsException.class);
+
+        verify(userRepository, never()).findUserStatusByUsername(anyString());
+        verify(chatProducer, never()).sendChatMessage(any());
     }
 }

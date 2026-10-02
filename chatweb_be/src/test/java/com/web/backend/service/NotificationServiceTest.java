@@ -318,4 +318,36 @@ class NotificationServiceTest {
         verify(notificationRepository, never()).save(any());
         verify(redisTemplate, never()).delete(anyString());
     }
+
+    @Test
+    void createNotification_DuplicateWithinWindow_ReturnsExistingWithoutSaving() {
+        UserEntity sender = new UserEntity();
+        sender.setId(200L);
+        sender.setUsername("senderUser");
+
+        NotificationEntity existingEntity = NotificationEntity.builder()
+                .sender(sender)
+                .recipient(testUser)
+                .type(NotificationsType.FRIEND_REQUEST)
+                .targetType(NotificationTargetType.USER)
+                .targetId("senderUser")
+                .content("Previous request")
+                .build();
+        existingEntity.setId(888L);
+
+        when(userRepository.findByUsername("recipientUser")).thenReturn(Optional.of(testUser));
+        when(userRepository.findByUsername("senderUser")).thenReturn(Optional.of(sender));
+        when(notificationRepository.findRecentDuplicates(
+                eq(100L), eq(200L), eq(NotificationsType.FRIEND_REQUEST),
+                eq(NotificationTargetType.USER), eq("senderUser"), any(Instant.class)
+        )).thenReturn(List.of(existingEntity));
+
+        NotificationEntity result = notificationService.createNotification(
+                "senderUser", "recipientUser", NotificationsType.FRIEND_REQUEST,
+                NotificationTargetType.USER, "senderUser", "New duplicate request");
+
+        assertThat(result).isNotNull();
+        assertThat(result.getId()).isEqualTo(888L);
+        verify(notificationRepository, never()).save(any());
+    }
 }

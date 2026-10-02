@@ -141,7 +141,6 @@ function ChatPage() {
   const {
     searchQuery, setSearchQuery, searchType, setSearchType,
     searchResults, searching, suggestions, loadingSuggestions, loadSuggestions,
-    filters, hasActiveFilters, appliedFilterCount, applyFilters, resetFilters,
   } = useUserDiscovery({ activeSection, currentUsernameKey, language, showToast, t })
 
   const updatePeerPresence = useCallback((username, online) => {
@@ -185,14 +184,14 @@ function ChatPage() {
   const {
     connectionState, sendPrivateMessage, sendWorldMessage, unreadCounts, unreadCountsRef,
     typingUsers, worldMessages, worldCursor, worldHasMore, worldNotifications,
-    loadWorldHistory, sendTypingStatus, sendReactionControl, markAsRead, sendRealtimeReceipt,
+    loadWorldHistory, sendTypingStatus, markAsRead,
   } = realtime
 
   const selectedUserIsTyping = Boolean(typingUsers[selectedUsername])
 
   const messagesState = useConversationMessages({
     user: currentUser, selectedUser, activeSection, connectionState, blockedMessageIntervals,
-    sendPrivateMessage, sendTypingStatus, sendReactionControl, showToast, t,
+    sendPrivateMessage, sendTypingStatus, showToast, t,
     selectedUserIsTyping,
   })
 
@@ -251,7 +250,6 @@ function ChatPage() {
       if (unread > 0) {
         markAsRead(friend.username)
       }
-      sendRealtimeReceipt(friend.username, 'READ')
       messagesStateRef.current?.scrollToBottom(true)
       try {
         localStorage.setItem(ACTIVE_CONVERSATION_STORAGE_KEY, friend.username)
@@ -264,7 +262,7 @@ function ChatPage() {
         return next
       }, { replace: true })
     }
-  }, [closeContextMenu, markAsRead, sendRealtimeReceipt, setSearchParams, unreadCounts, unreadCountsRef])
+  }, [closeContextMenu, markAsRead, setSearchParams, unreadCounts, unreadCountsRef])
 
   const handleNotificationClick = useCallback((notification) => {
     if (!notification) return
@@ -415,8 +413,6 @@ function ChatPage() {
           visibleSuggestions={visibleSuggestions} searchResults={searchResults} searching={searching}
           loadingSuggestions={loadingSuggestions} friendNames={friendNames} sentNames={sentNames}
           blockedNames={blockedNames} t={t}
-          filters={filters} hasActiveFilters={hasActiveFilters} appliedFilterCount={appliedFilterCount}
-          onApplyFilters={applyFilters} onResetFilters={resetFilters}
           onAcceptFriend={async (p) => { await acceptFriend(p); selectFriend(p) }}
           onRemoveFriendRelation={removeFriendRelation} onUnblockUser={unblockServerUser}
           onAddFriend={addFriend} onSelectFriend={selectFriend} onRefreshSuggestions={loadSuggestions}

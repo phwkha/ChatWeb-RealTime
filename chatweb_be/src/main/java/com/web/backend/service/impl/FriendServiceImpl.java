@@ -11,11 +11,14 @@ import com.web.backend.exception.custom.AccessForbiddenException;
 import com.web.backend.exception.custom.InvalidDataException;
 import com.web.backend.exception.custom.ResourceConflictException;
 import com.web.backend.exception.custom.ResourceNotFoundException;
+import com.web.backend.common.NotificationTargetType;
 import com.web.backend.model.postgres.FriendshipEntity;
+import com.web.backend.model.postgres.NotificationEntity;
 import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.repository.FriendshipRepository;
 import com.web.backend.repository.UserRepository;
 import com.web.backend.service.FriendService;
+import com.web.backend.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -46,6 +49,8 @@ public class FriendServiceImpl implements FriendService {
 
         private final ApplicationEventPublisher eventPublisher;
 
+        private final NotificationService notificationService;
+
         private static final String RELATION_KEY_PREFIX = "relation:";
         private static final String RELATION_NONE = "NONE";
         private static final String RELATION_ACCEPTED = "ACCEPTED";
@@ -73,6 +78,9 @@ public class FriendServiceImpl implements FriendService {
         private static final String ERROR_FRIEND_RELATION_NOT_FOUND_STRING = "error.friend.relation_not_found";
         private static final String ERROR_FRIEND_NOT_BLOCKED_STRING = "error.friend.not_blocked";
         private static final String ERROR_USER_NOT_FOUND_STRING = "error.user.not_found";
+
+        private static final String SYS_MSG_NEW_FRIEND_INVITE_STRING = "sys.msg.new_friend_invite";
+        private static final String SUCCESS_FRIEND_ACCEPTED_STRING = "success.friend.accepted";
 
         @Override
         @Transactional
@@ -121,7 +129,17 @@ public class FriendServiceImpl implements FriendService {
                                 RELATION_PENDING_PREFIX + requesterUsername,
                                 TTL_PENDING);
 
+                NotificationEntity notification = notificationService.createNotification(
+                                requesterUsername,
+                                addresseeUsername,
+                                NotificationsType.FRIEND_REQUEST,
+                                NotificationTargetType.USER,
+                                requesterUsername,
+                                Translator.tolocale(SYS_MSG_NEW_FRIEND_INVITE_STRING));
+                Long notificationId = notification != null ? notification.getId() : null;
+
                 eventPublisher.publishEvent(FriendPayload.builder()
+                                .notificationId(notificationId)
                                 .senderUsername(requesterUsername)
                                 .recipientUsername(addresseeUsername)
                                 .senderType(NotificationsType.REQUEST_SENT_SUCCESS)
@@ -161,7 +179,17 @@ public class FriendServiceImpl implements FriendService {
                                 RELATION_ACCEPTED,
                                 TTL_ACCEPTED);
 
+                NotificationEntity notification = notificationService.createNotification(
+                                acceptorUsername,
+                                requesterUsername,
+                                NotificationsType.FRIEND_ACCEPTED,
+                                NotificationTargetType.USER,
+                                acceptorUsername,
+                                Translator.tolocale(SUCCESS_FRIEND_ACCEPTED_STRING));
+                Long notificationId = notification != null ? notification.getId() : null;
+
                 eventPublisher.publishEvent(FriendPayload.builder()
+                                .notificationId(notificationId)
                                 .senderUsername(acceptorUsername)
                                 .recipientUsername(requesterUsername)
                                 .senderType(NotificationsType.YOU_ACCEPTED)

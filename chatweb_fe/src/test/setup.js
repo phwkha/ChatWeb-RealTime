@@ -1,4 +1,10 @@
 import '@testing-library/jest-dom/vitest'
+import { afterEach, vi } from 'vitest'
+
+afterEach(() => {
+  vi.useRealTimers()
+  vi.clearAllTimers()
+})
 
 // Mock BroadcastChannel
 if (typeof globalThis.BroadcastChannel === 'undefined') {

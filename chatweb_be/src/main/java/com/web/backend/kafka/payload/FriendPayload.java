@@ -7,6 +7,7 @@ import java.util.List;
 
 @Builder
 public record FriendPayload(
+        Long notificationId,
         String senderUsername,
         String senderDisplayName,
         String recipientUsername,

@@ -1,0 +1,125 @@
+.cw-confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999 !important;
+  display: grid;
+  padding: 20px;
+  place-items: center;
+  background: rgba(21, 19, 31, 0.34);
+  backdrop-filter: blur(5px);
+  animation: cw-fade 160ms ease;
+}
+
+.cw-confirm-dialog {
+  width: min(390px, 100%);
+  padding: 26px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 20px;
+  background: white;
+  color: var(--cw-ink, #1f2029);
+  text-align: center;
+  box-shadow: var(--cw-shadow, 0 20px 48px rgba(31, 32, 41, 0.12));
+  animation: cw-dialog-in 190ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.cw-confirm-dialog__icon {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 13px;
+  border-radius: 15px;
+  place-items: center;
+  background: var(--cw-purple-soft, #f0edfe);
+  color: var(--cw-purple, #7057ed);
+}
+
+.cw-confirm-dialog__icon.is-danger {
+  background: #fff0ef;
+  color: #dd5757;
+}
+
+.cw-confirm-dialog h2 {
+  margin: 0;
+  font-size: 18px;
+  letter-spacing: -0.5px;
+}
+
+.cw-confirm-dialog > p {
+  margin: 9px auto;
+  color: #858791;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.cw-confirm-dialog > strong {
+  display: inline-block;
+  padding: 6px 9px;
+  border-radius: 8px;
+  background: #f5f4f8;
+  font-size: 10px;
+}
+
+.cw-confirm-dialog__actions {
+  display: flex;
+  margin-top: 20px;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.cw-confirm-dialog__actions button {
+  min-width: 86px;
+  padding: 9px 13px;
+  border: 1px solid #e1e0e6;
+  border-radius: 10px;
+  background: white;
+  color: #666872;
+  font-size: 11px;
+  font-weight: 750;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.cw-confirm-dialog__actions button:hover {
+  background: #f6f5f9;
+}
+
+.cw-confirm-dialog__actions button.is-danger {
+  border-color: transparent;
+  background: #e45d5d;
+  color: white;
+}
+
+.cw-confirm-dialog__actions button.is-danger:hover {
+  background: #d44d4d;
+}
+
+.cw-confirm-dialog__actions button.is-primary {
+  border-color: transparent;
+  background: var(--cw-purple, #7057ed);
+  color: white;
+}
+
+.cw-confirm-dialog__actions button.is-primary:hover {
+  filter: brightness(0.93);
+}
+
+.cw-confirm-dialog__actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@keyframes cw-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes cw-dialog-in {
+  from {
+    transform: scale(0.94) translateY(6px);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+}
