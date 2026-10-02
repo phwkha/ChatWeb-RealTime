@@ -9,6 +9,8 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import com.web.backend.common.NotificationTargetType;
+import com.web.backend.common.NotificationsType;
 import com.web.backend.controller.response.NotificationResponse;
 import com.web.backend.model.postgres.NotificationEntity;
 
@@ -78,5 +80,23 @@ public interface NotificationRepository extends JpaRepository<NotificationEntity
   long countByRecipientIdAndIsReadFalse(Long recipientId);
 
   boolean existsByIdAndRecipientId(Long id, Long recipientId);
+
+  @Query("""
+          SELECT n FROM NotificationEntity n
+          WHERE n.recipient.id = :recipientId
+            AND ((:senderId IS NULL AND n.sender IS NULL) OR n.sender.id = :senderId)
+            AND n.type = :type
+            AND ((:targetType IS NULL AND n.targetType IS NULL) OR n.targetType = :targetType)
+            AND ((:targetId IS NULL AND n.targetId IS NULL) OR n.targetId = :targetId)
+            AND n.createAt >= :since
+          ORDER BY n.createAt DESC
+      """)
+  List<NotificationEntity> findRecentDuplicates(
+          @Param("recipientId") Long recipientId,
+          @Param("senderId") Long senderId,
+          @Param("type") NotificationsType type,
+          @Param("targetType") NotificationTargetType targetType,
+          @Param("targetId") String targetId,
+          @Param("since") Instant since);
 
 }

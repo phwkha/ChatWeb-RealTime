@@ -37,7 +37,11 @@ import com.web.backend.model.postgres.FriendshipEntity;
 import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.repository.FriendshipRepository;
 import com.web.backend.repository.UserRepository;
+import com.web.backend.common.NotificationTargetType;
+import com.web.backend.common.NotificationsType;
+import com.web.backend.model.postgres.NotificationEntity;
 import com.web.backend.service.impl.FriendServiceImpl;
+import org.mockito.ArgumentCaptor;
 
 @ExtendWith(MockitoExtension.class)
 class FriendServiceTest {
@@ -54,6 +58,8 @@ class FriendServiceTest {
     private UserMapper userMapper;
     @Mock
     private ValueOperations<String, Object> valueOperations;
+    @Mock
+    private NotificationService notificationService;
 
     @InjectMocks
     private FriendServiceImpl friendService;
@@ -98,11 +104,42 @@ class FriendServiceTest {
         when(friendshipRepository.findByUsers(userA, userB)).thenReturn(Optional.empty());
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
 
+        NotificationEntity mockNotif = new NotificationEntity();
+        mockNotif.setId(101L);
+        when(notificationService.createNotification(
+                eq("userA"),
+                eq("userB"),
+                eq(NotificationsType.FRIEND_REQUEST),
+                eq(NotificationTargetType.USER),
+                eq("userA"),
+                anyString())).thenReturn(mockNotif);
+
         friendService.sendFriendRequest(userA, "userB");
 
         verify(friendshipRepository).save(any(FriendshipEntity.class));
         verify(valueOperations).set("relation:userA:userB", "PENDING:userA", Duration.ofDays(1));
-        verify(eventPublisher).publishEvent(any(FriendPayload.class));
+
+        ArgumentCaptor<FriendPayload> captor = ArgumentCaptor.forClass(FriendPayload.class);
+        verify(eventPublisher).publishEvent(captor.capture());
+        FriendPayload published = captor.getValue();
+        assertEquals(101L, published.notificationId());
+        assertEquals("userA", published.senderUsername());
+        assertEquals("userB", published.recipientUsername());
+        assertEquals(NotificationsType.FRIEND_REQUEST, published.recipientType());
+    }
+
+    @Test
+    void testSendFriendRequest_NotificationServiceReturnsNull_HandlesGracefully() {
+        when(userRepository.findByUsername("userB")).thenReturn(Optional.of(userB));
+        when(friendshipRepository.findByUsers(userA, userB)).thenReturn(Optional.empty());
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(notificationService.createNotification(any(), any(), any(), any(), any(), any())).thenReturn(null);
+
+        friendService.sendFriendRequest(userA, "userB");
+
+        ArgumentCaptor<FriendPayload> captor = ArgumentCaptor.forClass(FriendPayload.class);
+        verify(eventPublisher).publishEvent(captor.capture());
+        assertNull(captor.getValue().notificationId());
     }
 
     @Test
@@ -128,12 +165,29 @@ class FriendServiceTest {
 
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
 
+        NotificationEntity mockNotif = new NotificationEntity();
+        mockNotif.setId(102L);
+        when(notificationService.createNotification(
+                eq("userA"),
+                eq("userB"),
+                eq(NotificationsType.FRIEND_ACCEPTED),
+                eq(NotificationTargetType.USER),
+                eq("userA"),
+                anyString())).thenReturn(mockNotif);
+
         friendService.acceptFriendRequest(userA, "userB");
 
         assertEquals(FriendshipStatus.ACCEPTED, pendingReq.getStatus());
         verify(friendshipRepository).save(pendingReq);
         verify(valueOperations).set("relation:userA:userB", "ACCEPTED", Duration.ofDays(7));
-        verify(eventPublisher).publishEvent(any(FriendPayload.class));
+
+        ArgumentCaptor<FriendPayload> captor = ArgumentCaptor.forClass(FriendPayload.class);
+        verify(eventPublisher).publishEvent(captor.capture());
+        FriendPayload published = captor.getValue();
+        assertEquals(102L, published.notificationId());
+        assertEquals("userA", published.senderUsername());
+        assertEquals("userB", published.recipientUsername());
+        assertEquals(NotificationsType.FRIEND_ACCEPTED, published.recipientType());
     }
 
     @Test
@@ -439,7 +493,8 @@ class FriendServiceTest {
     void testGetBlockedList_Success() {
         UserSummaryResponse summary = UserSummaryResponse.builder().username("userB").build();
         Page<UserSummaryResponse> page = new PageImpl<>(List.of(summary));
-        when(friendshipRepository.findAddresseeSummaryByRequesterAndStatus(eq(userA), eq(FriendshipStatus.BLOCKED), any(Pageable.class)))
+        when(friendshipRepository.findAddresseeSummaryByRequesterAndStatus(eq(userA), eq(FriendshipStatus.BLOCKED),
+                any(Pageable.class)))
                 .thenReturn(page);
 
         PageResponse<UserSummaryResponse> res = friendService.getBlockedList(userA, 0, 10, "desc");

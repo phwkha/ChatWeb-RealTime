@@ -39,6 +39,8 @@ public class NotificationServiceImpl implements NotificationService {
 
     private static final String NOTIF_UNREAD_PREFIX = "notif:unread:";
 
+    private static final Duration DUPLICATE_WINDOW = Duration.ofMinutes(10);
+
     private static final int DEFAULT_PAGE_SIZE = 20;
     private static final int MAX_PAGE_SIZE = 100;
 
@@ -60,6 +62,19 @@ public class NotificationServiceImpl implements NotificationService {
             if (sender == null) {
                 log.warn("Notification sender '{}' not found, proceeding as system sender", senderUsername);
             }
+        }
+
+        Long recipientId = recipient.getId();
+        Long senderId = (sender != null) ? sender.getId() : null;
+        Instant since = Instant.now().minus(DUPLICATE_WINDOW);
+
+        List<NotificationEntity> duplicates = notificationRepository.findRecentDuplicates(
+                recipientId, senderId, type, targetType, targetId, since);
+        if (duplicates != null && !duplicates.isEmpty()) {
+            NotificationEntity existing = duplicates.get(0);
+            log.info("Duplicate notification detected (id={}) for recipient='{}', type='{}', returning existing record",
+                    existing.getId(), recipientUsername, type);
+            return existing;
         }
 
         NotificationEntity entity = NotificationEntity.builder()

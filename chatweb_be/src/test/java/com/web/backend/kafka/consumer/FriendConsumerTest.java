@@ -3,6 +3,7 @@ package com.web.backend.kafka.consumer;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
@@ -10,27 +11,22 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentMatchers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.support.ResourceBundleMessageSource;
 
-import com.web.backend.common.NotificationTargetType;
 import com.web.backend.common.NotificationsType;
 import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.response.SocketNotificationResponse;
 import com.web.backend.exception.custom.MessageProcessingException;
 import com.web.backend.kafka.payload.FriendPayload;
-import com.web.backend.model.postgres.NotificationEntity;
-import com.web.backend.service.NotificationService;
 import com.web.backend.service.WebSocketRoutingService;
 
 @ExtendWith(MockitoExtension.class)
@@ -38,9 +34,6 @@ class FriendConsumerTest {
 
     @Mock
     private WebSocketRoutingService webSocketRoutingService;
-
-    @Mock
-    private NotificationService notificationService;
 
     @InjectMocks
     private FriendConsumer friendConsumer;
@@ -53,25 +46,15 @@ class FriendConsumerTest {
     }
 
     @Test
-    void testListenFriendNotifications_NullEvent() {
+    void testListenFriendNotifications_NullEvent() throws Exception {
         friendConsumer.listenFriendNotifications(null);
-        verify(notificationService, never()).createNotification(any(), any(), any(), any(), any(), any());
+        verify(webSocketRoutingService, never()).routeMessage(any(), any(), any());
     }
 
     @Test
     void testListenFriendNotifications_FriendRequest() throws Exception {
-        NotificationEntity mockEntity = new NotificationEntity();
-        mockEntity.setId(101L);
-        when(notificationService.createNotification(
-                eq("sender_user"),
-                eq("recipient_user"),
-                eq(NotificationsType.FRIEND_REQUEST),
-                eq(NotificationTargetType.USER),
-                eq("sender_user"),
-                anyString()
-        )).thenReturn(mockEntity);
-
         FriendPayload payload = FriendPayload.builder()
+                .notificationId(101L)
                 .senderUsername("sender_user")
                 .senderDisplayName("Sender User")
                 .recipientUsername("recipient_user")
@@ -82,34 +65,22 @@ class FriendConsumerTest {
 
         friendConsumer.listenFriendNotifications(payload);
 
-        verify(notificationService).createNotification(
-                eq("sender_user"),
+        verify(webSocketRoutingService).routeMessage(
                 eq("recipient_user"),
-                eq(NotificationsType.FRIEND_REQUEST),
-                eq(NotificationTargetType.USER),
-                eq("sender_user"),
-                anyString()
+                eq("/queue/notifications"),
+                argThat((SocketNotificationResponse<?> resp) -> resp != null && Long.valueOf(101L).equals(resp.getId()))
         );
-        verify(webSocketRoutingService).routeMessage(eq("recipient_user"), eq("/queue/notifications"),
-                ArgumentMatchers.<SocketNotificationResponse<?>>any());
-        verify(webSocketRoutingService).routeMessage(eq("sender_user"), eq("/queue/notifications"),
-                ArgumentMatchers.<SocketNotificationResponse<?>>any());
+        verify(webSocketRoutingService).routeMessage(
+                eq("sender_user"),
+                eq("/queue/notifications"),
+                argThat((SocketNotificationResponse<?> resp) -> resp != null && resp.getId() == null)
+        );
     }
 
     @Test
     void testListenFriendNotifications_FriendAccepted() throws Exception {
-        NotificationEntity mockEntity = new NotificationEntity();
-        mockEntity.setId(102L);
-        when(notificationService.createNotification(
-                eq("sender_user"),
-                eq("recipient_user"),
-                eq(NotificationsType.FRIEND_ACCEPTED),
-                eq(NotificationTargetType.USER),
-                eq("sender_user"),
-                anyString()
-        )).thenReturn(mockEntity);
-
         FriendPayload payload = FriendPayload.builder()
+                .notificationId(102L)
                 .senderUsername("sender_user")
                 .senderDisplayName("Sender User")
                 .recipientUsername("recipient_user")
@@ -120,11 +91,16 @@ class FriendConsumerTest {
 
         friendConsumer.listenFriendNotifications(payload);
 
-        verify(notificationService).createNotification(
-                eq("sender_user"), eq("recipient_user"), eq(NotificationsType.FRIEND_ACCEPTED),
-                eq(NotificationTargetType.USER), eq("sender_user"), anyString());
-        verify(webSocketRoutingService).routeMessage(eq("recipient_user"), eq("/queue/notifications"), any());
-        verify(webSocketRoutingService).routeMessage(eq("sender_user"), eq("/queue/notifications"), any());
+        verify(webSocketRoutingService).routeMessage(
+                eq("recipient_user"),
+                eq("/queue/notifications"),
+                argThat((SocketNotificationResponse<?> resp) -> resp != null && Long.valueOf(102L).equals(resp.getId()))
+        );
+        verify(webSocketRoutingService).routeMessage(
+                eq("sender_user"),
+                eq("/queue/notifications"),
+                argThat((SocketNotificationResponse<?> resp) -> resp != null && resp.getId() == null)
+        );
     }
 
     @Test
@@ -184,5 +160,32 @@ class FriendConsumerTest {
                 .when(webSocketRoutingService).routeMessage(anyString(), anyString(), any());
 
         assertThrows(MessageProcessingException.class, () -> friendConsumer.listenFriendNotifications(payload));
+    }
+
+    @Test
+    void testListenFriendNotifications_RetryAfterRoutingFailure_PurelyStatelessAndIdempotent() throws Exception {
+        FriendPayload payload = FriendPayload.builder()
+                .notificationId(101L)
+                .senderUsername("sender_user")
+                .senderDisplayName("Sender User")
+                .recipientUsername("recipient_user")
+                .recipientDisplayName("Recipient User")
+                .recipientType(NotificationsType.FRIEND_REQUEST)
+                .senderType(NotificationsType.REQUEST_SENT_SUCCESS)
+                .build();
+
+        doThrow(new RuntimeException("Simulated socket error"))
+                .doNothing()
+                .when(webSocketRoutingService).routeMessage(eq("recipient_user"), eq("/queue/notifications"), any());
+
+        assertThrows(MessageProcessingException.class, () -> friendConsumer.listenFriendNotifications(payload));
+
+        friendConsumer.listenFriendNotifications(payload);
+
+        verify(webSocketRoutingService, times(2)).routeMessage(
+                eq("recipient_user"),
+                eq("/queue/notifications"),
+                any()
+        );
     }
 }

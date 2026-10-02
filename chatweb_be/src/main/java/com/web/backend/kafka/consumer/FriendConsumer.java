@@ -7,14 +7,11 @@ import org.springframework.kafka.retrytopic.DltStrategy;
 import org.springframework.kafka.retrytopic.SameIntervalTopicReuseStrategy;
 import org.springframework.stereotype.Component;
 
-import com.web.backend.common.NotificationTargetType;
 import com.web.backend.common.NotificationsType;
 import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.response.SocketNotificationResponse;
 import com.web.backend.exception.custom.MessageProcessingException;
 import com.web.backend.kafka.payload.FriendPayload;
-import com.web.backend.model.postgres.NotificationEntity;
-import com.web.backend.service.NotificationService;
 import com.web.backend.service.WebSocketRoutingService;
 
 import java.util.List;
@@ -28,8 +25,6 @@ import lombok.extern.slf4j.Slf4j;
 public class FriendConsumer {
 
     private final WebSocketRoutingService webSocketRoutingService;
-
-    private final NotificationService notificationService;
 
     private static final String QUEUE_NOTIFICATIONS_STRING = "/queue/notifications";
 
@@ -51,29 +46,12 @@ public class FriendConsumer {
             return;
         }
 
-        NotificationsType type = friendEvent.recipientType();
-        Long notificationId = null;
-
-        if (type == NotificationsType.FRIEND_REQUEST || type == NotificationsType.FRIEND_ACCEPTED) {
-            SocketNotificationResponse<?> resp = buildResponse(type, friendEvent.senderDisplayName());
-            String content = (resp != null) ? resp.getMessage() : "";
-            NotificationEntity saved = notificationService.createNotification(
-                    friendEvent.senderUsername(),
-                    friendEvent.recipientUsername(),
-                    type,
-                    NotificationTargetType.USER,
-                    friendEvent.senderUsername(),
-                    content);
-            if (saved != null) {
-                notificationId = saved.getId();
-            }
-        }
-
+        Long notificationId = friendEvent.notificationId();
         String recipient = friendEvent.recipientUsername();
         List<String> recipients = friendEvent.recipientUsernames();
         String sender = friendEvent.senderUsername();
-        log.debug("Consumed friend notification event: sender='{}', recipient='{}', type='{}'", sender, recipient,
-                friendEvent.recipientType());
+        log.debug("Consumed friend notification event: sender='{}', recipient='{}', type='{}', notificationId={}",
+                sender, recipient, friendEvent.recipientType(), notificationId);
 
         try {
             SocketNotificationResponse<?> recipientResp = buildResponse(friendEvent.recipientType(),
@@ -140,10 +118,4 @@ public class FriendConsumer {
 
         return SocketNotificationResponse.notificationData(notificationId, type, relatedUsername, Translator.tolocale(translationKey));
     }
-
-    private SocketNotificationResponse<?> buildResponse(NotificationsType type,
-            String relatedUsername) {
-        return buildResponse(type, relatedUsername, null);
-    }
-
 }

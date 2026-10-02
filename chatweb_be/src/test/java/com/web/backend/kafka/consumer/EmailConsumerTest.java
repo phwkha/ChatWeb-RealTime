@@ -1,5 +1,6 @@
 package com.web.backend.kafka.consumer;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
@@ -66,6 +67,48 @@ class EmailConsumerTest {
 
         assertThrows(RuntimeException.class, () -> emailConsumer.consumeEmailTask(payload, acknowledgment));
         verify(acknowledgment, never()).acknowledge();
+    }
+
+    @Test
+    void testConsumeEmailTask_NullPayload_AcknowledgesAndDoesNotThrowNpe() {
+        assertDoesNotThrow(() -> emailConsumer.consumeEmailTask(null, acknowledgment));
+
+        verify(acknowledgment).acknowledge();
+        verify(emailService, never()).sendOtpEmail(any(), any(), any());
+        verify(emailService, never()).sendTextEmail(any(), any(), any());
+    }
+
+    @Test
+    void testConsumeEmailTask_MalformedPayload_BlankRecipient_Acknowledges() {
+        EmailPayload payload = EmailPayload.createOtpEvent("   ", "John", "123456");
+
+        assertDoesNotThrow(() -> emailConsumer.consumeEmailTask(payload, acknowledgment));
+
+        verify(acknowledgment).acknowledge();
+        verify(emailService, never()).sendOtpEmail(any(), any(), any());
+        verify(emailService, never()).sendTextEmail(any(), any(), any());
+    }
+
+    @Test
+    void testConsumeEmailTask_MalformedPayload_NullRecipient_Acknowledges() {
+        EmailPayload payload = EmailPayload.createOtpEvent(null, "John", "123456");
+
+        assertDoesNotThrow(() -> emailConsumer.consumeEmailTask(payload, acknowledgment));
+
+        verify(acknowledgment).acknowledge();
+        verify(emailService, never()).sendOtpEmail(any(), any(), any());
+        verify(emailService, never()).sendTextEmail(any(), any(), any());
+    }
+
+    @Test
+    void testConsumeEmailTask_NullPayload_NullAcknowledgment_DoesNotThrowNpe() {
+        assertDoesNotThrow(() -> emailConsumer.consumeEmailTask(null, null));
+    }
+
+    @Test
+    void testConsumeEmailTask_MalformedPayload_NullAcknowledgment_DoesNotThrowNpe() {
+        EmailPayload payload = EmailPayload.createOtpEvent(null, "John", "123456");
+        assertDoesNotThrow(() -> emailConsumer.consumeEmailTask(payload, null));
     }
 
     private String any() {

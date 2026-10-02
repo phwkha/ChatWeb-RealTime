@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import Brand from '../../components/Brand.jsx'
 import { useAuth } from '../../context/auth-context.js'
@@ -15,12 +15,28 @@ function VerifyAccountPage() {
   const [message, setMessage] = useState(location.state?.message || 'Mã OTP đã được gửi tới email của bạn.')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [countdown, setCountdown] = useState(60)
+  const isMountedRef = useRef(true)
+
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+    }
+  }, [])
 
   useEffect(() => {
     if (countdown <= 0) return undefined
-    const timer = window.setInterval(() => setCountdown((current) => current - 1), 1000)
+    const timer = window.setInterval(() => {
+      setCountdown((current) => {
+        if (current <= 1) {
+          window.clearInterval(timer)
+          return 0
+        }
+        return current - 1
+      })
+    }, 1000)
     return () => window.clearInterval(timer)
-  }, [countdown])
+  }, [countdown > 0])
 
   const handleOtpChange = (event) => {
     setOtp(event.target.value.replace(/\D/g, '').slice(0, 6))
@@ -37,14 +53,19 @@ function VerifyAccountPage() {
     setError('')
     try {
       const response = await verifyAccount({ email: email.trim(), otp })
+      if (!isMountedRef.current) return
       navigate('/login', {
         replace: true,
         state: { message: response?.message || 'Xác minh thành công. Bạn có thể đăng nhập ngay.' },
       })
     } catch (requestError) {
-      setError(getErrorMessage(requestError, 'Mã OTP không hợp lệ hoặc đã hết hạn.'))
+      if (isMountedRef.current) {
+        setError(getErrorMessage(requestError, 'Mã OTP không hợp lệ hoặc đã hết hạn.'))
+      }
     } finally {
-      setIsSubmitting(false)
+      if (isMountedRef.current) {
+        setIsSubmitting(false)
+      }
     }
   }
 
@@ -53,9 +74,11 @@ function VerifyAccountPage() {
     setError('')
     try {
       const response = await resendOtp(email.trim())
+      if (!isMountedRef.current) return
       setMessage(response?.message || 'Đã gửi lại mã OTP.')
       setCountdown(60)
     } catch (requestError) {
+      if (!isMountedRef.current) return
       setError(getErrorMessage(requestError, 'Chưa thể gửi lại mã OTP. Vui lòng thử lại.'))
     }
   }

@@ -14,10 +14,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import java.io.PrintWriter;
-import java.io.StringWriter;
-import java.util.Collections;
-
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -164,7 +160,8 @@ class JwtAuthenticationFilterTest {
         MockHttpServletResponse response = new MockHttpServletResponse();
         MockFilterChain filterChain = mock(MockFilterChain.class);
 
-        when(redisTemplate.hasKey("blacklist:error-jwt-token")).thenThrow(new RuntimeException("Redis connection error"));
+        when(redisTemplate.hasKey("blacklist:error-jwt-token"))
+                .thenThrow(new RuntimeException("Redis connection error"));
 
         filter.doFilterInternal(request, response, filterChain);
 
