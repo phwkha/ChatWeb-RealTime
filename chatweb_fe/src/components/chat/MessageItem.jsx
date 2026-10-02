@@ -145,6 +145,17 @@ export const MessageItem = React.memo(function MessageItem({
           </aside>
         )}
 
+        {(edited || editHistory.length > 0) && !deleted && (
+          <button
+            className="message-edited-label message-edit-history-anchor"
+            type="button"
+            aria-expanded={isEditHistoryOpen}
+            onClick={(event) => onToggleEditHistory(event, messageKey)}
+          >
+            {t('editedLabel')}
+          </button>
+        )}
+
         <div
           className={`message-bubble${message.clientFailed ? ' is-failed' : ''}${deleted ? ' is-deleted' : ''}${!message.id || deleted ? ' is-static' : ''}`}
           role={message.id && !deleted ? 'button' : undefined}
@@ -224,17 +235,6 @@ export const MessageItem = React.memo(function MessageItem({
             </>
           )}
         </div>
-
-        {(edited || editHistory.length > 0) && !deleted && (
-          <button
-            className="message-edited-label message-edit-history-anchor"
-            type="button"
-            aria-expanded={isEditHistoryOpen}
-            onClick={(event) => onToggleEditHistory(event, messageKey)}
-          >
-            {t('editedLabel')}
-          </button>
-        )}
 
         {!deleted && Boolean(message.id) && (
           <div
