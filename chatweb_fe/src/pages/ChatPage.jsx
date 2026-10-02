@@ -49,6 +49,7 @@ function ChatPage() {
   const [reportDialogOpen, setReportDialogOpen] = useState(false)
 
   const selectedRef = useRef(null)
+  const selectFriendRef = useRef(null)
   const lastSelectedUsernameRef = useRef(null)
   const conversationMenuRef = useRef(null)
   const isAdmin = isAdminUser(currentUser)
@@ -246,7 +247,7 @@ function ChatPage() {
     setActiveSection('chat')
     setWorldOpen(false)
     if (friend?.username) {
-      const unread = Number(unreadCountsRef?.current?.[friend.username] ?? unreadCounts[friend.username] ?? 0)
+      const unread = Number(unreadCountsRef?.current?.[friend.username] ?? 0)
       if (unread > 0) {
         markAsRead(friend.username)
       }
@@ -262,7 +263,9 @@ function ChatPage() {
         return next
       }, { replace: true })
     }
-  }, [closeContextMenu, markAsRead, setSearchParams, unreadCounts, unreadCountsRef])
+  }, [closeContextMenu, markAsRead, setSearchParams, unreadCountsRef])
+
+  useEffect(() => { selectFriendRef.current = selectFriend }, [selectFriend])
 
   const handleNotificationClick = useCallback((notification) => {
     if (!notification) return
@@ -331,7 +334,7 @@ function ChatPage() {
         String(f.username || '').toLocaleLowerCase('en-US') === storedUser.toLocaleLowerCase('en-US')
       ))
       if (match) {
-        selectFriend(match)
+        selectFriendRef.current(match)
         return
       } else {
         try { localStorage.removeItem(ACTIVE_CONVERSATION_STORAGE_KEY) } catch {}
@@ -351,7 +354,7 @@ function ChatPage() {
         String(f.username || '').toLocaleLowerCase('en-US') === queryUser
       ))
       if (match) {
-        selectFriend(match)
+        selectFriendRef.current(match)
       } else {
         try { localStorage.removeItem(ACTIVE_CONVERSATION_STORAGE_KEY) } catch {}
         setSearchParams((prev) => {
@@ -362,7 +365,7 @@ function ChatPage() {
         }, { replace: true })
       }
     }
-  }, [connectionsLoaded, friends, searchParams, selectFriend, setSearchParams])
+  }, [connectionsLoaded, friends, searchParams, setSearchParams])
 
   const latestWorldMessage = worldMessages.length ? worldMessages[worldMessages.length - 1] : null
 
