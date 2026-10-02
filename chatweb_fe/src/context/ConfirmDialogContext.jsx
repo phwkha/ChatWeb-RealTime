@@ -4,12 +4,11 @@ import '../styles/confirm-dialog.css'
 
 export const ConfirmDialogContext = createContext(null)
 
+const defaultConfirm = () => Promise.resolve(false)
+
 export function useConfirm() {
   const context = useContext(ConfirmDialogContext)
-  if (!context) {
-    return useCallback(() => Promise.resolve(false), [])
-  }
-  return context.confirm
+  return context?.confirm || defaultConfirm
 }
 
 export function ConfirmDialogProvider({ children }) {
