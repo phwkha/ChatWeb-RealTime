@@ -5,18 +5,20 @@ export function useContextMenu() {
   const [contextMenu, setContextMenu] = useState(null)
 
   const openContextMenu = useCallback((event, message, messageKey) => {
-    event.preventDefault()
+    event?.preventDefault?.()
     if (!message?.id || isMessageDeleted(message)) {
       setContextMenu(null)
       return
     }
     const menuWidth = 236
     const menuHeight = 220
+    const clientX = event?.clientX != null ? event.clientX : (event?.currentTarget?.getBoundingClientRect?.().left ?? 0)
+    const clientY = event?.clientY != null ? event.clientY : (event?.currentTarget?.getBoundingClientRect?.().bottom ?? 0)
     setContextMenu({
       message,
       messageKey,
-      x: Math.max(8, Math.min(event.clientX, window.innerWidth - menuWidth - 8)),
-      y: Math.max(8, Math.min(event.clientY, window.innerHeight - menuHeight - 8)),
+      x: Math.max(8, Math.min(clientX, window.innerWidth - menuWidth - 8)),
+      y: Math.max(8, Math.min(clientY, window.innerHeight - menuHeight - 8)),
     })
   }, [])
 

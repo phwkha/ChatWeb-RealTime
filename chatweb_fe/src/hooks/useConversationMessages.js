@@ -734,10 +734,22 @@ export function useConversationMessages({
     setReactionPickerMessageId(null)
   }
 
-  const saveMessageEdit = async (event, message) => {
-    event.preventDefault()
+  const saveMessageEdit = async (targetMessageOrEvent, maybeMessage) => {
+    if (targetMessageOrEvent?.preventDefault) {
+      targetMessageOrEvent.preventDefault()
+    }
+    const message = (maybeMessage && maybeMessage.id) ? maybeMessage : targetMessageOrEvent
+    if (!message?.id || !selectedUser || messageActionPending) return
+
     const newContent = editingMessageContent.trim()
-    if (!newContent || !selectedUser || messageActionPending) return
+    if (!newContent) return
+
+    if (newContent === message.content) {
+      setEditingMessageId(null)
+      setEditingMessageContent('')
+      return
+    }
+
     setMessageActionPending(true)
     try {
       const response = await apiRequest('/api/messages/edit', {

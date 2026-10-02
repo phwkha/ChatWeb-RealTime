@@ -267,6 +267,18 @@ export const MessageItem = React.memo(function MessageItem({
             >
               <ChatIcon name="reply" size={15} />
             </button>
+            <button
+              type="button"
+              className="reaction-picker__more"
+              aria-label={t('messageMenu')}
+              title={t('messageMenu')}
+              onClick={(event) => {
+                event.stopPropagation()
+                onContextMenu?.(event, message, messageKey)
+              }}
+            >
+              <ChatIcon name="more" size={15} />
+            </button>
           </div>
         )}
 
@@ -299,54 +311,38 @@ export const MessageItem = React.memo(function MessageItem({
           </div>
         )}
 
-        {showActions && !deleted && isMine && (
-          isEditing ? (
-            <form
-              className="message-edit-form"
-              onSubmit={(event) => {
-                event.preventDefault()
-                onSaveEdit(message)
+        {isEditing && !deleted && isMine && (
+          <form
+            className="message-edit-form"
+            onSubmit={(event) => {
+              event.preventDefault()
+              onSaveEdit(message)
+            }}
+          >
+            <input
+              value={editingContent}
+              maxLength={2000}
+              autoFocus
+              disabled={messageActionPending}
+              aria-label={t('editMessage')}
+              onChange={(event) => onChangeEditContent(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') {
+                  event.preventDefault()
+                  onCancelEdit?.()
+                }
               }}
+            />
+            <button
+              type="submit"
+              disabled={messageActionPending || !editingContent.trim()}
             >
-              <input
-                value={editingContent}
-                maxLength={2000}
-                autoFocus
-                disabled={messageActionPending}
-                aria-label={t('editMessage')}
-                onChange={(event) => onChangeEditContent(event.target.value)}
-              />
-              <button
-                type="submit"
-                disabled={messageActionPending || !editingContent.trim()}
-              >
-                {t('save')}
-              </button>
-              <button type="button" onClick={onCancelEdit}>
-                {t('cancel')}
-              </button>
-            </form>
-          ) : (
-            <div className="message-actions">
-              {String(message.contentType || 'TEXT').toUpperCase() === 'TEXT' && (
-                <button
-                  type="button"
-                  disabled={messageActionPending}
-                  onClick={() => onBeginEdit(message)}
-                >
-                  {t('editMessage')}
-                </button>
-              )}
-              <button
-                className="is-danger"
-                type="button"
-                disabled={messageActionPending}
-                onClick={() => onRevokeClick(message)}
-              >
-                {t('revokeMessage')}
-              </button>
-            </div>
-          )
+              {t('save')}
+            </button>
+            <button type="button" onClick={onCancelEdit}>
+              {t('cancel')}
+            </button>
+          </form>
         )}
 
         {showDetails && (
