@@ -113,6 +113,11 @@
       "name": "notificationId",
       "type": ["null", "long"],
       "default": null
+    },
+    {
+      "name": "actionBy",
+      "type": ["null", "string"],
+      "default": null
     }
   ]
 }

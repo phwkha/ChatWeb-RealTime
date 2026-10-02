@@ -387,7 +387,9 @@ export function useConversationMessages({
             messageStreamRef.current.scrollTop = messageStreamRef.current.scrollHeight
           }
           scrolledToBottomForUserRef.current = targetUsername
-          initialLoadScrollRef.current = false
+          if (isDoneLoading) {
+            initialLoadScrollRef.current = false
+          }
         })
         window.setTimeout(() => {
           if (messageStreamRef.current && selectedRef.current?.username === targetUsername) {

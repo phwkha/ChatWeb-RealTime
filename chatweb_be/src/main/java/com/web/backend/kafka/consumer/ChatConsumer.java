@@ -81,21 +81,25 @@ public class ChatConsumer {
                 }
             } else {
                 UpdateMetadata metadata = resolveUpdateMetadata(action);
+                String actionPerformer = (message.getActionBy() != null && !message.getActionBy().isBlank())
+                        ? message.getActionBy()
+                        : sender;
+                String otherParticipant = actionPerformer.equals(sender) ? recipient : sender;
 
                 SocketNotificationResponse<ChatMessageResponse> notification = SocketNotificationResponse
                         .<ChatMessageResponse>builder()
                         .id(notificationId)
                         .notificationId(notificationId)
                         .type(metadata.type())
-                        .relatedUsername(sender)
+                        .relatedUsername(actionPerformer)
                         .message(Translator.tolocale(metadata.messageKey()))
                         .data(messageResponse)
                         .build();
 
-                webSocketRoutingService.routeMessage(sender, QUEUE_NOTIFICATIONS_STRING, notification);
-                webSocketRoutingService.routeMessage(recipient, QUEUE_NOTIFICATIONS_STRING, notification);
-                log.debug("Dispatched update notification [action='{}'] to WebSocket sender '{}' and recipient '{}'",
-                        action, sender, recipient);
+                webSocketRoutingService.routeMessage(otherParticipant, QUEUE_NOTIFICATIONS_STRING, notification);
+                log.debug(
+                        "Dispatched update notification [action='{}'] to otherParticipant '{}' (actionPerformer='{}')",
+                        action, otherParticipant, actionPerformer);
             }
         } catch (Exception e) {
             log.error("Failed to route WebSocket chat message for sender '{}' and recipient '{}'", sender, recipient,

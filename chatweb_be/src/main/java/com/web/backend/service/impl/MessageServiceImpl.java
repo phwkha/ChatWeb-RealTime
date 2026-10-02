@@ -321,6 +321,7 @@ public class MessageServiceImpl implements MessageService {
 
         ChatMessageAvro payload = messageMapper.toAvro(msg);
         payload.setActionType(ActionType.EDIT.name());
+        payload.setActionBy(senderUsername);
         chatProducer.sendChatMessage(payload);
 
         return mapToEnrichedResponse(msg);
@@ -364,6 +365,7 @@ public class MessageServiceImpl implements MessageService {
 
         ChatMessageAvro payload = messageMapper.toAvro(msg);
         payload.setActionType(ActionType.REVOKE.name());
+        payload.setActionBy(senderUsername);
         chatProducer.sendChatMessage(payload);
     }
 
@@ -423,6 +425,7 @@ public class MessageServiceImpl implements MessageService {
 
         ChatMessageAvro payload = messageMapper.toAvro(msg);
         payload.setActionType(ActionType.REACT.name());
+        payload.setActionBy(senderUsername);
         payload.setNotificationId(notificationId);
         chatProducer.sendChatMessage(payload);
 
