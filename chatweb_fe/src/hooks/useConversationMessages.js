@@ -520,13 +520,6 @@ export function useConversationMessages({
         )),
       }))
       showToast(t('messageFailed'), 'error')
-    } else {
-      setMessagesByUser((current) => ({
-        ...current,
-        [selectedUser.username]: (current[selectedUser.username] || []).map((message) => (
-          message.localId === localId ? { ...message, status: 'SENT' } : message
-        )),
-      }))
     }
   }
 
@@ -554,15 +547,17 @@ export function useConversationMessages({
       replyToId: message.replyToId || null,
     })
     if (sent) trackOutgoingMessage(selectedUser.username, retryLocalId)
-    setMessagesByUser((current) => ({
-      ...current,
-      [selectedUser.username]: (current[selectedUser.username] || []).map((item) => (
-        item.localId === retryLocalId
-          ? { ...item, status: sent ? 'SENT' : 'SENDING', clientFailed: !sent }
-          : item
-      )),
-    }))
-    if (!sent) showToast(t('messageFailed'), 'error')
+    if (!sent) {
+      setMessagesByUser((current) => ({
+        ...current,
+        [selectedUser.username]: (current[selectedUser.username] || []).map((item) => (
+          item.localId === retryLocalId
+            ? { ...item, clientFailed: true }
+            : item
+        )),
+      }))
+      showToast(t('messageFailed'), 'error')
+    }
   }
 
   const handleMediaSelection = async (event) => {
@@ -635,15 +630,17 @@ export function useConversationMessages({
         replyToId,
       })
       if (sent) trackOutgoingMessage(targetUser.username, localId)
-      setMessagesByUser((current) => ({
-        ...current,
-        [targetUser.username]: (current[targetUser.username] || []).map((message) => (
-          message.localId === localId
-            ? { ...message, status: sent ? 'SENT' : 'SENDING', clientFailed: !sent }
-            : message
-        )),
-      }))
-      if (!sent) showToast(t('messageFailed'), 'error')
+      if (!sent) {
+        setMessagesByUser((current) => ({
+          ...current,
+          [targetUser.username]: (current[targetUser.username] || []).map((message) => (
+            message.localId === localId
+              ? { ...message, clientFailed: true }
+              : message
+          )),
+        }))
+        showToast(t('messageFailed'), 'error')
+      }
     } catch (error) {
       showToast(getErrorMessage(error, t('uploadFailed')), 'error')
     } finally {
