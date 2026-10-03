@@ -162,44 +162,48 @@ public class DataSeeder implements CommandLineRunner {
     @Bean
     public CommandLineRunner cleanupOnlineStatus() {
         return args -> {
-            // Check if there are still active users in Redis (other instances still running = rolling update)
             Long activeCount = redisTemplate.opsForZSet().size("online_users");
             boolean isFullRestart = (activeCount == null || activeCount == 0);
 
             if (isFullRestart) {
-                // Full restart (docker down/up) - no active instances, clean everything
-                int resetCount = userRepository.resetAllOnlineStatus();
-                log.info("Full restart detected. Reset {} users' online status in database", resetCount);
-
-                redisTemplate.delete("online_users");
-                redisTemplate.delete("online_users_count");
-                redisTemplate.delete("presence:offline_queue");
-
-                Set<String> routingKeys = redisTemplate.keys("ws:routing:servers:*");
-                if (routingKeys != null && !routingKeys.isEmpty()) {
-                    redisTemplate.delete(routingKeys);
-                    log.info("Cleaned up {} WebSocket routing keys", routingKeys.size());
-                }
-
-                log.info("Reset online user states in Redis to prevent phantom data");
+                performFullRestartCleanup();
             } else {
-                // Rolling update - other instances still have active connections
-                // Don't reset DB or Redis, let heartbeat & zombie schedulers handle stale sessions
                 log.info("Rolling update detected. {} users still active in Redis, skipping bulk cleanup", activeCount);
             }
 
-            try {
-                var indexOps = mongoTemplate.indexOps(ChatMessage.class);
-                List<org.springframework.data.mongodb.core.index.IndexInfo> indexInfoList = indexOps.getIndexInfo();
-                for (org.springframework.data.mongodb.core.index.IndexInfo indexInfo : indexInfoList) {
-                    if ("recipient_1".equals(indexInfo.getName()) || "conversationId_1".equals(indexInfo.getName())) {
-                        indexOps.dropIndex(indexInfo.getName());
-                        log.info("Dropped legacy redundant MongoDB index '{}' on ChatMessage", indexInfo.getName());
-                    }
-                }
-            } catch (Exception e) {
-                log.warn("Could not check/drop legacy MongoDB indexes on ChatMessage: {}", e.getMessage());
-            }
+            dropLegacyMongoIndexes();
         };
+    }
+
+    private void performFullRestartCleanup() {
+        int resetCount = userRepository.resetAllOnlineStatus();
+        log.info("Full restart detected. Reset {} users' online status in database", resetCount);
+
+        redisTemplate.delete("online_users");
+        redisTemplate.delete("online_users_count");
+        redisTemplate.delete("presence:offline_queue");
+
+        Set<String> routingKeys = redisTemplate.keys("ws:routing:servers:*");
+        if (routingKeys != null && !routingKeys.isEmpty()) {
+            redisTemplate.delete(routingKeys);
+            log.info("Cleaned up {} WebSocket routing keys", routingKeys.size());
+        }
+
+        log.info("Reset online user states in Redis to prevent phantom data");
+    }
+
+    private void dropLegacyMongoIndexes() {
+        try {
+            var indexOps = mongoTemplate.indexOps(ChatMessage.class);
+            List<org.springframework.data.mongodb.core.index.IndexInfo> indexInfoList = indexOps.getIndexInfo();
+            for (org.springframework.data.mongodb.core.index.IndexInfo indexInfo : indexInfoList) {
+                if ("recipient_1".equals(indexInfo.getName()) || "conversationId_1".equals(indexInfo.getName())) {
+                    indexOps.dropIndex(indexInfo.getName());
+                    log.info("Dropped legacy redundant MongoDB index '{}' on ChatMessage", indexInfo.getName());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not check/drop legacy MongoDB indexes on ChatMessage: {}", e.getMessage());
+        }
     }
 }
