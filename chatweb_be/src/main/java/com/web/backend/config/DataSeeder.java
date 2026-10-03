@@ -22,6 +22,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Set;
 
 import org.springframework.context.annotation.Profile;
 
@@ -161,26 +162,48 @@ public class DataSeeder implements CommandLineRunner {
     @Bean
     public CommandLineRunner cleanupOnlineStatus() {
         return args -> {
-            if (Boolean.TRUE.equals(redisTemplate.hasKey("online_users"))) {
-                redisTemplate.delete("online_users");
-            }
-            if (Boolean.TRUE.equals(redisTemplate.hasKey("online_users_count"))) {
-                redisTemplate.delete("online_users_count");
-            }
-            log.info("Reset online user states in Redis to prevent phantom data");
+            Long activeCount = redisTemplate.opsForZSet().size("online_users");
+            boolean isFullRestart = (activeCount == null || activeCount == 0);
 
-            try {
-                var indexOps = mongoTemplate.indexOps(ChatMessage.class);
-                List<org.springframework.data.mongodb.core.index.IndexInfo> indexInfoList = indexOps.getIndexInfo();
-                for (org.springframework.data.mongodb.core.index.IndexInfo indexInfo : indexInfoList) {
-                    if ("recipient_1".equals(indexInfo.getName()) || "conversationId_1".equals(indexInfo.getName())) {
-                        indexOps.dropIndex(indexInfo.getName());
-                        log.info("Dropped legacy redundant MongoDB index '{}' on ChatMessage", indexInfo.getName());
-                    }
-                }
-            } catch (Exception e) {
-                log.warn("Could not check/drop legacy MongoDB indexes on ChatMessage: {}", e.getMessage());
+            if (isFullRestart) {
+                performFullRestartCleanup();
+            } else {
+                log.info("Rolling update detected. {} users still active in Redis, skipping bulk cleanup", activeCount);
             }
+
+            dropLegacyMongoIndexes();
         };
+    }
+
+    private void performFullRestartCleanup() {
+        int resetCount = userRepository.resetAllOnlineStatus();
+        log.info("Full restart detected. Reset {} users' online status in database", resetCount);
+
+        redisTemplate.delete("online_users");
+        redisTemplate.delete("online_users_count");
+        redisTemplate.delete("presence:offline_queue");
+
+        Set<String> routingKeys = redisTemplate.keys("ws:routing:servers:*");
+        if (routingKeys != null && !routingKeys.isEmpty()) {
+            redisTemplate.delete(routingKeys);
+            log.info("Cleaned up {} WebSocket routing keys", routingKeys.size());
+        }
+
+        log.info("Reset online user states in Redis to prevent phantom data");
+    }
+
+    private void dropLegacyMongoIndexes() {
+        try {
+            var indexOps = mongoTemplate.indexOps(ChatMessage.class);
+            List<org.springframework.data.mongodb.core.index.IndexInfo> indexInfoList = indexOps.getIndexInfo();
+            for (org.springframework.data.mongodb.core.index.IndexInfo indexInfo : indexInfoList) {
+                if ("recipient_1".equals(indexInfo.getName()) || "conversationId_1".equals(indexInfo.getName())) {
+                    indexOps.dropIndex(indexInfo.getName());
+                    log.info("Dropped legacy redundant MongoDB index '{}' on ChatMessage", indexInfo.getName());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not check/drop legacy MongoDB indexes on ChatMessage: {}", e.getMessage());
+        }
     }
 }
