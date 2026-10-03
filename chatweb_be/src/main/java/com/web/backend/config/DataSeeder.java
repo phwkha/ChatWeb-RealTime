@@ -22,6 +22,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Set;
 
 import org.springframework.context.annotation.Profile;
 
@@ -161,13 +162,31 @@ public class DataSeeder implements CommandLineRunner {
     @Bean
     public CommandLineRunner cleanupOnlineStatus() {
         return args -> {
-            if (Boolean.TRUE.equals(redisTemplate.hasKey("online_users"))) {
+            // Check if there are still active users in Redis (other instances still running = rolling update)
+            Long activeCount = redisTemplate.opsForZSet().size("online_users");
+            boolean isFullRestart = (activeCount == null || activeCount == 0);
+
+            if (isFullRestart) {
+                // Full restart (docker down/up) - no active instances, clean everything
+                int resetCount = userRepository.resetAllOnlineStatus();
+                log.info("Full restart detected. Reset {} users' online status in database", resetCount);
+
                 redisTemplate.delete("online_users");
-            }
-            if (Boolean.TRUE.equals(redisTemplate.hasKey("online_users_count"))) {
                 redisTemplate.delete("online_users_count");
+                redisTemplate.delete("presence:offline_queue");
+
+                Set<String> routingKeys = redisTemplate.keys("ws:routing:servers:*");
+                if (routingKeys != null && !routingKeys.isEmpty()) {
+                    redisTemplate.delete(routingKeys);
+                    log.info("Cleaned up {} WebSocket routing keys", routingKeys.size());
+                }
+
+                log.info("Reset online user states in Redis to prevent phantom data");
+            } else {
+                // Rolling update - other instances still have active connections
+                // Don't reset DB or Redis, let heartbeat & zombie schedulers handle stale sessions
+                log.info("Rolling update detected. {} users still active in Redis, skipping bulk cleanup", activeCount);
             }
-            log.info("Reset online user states in Redis to prevent phantom data");
 
             try {
                 var indexOps = mongoTemplate.indexOps(ChatMessage.class);
