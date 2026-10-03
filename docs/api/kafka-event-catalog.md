@@ -20,14 +20,14 @@ This document catalogs all Apache Kafka topics, binary serialization contracts (
 
 ## 2. Kafka Topic Catalog
 
-| Topic Name | Serialization | Consumer Group ID | Concurrency | Primary Responsibility |
-| :--- | :--- | :--- | :--- | :--- |
-| **`chat-messages`** | **Apache Avro** (`ChatMessageAvro`) | 1. `chat-websocket-group`<br/>2. `chat-save-group` | 4 (Realtime)<br/>2 (Batch Save) | Core chat stream: Fast WebSocket push delivery and bulk Write-Behind persistence into MongoDB. |
-| **`chat-messages-save-dlt`**| **Apache Avro** (`ChatMessageAvro`) | `chat-save-group-dlt` | 2 | Dead Letter Topic (DLT) holding records that failed MongoDB batch insertion after maximum retries. |
-| **`chat-system-messages`** | **JSON** (`SystemMessage`) | `system-websocket-group` | 2 | Broadcasts administrative system announcements to connected users via `/topic/public`. |
-| **`message-update`** | **JSON** (`UpdateMessagePayload`) | `message-update-group-id` | 2 | Dispatches message edits, soft-deletions, emoji reactions, and watermark read receipt notifications. |
-| **`email-messages`** | **JSON** (`EmailEvent`) | `email-worker-group` | 1 | Asynchronously delivers verification OTPs and password reset emails without blocking web requests. |
-| **`friend-notifications`**| **JSON** (`FriendNotificationPayload`) | `friend-websocket-group` | 2 | Pushes real-time friend invitation and acceptance notifications to `/user/queue/notifications`. |
+| Topic Name | Partitions | Replicas | Serialization | Consumer Group ID | Concurrency | Primary Responsibility |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **`chat-messages`** | 12 | 2 | **Apache Avro** (`ChatMessageAvro`) | 1. `chat-websocket-group`<br/>2. `chat-save-group` | 4 (Realtime)<br/>2 (Batch Save) | Core chat stream: Fast WebSocket push delivery and bulk Write-Behind persistence into MongoDB. |
+| **`chat-messages-save-dlt`**| 12 | 2 | **Apache Avro** (`ChatMessageAvro`) | `chat-save-group-dlt` | 2 | Dead Letter Topic (DLT) holding records that failed MongoDB batch insertion after maximum retries. |
+| **`chat-system-messages`** | 6 | 2 | **JSON** (`SystemMessage`) | `system-websocket-group` | 2 | Broadcasts administrative system announcements to connected users via `/topic/public`. |
+| **`message-update`** | 6 | 2 | **JSON** (`UpdateMessagePayload`) | `message-update-group-id` | 2 | Dispatches message edits, soft-deletions, emoji reactions, and watermark read receipt notifications. |
+| **`email-messages`** | 3 | 2 | **JSON** (`EmailPayload`) | `email-worker-group` | 1 | Asynchronously delivers verification OTPs and password reset emails without blocking web requests. |
+| **`friend-notifications`**| 6 | 2 | **JSON** (`FriendPayload`) | `friend-websocket-group` | 2 | Pushes real-time friend invitation and acceptance notifications to `/user/queue/notifications`. |
 
 ---
 
@@ -61,7 +61,10 @@ This document catalogs all Apache Kafka topics, binary serialization contracts (
     { "name": "isEdited", "type": "boolean", "default": false },
     { "name": "isDeleted", "type": "boolean", "default": false },
     { "name": "isReacted", "type": "boolean", "default": false },
-    { "name": "reactions", "type": ["null", { "type": "map", "values": "string" }], "default": null }
+    { "name": "reactions", "type": ["null", { "type": "map", "values": "string" }], "default": null },
+    { "name": "actionType", "type": ["null", "string"], "default": null },
+    { "name": "notificationId", "type": ["null", "long"], "default": null },
+    { "name": "actionBy", "type": ["null", "string"], "default": null }
   ]
 }
 ```

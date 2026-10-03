@@ -276,3 +276,46 @@ sequenceDiagram
     WSRouting->>Alice: Deliver STOMP frame to /user/queue/notifications
     note over Alice: Alice's client marks all messages up to "now" as READ with blue checkmarks
 ```
+
+---
+
+## 6. User Report & Moderation Lifecycle
+
+Traces user violation reporting, administrative triage, and account moderation enforcement.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Reporter as User (Reporter)
+    participant RepCtrl as ReportController
+    participant RepSvc as ReportServiceImpl
+    participant DB as PostgreSQL (reports & users)
+    actor Admin as System Administrator
+    participant AdminCtrl as AdminReportController
+    participant AdminUserCtrl as AdminUserController
+    actor Offender as Violating User
+
+    Reporter->>RepCtrl: POST /api/reports { reportedUserId: 42, reason: "HARASSMENT", details: "Abusive language" }
+    RepCtrl->>RepSvc: createReport(currentUser, request)
+    RepSvc->>DB: Check reporter != reported user & reported user exists
+    RepSvc->>DB: Check no duplicate active report (existsByReporterIdAndReportedUserIdAndStatus)
+    RepSvc->>DB: INSERT INTO reports (reporter_id, reported_user_id, reason, details, status='PENDING')
+    RepSvc-->>Reporter: 201 Created (ReportResponse)
+
+    note over Admin, DB: Administrative Moderation Review
+    Admin->>AdminCtrl: GET /api/admin/reports?status=PENDING&size=10
+    AdminCtrl->>DB: Query reports where status='PENDING' (via idx_reports_status_create_at)
+    AdminCtrl-->>Admin: Paginated list of pending reports
+
+    Admin->>AdminCtrl: PUT /api/admin/reports/{id}/resolve { status: "RESOLVED", resolutionNote: "Account suspended for TOS breach" }
+    AdminCtrl->>RepSvc: resolveReport(adminUser, id, request)
+    RepSvc->>DB: UPDATE reports SET status='RESOLVED', resolution_note=..., resolved_by_id=..., resolve_at=now WHERE id=?
+    RepSvc-->>Admin: 200 OK (ReportDetailResponse)
+
+    opt Admin Suspends Offending Account
+        Admin->>AdminUserCtrl: POST /api/admin/users/{username}/lock
+        AdminUserCtrl->>DB: UPDATE users SET user_status = 'LOCKED' WHERE username = ?
+        AdminUserCtrl-->>Admin: 200 OK (Account locked)
+        note over Offender: Next API call or token refresh by Offender is rejected with HTTP 403 / Account Locked
+    end
+```

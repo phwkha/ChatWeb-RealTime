@@ -16,9 +16,9 @@ A single unified database would either suffer from relational I/O bottlenecks du
 
 ### Decision
 Adopt a **Polyglot Persistence** architecture partitioning storage across three purpose-built engines:
-1. **PostgreSQL 16+**: Authoritative storage for `users`, `roles`, `permissions`, `role_has_permission`, `friendships`, and `addresses`.
+1. **PostgreSQL 16+**: Authoritative storage for `users`, `roles`, `permissions`, `role_has_permission`, `friendships`, `addresses`, `notifications`, and `reports`.
 2. **MongoDB 7+**: Document store for `messages`, `read_receipts`, and `system_message`.
-3. **Redis Stack**: In-memory key-value and data structure store managing distributed session routing, Cuckoo Filters, sliding-window rate limit logs, presence sets, and transient tokens.
+3. **Redis Stack**: In-memory key-value and data structure store managing distributed session routing, Cuckoo Filters, sliding-window rate limit logs, presence sets, unread notification caches, and transient tokens.
 
 ### Trade-offs
 - **Advantages**: Peak throughput and optimal storage models for each workload; high message write volume does not degrade user authentication or friendship queries.

@@ -19,7 +19,7 @@ graph TB
     end
 
     subgraph AppLayer["Application Layer"]
-        Backend["Spring Boot 3.5.x (Java 21 LTS)<br/>- Spring Security 6 (JWT + Google OAuth2)<br/>- WebSocket STOMP Broker (/ws)<br/>- Dynamic Rate Limiter (@RateLimit Sliding Window)<br/>- Idempotency Engine (@Idempotent)<br/>- Distributed Presence Scheduler"]
+        Backend["Spring Boot 3.5.x (Java 21 LTS)<br/>- Spring Security 6 (JWT + Google OAuth2)<br/>- WebSocket STOMP Broker (/ws)<br/>- Dynamic Rate Limiter (@RateLimit Sliding Window)<br/>- Idempotency Engine (@Idempotent)<br/>- Distributed Presence Scheduler<br/>- Notifications & Moderation Services"]
     end
 
     subgraph EventLayer["Event Streaming & Buffer"]
@@ -28,7 +28,7 @@ graph TB
     end
 
     subgraph StorageLayer["Polyglot Persistence"]
-        Postgres[("PostgreSQL 16+<br/>- Users, Roles, Permissions<br/>- Friendships, Addresses<br/>- ACID & Relational Integrity")]
+        Postgres[("PostgreSQL 16+<br/>- Users, Roles, Permissions<br/>- Friendships, Addresses<br/>- Notifications, Reports<br/>- ACID & Relational Integrity")]
         Mongo[("MongoDB 7+<br/>- Chat Messages (messages)<br/>- Read Receipts (read_receipts)<br/>- System Messages (TTL Auto-expire)")]
         Redis[("Redis Stack<br/>- Session Routing Hash & Server Pub/Sub<br/>- Presence ZSet & Distributed Debounce Queue<br/>- Token Blacklist & Recent Messages Cache<br/>- Cuckoo Filters (filter:usernames, filter:emails)<br/>- Sliding Window Rate Limit & Idempotency Keys")]
         Cloudinary[("Cloudinary Media Cloud<br/>- Images, Videos, Avatars, Attachments<br/>- Strict MIME & SVG XSS Sanitization")]

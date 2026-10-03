@@ -28,7 +28,7 @@ ChatWeb is an enterprise-grade, real-time messaging web application engineered w
 ├── chatweb_fe/             # React 19 Frontend SPA (Vite 8, Modular CSS, STOMP.js, WebRTC)
 ├── docs/                   # Complete Technical Documentation Hub
 │   ├── README.md           # Master documentation index
-│   ├── architecture/       # System topology, 8 ADRs, and 5 Mermaid sequence diagrams
+│   ├── architecture/       # System topology, 8 ADRs, and 6 Mermaid sequence diagrams
 │   ├── database/           # PostgreSQL ERD, MongoDB schemas, and Redis key catalog
 │   └── api/                # WebSocket/STOMP specs, Kafka Avro catalog, and REST API guide
 ├── nginx/                  # Nginx configuration (reverse proxy, edge rate-limiting)

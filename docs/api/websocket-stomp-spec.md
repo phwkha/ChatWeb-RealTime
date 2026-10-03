@@ -133,20 +133,35 @@ Spring Boot WebSocket message broker partitions destination paths into three dis
 
 ---
 
-### 4.2. User Notifications (Friend Requests & Read Receipts)
+### 4.2. User Notifications (Friend Requests, Read Receipts & Status)
 - **Client Subscription**: `/user/queue/notifications`
-- **Payload Model (`NotificationResponse<T>`)**:
-  - **Friend Request Notification**: Dispatched when an invitation is received or accepted.
-  - **Read Receipt Notification (`ReadReceiptResponse`)**:
+- **Payload Model (`SocketNotificationResponse<T>`)**:
+  - **Friend Request Notification**: Dispatched when an invitation is received (`FRIEND_REQUEST`), accepted (`FRIEND_ACCEPTED`), or cancelled.
+  - **Read Receipt Notification (`STATUS_MESSAGE`)**:
     ```json
     {
-      "type": "READ_RECEIPT",
+      "id": null,
+      "notificationId": null,
+      "type": "STATUS_MESSAGE",
+      "relatedUsername": "bob_smith",
+      "message": "Message status updated",
       "data": {
         "conversationId": "alice_bob",
         "reader": "bob_smith",
         "sender": "alice_smith",
         "readTimestamp": "2026-09-18T15:32:10.500Z"
       }
+    }
+    ```
+  - **In-App Persistent Notification (`FRIEND_REQUEST`, `REACT_MESSAGE`, etc.)**:
+    ```json
+    {
+      "id": 105,
+      "notificationId": 105,
+      "type": "FRIEND_REQUEST",
+      "relatedUsername": "charlie_brown",
+      "message": "charlie_brown sent you a friend request",
+      "data": null
     }
     ```
 
