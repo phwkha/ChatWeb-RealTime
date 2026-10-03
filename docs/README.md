@@ -25,12 +25,13 @@ The documentation suite is structured into three specialized domains:
   - Distributed Presence Lifecycle & 5-Second Debounce Queue.
   - Friend Request & Real-Time Notification Pipeline.
   - Watermark-Based Read Receipt Lifecycle.
+  - User Report & Moderation Lifecycle.
 
 ---
 
 ### 2. Database Design & Persistence Models
 - 💾 **[Polyglot Database Design](database/database-design.md)**:
-  - **PostgreSQL 16+**: Authoritative relational ERD (`users`, `roles`, `permissions`, `friendships`, `addresses`), column constraints, foreign keys, and index optimization.
+  - **PostgreSQL 16+**: Authoritative relational ERD (`users`, `roles`, `permissions`, `friendships`, `addresses`, `notifications`, `reports`), column constraints, foreign keys, and index optimization.
   - **MongoDB 7+**: Document schemas for `messages`, `read_receipts`, and `system_message`, compound indexing strategies, TTL auto-expiration, and automated initialization via `init-mongo.js`.
   - **Redis Stack**: Master key catalog, data structures, TTL rules, Cuckoo Filters (`filter:usernames`, `filter:emails`), sliding-window Lua rate limiters, and presence queues.
 
@@ -39,7 +40,7 @@ The documentation suite is structured into three specialized domains:
 ### 3. Protocols, Event Catalogs & API Contracts
 - 🔌 **[WebSocket & STOMP Protocol Specification](api/websocket-stomp-spec.md)**: Handshake endpoint (`/ws`), SockJS fallback, JWT authentication in CONNECT frames, destination prefix conventions (`/app`, `/topic`, `/user/queue`), payload contracts, and standardized STOMP error handling.
 - ⚡ **[Kafka Event Catalog & Avro Specifications](api/kafka-event-catalog.md)**: Cluster topology (2 KRaft brokers, Confluent Schema Registry), complete topic catalog, Apache Avro schema (`ChatMessageAvro.avsc`), `@RetryableTopic` backoff, batch Write-Behind, and Dead Letter Topic (`chat-messages-save-dlt`) fault recovery.
-- 🌐 **[REST API Overview & Integration Guide](api/rest-api-overview.md)**: Standard envelope format (`ApiResponse<T>`), idempotency headers (`X-Idempotency-Key`), error structures, Swagger UI integration, and exhaustive endpoint catalogs across Auth, Users, Search, Friends, Messages, Media Uploads, Roles, Systems, and Administration.
+- 🌐 **[REST API Overview & Integration Guide](api/rest-api-overview.md)**: Standard envelope format (`ApiResponse<T>`), idempotency headers (`X-Idempotency-Key`), error structures, Swagger UI integration, and exhaustive endpoint catalogs across Auth, Users, Search, Friends, Messages, Media Uploads, Notifications, User Reports, Admin Moderation, Roles, and Administration.
 
 ---
 

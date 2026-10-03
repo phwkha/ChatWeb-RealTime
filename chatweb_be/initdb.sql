@@ -7,7 +7,7 @@
 -- 1. Table: permissions
 CREATE TABLE IF NOT EXISTS permissions (
     id BIGSERIAL PRIMARY KEY,
-    name VARCHAR(255),
+    name VARCHAR(255) NOT NULL UNIQUE,
     description VARCHAR(255),
     create_at TIMESTAMP WITH TIME ZONE,
     update_at TIMESTAMP WITH TIME ZONE,
@@ -19,7 +19,7 @@ CREATE INDEX IF NOT EXISTS idx_permission_name ON permissions(name);
 -- 2. Table: roles
 CREATE TABLE IF NOT EXISTS roles (
     id BIGSERIAL PRIMARY KEY,
-    name VARCHAR(255),
+    name VARCHAR(255) NOT NULL UNIQUE,
     description VARCHAR(255),
     create_at TIMESTAMP WITH TIME ZONE,
     update_at TIMESTAMP WITH TIME ZONE,
@@ -61,6 +61,7 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE INDEX IF NOT EXISTS idx_user_status ON users(user_status);
 CREATE INDEX IF NOT EXISTS idx_user_role_id ON users(role_id);
+CREATE INDEX IF NOT EXISTS idx_user_is_online ON users(is_online);
 
 -- 5. Table: addresses
 CREATE TABLE IF NOT EXISTS addresses (
@@ -116,6 +117,9 @@ ON notifications(recipient_id, create_at DESC, id DESC);
 CREATE INDEX IF NOT EXISTS idx_notifications_recipient_unread 
 ON notifications(recipient_id) WHERE is_read = false;
 
+CREATE INDEX IF NOT EXISTS idx_notifications_sender_id 
+ON notifications(sender_id);
+
 -- 8. Table: reports
 CREATE TABLE IF NOT EXISTS reports (
     id BIGSERIAL PRIMARY KEY,
@@ -134,4 +138,5 @@ CREATE TABLE IF NOT EXISTS reports (
 
 CREATE INDEX IF NOT EXISTS idx_reports_status_create_at ON reports(status, create_at DESC);
 CREATE INDEX IF NOT EXISTS idx_reports_reported_user ON reports(reported_user_id);
-
+CREATE INDEX IF NOT EXISTS idx_reports_reporter_id ON reports(reporter_id);
+CREATE INDEX IF NOT EXISTS idx_reports_reporter_reported_status ON reports(reporter_id, reported_user_id, status);

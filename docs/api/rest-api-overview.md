@@ -1,6 +1,6 @@
 # REST API Overview & Integration Guide
 
-This document provides a comprehensive reference for the ChatWeb REST API, including global response envelope formats, error handling standards, idempotency controls, and a complete catalog of all service modules.
+This document provides a comprehensive reference for the ChatWeb REST API, including global response envelope formats, error handling standards, idempotency controls, and an exhaustive catalog of all service modules.
 
 ---
 
@@ -48,28 +48,29 @@ Manages user registration, credential authentication, session tokens, and securi
 | Method | Endpoint | Description & Security |
 | :--- | :--- | :--- |
 | `POST` | `/api/auth/register` | Initiates registration. Stores data in Redis cache for 5 minutes and sends a 6-digit OTP email. Rate limit: 3 req/min. |
-| `POST` | `/api/auth/verify-account` | Validates registration OTP. Persists the user into PostgreSQL and indexes credentials into Redis Cuckoo Filters. |
-| `POST` | `/api/auth/resend-otp` | Resends account activation OTP. Rate limit: 3 req/min. |
-| `POST` | `/api/auth/login` | Authenticates via username/password. Performs Cuckoo Filter preflight check. Returns Access Token in `Authorization: Bearer <token>` header and sets HttpOnly `refreshToken` cookie. |
-| `POST` | `/api/auth/refresh-token` | Exchanges the `refreshToken` cookie for a new token pair using Token Rotation. Validates `token_version`. |
+| `POST` | `/api/auth/verify-account` | Validates registration OTP. Persists the user into PostgreSQL and indexes credentials into Redis Cuckoo Filters. Rate limit: 5 req/min. |
+| `POST` | `/api/auth/resend-otp` | Resends account activation OTP (`?email=...`). Rate limit: 3 req/min. |
+| `POST` | `/api/auth/login` | Authenticates via username/password. Performs Cuckoo Filter preflight check. Returns Access Token in `Authorization: Bearer <token>` header and sets HttpOnly `refreshToken` cookie. Rate limit: 5 req/min. |
+| `POST` | `/api/auth/refresh-token` | Exchanges the `refreshToken` cookie for a new token pair using Token Rotation. Validates `token_version`. Rate limit: 30 req/min. |
 | `POST` | `/api/auth/logout` | Revokes the current session: removes `refreshToken` from Redis and blacklists the active `accessToken`. |
 | `POST` | `/api/auth/logout-all-devices` | Increments `token_version` in PostgreSQL ($O(1)$) to invalidate all active sessions across all devices globally. |
-| `POST` | `/api/auth/forgot-password` | Initiates password reset by dispatching an OTP to the user's registered email. |
-| `POST` | `/api/auth/reset-password` | Verifies reset OTP and updates user password (increments `token_version`). |
-| `POST` | `/api/auth/resend-forgot-password`| Resends password reset OTP. |
+| `POST` | `/api/auth/forgot-password` | Initiates password reset by dispatching an OTP to the user's registered email. Rate limit: 3 req/min. |
+| `POST` | `/api/auth/reset-password` | Verifies reset OTP and updates user password (increments `token_version`). Rate limit: 5 req/min. |
+| `POST` | `/api/auth/resend-forgot-password`| Resends password reset OTP (`?email=...`). Rate limit: 3 req/min. |
 | `GET` | `/oauth2/authorization/google` | Initiates Google OAuth2 Single Sign-On flow. Redirects to `/oauth2/redirect` upon successful authentication. |
 
 ---
 
 ### 2.2. User Management & Personal Profiles (`/api/users`)
 
-Provides self-service profile updates, credential management, and address book operations.
+Provides self-service profile updates, credential management, language selection, and address book operations.
 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
 | `GET` | `/api/users/me` | Retrieves the account details of the currently authenticated user. |
-| `GET` | `/api/users/profile` | Fetches personal profile details (names, birthday, gender, avatar). |
-| `PUT` | `/api/users/profile` | Updates personal profile fields. |
+| `GET` | `/api/users/profile` | Fetches personal profile details (names, birthday, gender, avatar, language). |
+| `PUT` | `/api/users/profile` | Updates personal profile fields (`firstName`, `lastName`, `birthday`, `gender`). |
+| `PATCH` | `/api/users/language` | Updates user preferred interface language (`{ "language": "vi" }`). |
 | `PATCH` | `/api/users/avatar` | Uploads and updates avatar via multipart file upload. |
 | `POST` | `/api/users/change-password` | Changes account password. Invalidates old session tokens. |
 | `DELETE` | `/api/users/me` | Permanently deletes the current user's account and personal data. |
@@ -116,19 +117,44 @@ Provides self-service profile updates, credential management, and address book o
 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
-| `GET` | `/api/messages/private` | Cursor-based paginated chat history (`?user2={recipient}&cursor={cursor}&size={size}`). |
-| `GET` | `/api/messages/unread-counts` | Aggregates unread message counts grouped by conversation partner. |
-| `GET` | `/api/messages/search` | Searches text content within a private conversation (`?user2={recipient}&keyword={q}`). |
+| `GET` | `/api/messages/private` | Cursor-based paginated chat history (`?user2={recipient}&cursor={cursor}&size={size}`). Rate limit: 45 req/min. |
+| `GET` | `/api/messages/unread-counts` | Aggregates unread message counts grouped by conversation partner. Rate limit: 30 req/min. |
+| `GET` | `/api/messages/search` | Searches text content within a private conversation (`?user2={recipient}&keyword={q}&cursor=&size=20`). Rate limit: 20 req/min. |
 | `GET` | `/api/messages/system` | Cursor-paginated list of active system announcements (`?cursor=&size=20`). |
-| `GET` | `/api/messages/{id}` | Fetches detailed metadata for an individual message. |
-| `POST` | `/api/messages/mark-as-read` | Atomic read receipt watermark upsert (`{ "sender": "...", "conversationId": "..." }`). Updates MongoDB `$max`, evicts unread cache, and dispatches real-time Kafka event. |
-| `POST` | `/api/messages/reaction` | Adds or updates an emoji reaction on a message (`{ "messageId": "...", "reaction": "..." }`). |
-| `PUT` | `/api/messages/edit` | Edits message text content (`{ "messageId": "...", "content": "..." }`). |
-| `DELETE` | `/api/messages/revoke` | Revokes a message (soft deletion - `{ "messageId": "..." }`). |
+| `GET` | `/api/messages/{id}` | Fetches detailed metadata for an individual message. Rate limit: 60 req/min. |
+| `POST` | `/api/messages/mark-as-read` | Atomic read receipt watermark upsert (`{ "sender": "...", "conversationId": "..." }`). Updates MongoDB `$max`, evicts unread cache, and dispatches real-time Kafka event. Rate limit: 30 req/min. |
+| `POST` | `/api/messages/reaction` | Adds or updates an emoji reaction on a message (`{ "messageId": "...", "reaction": "..." }`). Rate limit: 30 req/min. |
+| `PUT` | `/api/messages/edit` | Edits message text content (`{ "messageId": "...", "content": "..." }`). Rate limit: 20 req/min. |
+| `DELETE` | `/api/messages/revoke` | Revokes a message (soft deletion - `{ "messageId": "..." }`). Rate limit: 20 req/min. |
 
 ---
 
-### 2.6. Cloud Media Uploads (`/api/messages/upload`)
+### 2.6. Persistent In-App Notifications (`/api/notifications`)
+
+Manages stored user notifications (friend activity, message updates, and system alerts).
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/notifications` | Cursor-paginated list of notifications (`?cursor={cursor}&size={size}`). Rate limit: 45 req/min. |
+| `GET` | `/api/notifications/unread-counts`| Retrieves total count of unread notifications for badge rendering. Rate limit: 60 req/min. |
+| `PATCH`| `/api/notifications/{id}/read` | Marks a specific notification as read. Rate limit: 60 req/min. |
+| `PATCH`| `/api/notifications/read-all` | Marks all unread notifications of the authenticated user as read. Rate limit: 15 req/min. |
+
+---
+
+### 2.7. User Reporting Submissions (`/api/reports`)
+
+Allows users to report abusive or violating behavior.
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `POST` | `/api/reports` | Submits a report (`{ "reportedUserId": 12, "reason": "SPAM", "details": "..." }`). Rate limit: 10 req/min. |
+| `GET` | `/api/reports/me` | Paginated list of reports filed by current user (`?page=0&size=10&sortDir=desc`). |
+| `DELETE`| `/api/reports/{id}` | Cancels a pending report filed by the current user. |
+
+---
+
+### 2.8. Cloud Media Uploads (`/api/messages/upload`)
 
 Processes multipart media uploads to Cloudinary storage with strict security sanitization.
 
@@ -139,7 +165,21 @@ Processes multipart media uploads to Cloudinary storage with strict security san
 
 ---
 
-### 2.7. Role-Based Access Control (`/api/admin/roles`)
+### 2.9. Administrative Report Moderation (`/api/admin/reports`)
+
+Restricted to moderators with authority `ADMIN_VIEW_REPORTS`, `ADMIN_RESOLVE_REPORTS`, `ADMIN_DELETE_REPORTS`.
+
+| Method | Endpoint | Authority | Description |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/admin/reports` | `ADMIN_VIEW_REPORTS` | Search, filter, and paginate reports (`?page=&size=&sorts=`). |
+| `GET` | `/api/admin/reports/statistics` | `ADMIN_VIEW_REPORTS` | Aggregates counts by report status (`PENDING`, `RESOLVED`, `DISMISSED`). |
+| `GET` | `/api/admin/reports/{id}` | `ADMIN_VIEW_REPORTS` | Retrieves full details of a specific report. |
+| `PUT` | `/api/admin/reports/{id}/resolve` | `ADMIN_RESOLVE_REPORTS`| Resolves or dismisses a report (`{ "status": "RESOLVED", "resolutionNote": "..." }`). |
+| `DELETE`| `/api/admin/reports/{id}` | `ADMIN_DELETE_REPORTS` | Permanently deletes a report record. |
+
+---
+
+### 2.10. Role-Based Access Control (`/api/admin/roles`)
 
 Restricted to administrative personnel.
 
@@ -149,11 +189,11 @@ Restricted to administrative personnel.
 | `GET` | `/api/admin/roles/permissions` | Lists all available application permissions. |
 | `POST` | `/api/admin/roles` | Creates a new role and maps associated permissions. |
 | `PUT` | `/api/admin/roles/{id}` | Modifies role name, description, or assigned permissions. |
-| `DELETE` | `/api/admin/roles/{id}` | Deletes a role from the system. |
+| `DELETE`| `/api/admin/roles/{id}` | Deletes a role from the system. |
 
 ---
 
-### 2.8. Administrative Mailer (`/api/admin/emails`)
+### 2.11. Administrative Mailer (`/api/admin/emails`)
 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
@@ -161,7 +201,7 @@ Restricted to administrative personnel.
 
 ---
 
-### 2.9. Administrative User Management (`/api/admin/users`)
+### 2.12. Administrative User Management (`/api/admin/users`)
 
 Administrative controls for user account governance.
 
@@ -172,8 +212,8 @@ Administrative controls for user account governance.
 | `GET` | `/api/admin/users/{username}` | Retrieves complete profile and status for a specific user. |
 | `POST` | `/api/admin/users` | Admin creation of new user accounts. |
 | `PUT` | `/api/admin/users/{username}` | Admin update of user profile and role assignments. |
-| `DELETE` | `/api/admin/users/{username}` | Admin account deletion. |
+| `DELETE`| `/api/admin/users/{username}` | Admin account deletion. |
 | `POST` | `/api/admin/users/{username}/lock` | Suspends an account (`user_status = LOCKED`). |
 | `POST` | `/api/admin/users/{username}/unlock` | Re-activates a locked account. |
-| `DELETE` | `/api/admin/users/{username}/avatar` | Purges inappropriate avatar media. |
+| `DELETE`| `/api/admin/users/{username}/avatar` | Purges inappropriate avatar media. |
 | `*` | `/api/admin/users/{username}/addresses...`| Administrative management of any user's address book entries. |

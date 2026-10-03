@@ -4,7 +4,9 @@
  * Initializes collections and compound indexes for ChatWeb.
  */
 
-const dbName = (typeof process !== 'undefined' && process.env && process.env.MONGO_DB) ? process.env.MONGO_DB : 'chatweb';
+const dbName = (typeof process !== 'undefined' && process.env && (process.env.MONGO_INITDB_DATABASE || process.env.MONGO_DB))
+    ? (process.env.MONGO_INITDB_DATABASE || process.env.MONGO_DB)
+    : 'chatweb';
 const targetDb = db.getSiblingDB(dbName);
 
 print('Initializing MongoDB collections and indexes for database: ' + dbName);
@@ -48,6 +50,10 @@ targetDb.createCollection('system_message');
 targetDb.system_message.createIndex(
     { expiresAt: 1 },
     { name: 'expiresAt_ttl_idx', expireAfterSeconds: 0 }
+);
+targetDb.system_message.createIndex(
+    { timestamp: -1 },
+    { name: 'system_message_timestamp_idx' }
 );
 
 print('MongoDB collections and compound indexes initialized successfully for DB: ' + dbName);
