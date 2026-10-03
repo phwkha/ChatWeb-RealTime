@@ -64,11 +64,6 @@ erDiagram
         bigint version "Default 0 - Optimistic Locking"
     }
 
-    ROLE_HAS_PERMISSION {
-        bigint role_id PK,FK "Not Null"
-        bigint permission_id PK,FK "Not Null"
-    }
-
     FRIENDSHIPS {
         bigint id PK
         bigint requester_id FK "Not Null"
