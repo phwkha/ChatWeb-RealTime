@@ -25,7 +25,7 @@ erDiagram
 
     USERS {
         bigint id PK
-        varchar auth_provider "LOCAL, GOOGLE"
+        varchar auth_provider "LOCAL, GOOGLE, FACEBOOK, GITHUB"
         varchar provider_id UK "Nullable"
         varchar username UK "Not Null, Unique"
         varchar password "BCrypt Hash, Not Null"
@@ -38,7 +38,7 @@ erDiagram
         varchar last_name "Nullable"
         varchar avatar "Cloudinary URL"
         date birthday "Nullable"
-        varchar gender "MALE, FEMALE, OTHER"
+        varchar gender "MAN, WOMAN"
         varchar language "Default 'vi'"
         integer token_version "Default 0 - Single Sign-Out"
         timestamp create_at "Creation timestamp"
@@ -81,7 +81,7 @@ erDiagram
 
     ADDRESSES {
         bigint id PK
-        bigint user_id FK "Not Null"
+        bigint user_id FK "Nullable, ON DELETE CASCADE"
         varchar house_number "Nullable"
         varchar street "Nullable"
         varchar ward "Nullable"
@@ -97,8 +97,8 @@ erDiagram
     NOTIFICATIONS {
         bigint id PK
         bigint recipient_id FK "Not Null"
-        bigint sender_id FK "Nullable"
-        varchar type "Not Null (REQUEST_SENT_SUCCESS, FRIEND_REQUEST, EDIT_MESSAGE...)"
+        bigint sender_id FK "Nullable, ON DELETE CASCADE"
+        varchar type "Not Null (13 types: REQUEST_SENT_SUCCESS, YOU_ACCEPTED, FRIEND_REQUEST, FRIEND_ACCEPTED, UNFRIENDED, REQUEST_CANCELLED, REQUEST_REJECTED, USER_ONLINE, USER_OFFLINE, EDIT_MESSAGE, REVOKE_MESSAGE, REACT_MESSAGE, STATUS_MESSAGE)"
         varchar target_type "Nullable (USER, MESSAGE, CONVERSATION, SYSTEM)"
         varchar target_id "Nullable"
         boolean is_read "Default false, Indexed"
@@ -277,14 +277,23 @@ Redis Stack serves as the ultra-fast distributed coordinating fabric across all 
 | `ws:routing:servers:{username}` | **Hash** | Persistent | Field: `serverId`, Value: active session count on that specific backend instance. |
 | `channel:server:{serverId}` | **Pub/Sub Channel** | N/A (Stream) | Dedicated channel for cross-server WebSocket frame forwarding. |
 | `ws:dedup:{sender}:{localId}` | **String** | **300 seconds** | Set via `SETNX`. Prevents duplicate STOMP message execution during network retries. |
-| `chat:recent:hash:{convId}` | **Hash** | **24 hours** | Caches full metadata of the most recent message for fast conversation list rendering. |
-| `chat:recent:zset:{convId}` | **Sorted Set (ZSet)** | **24 hours** | Stores recent message IDs with `score` = timestamp for fast message ID slicing. |
-| `read:receipt:{convId}:{username}`| **String** | **7 days** | Caches latest read watermark timestamp for fast frontend synchronization. |
-| `unread:counts:{username}` | **Hash / Key** | Evicted on read | Caches unread message counts per conversation. Evicted upon read receipt upsert. |
+| `chat:recent:hash:{convId}` | **Hash** | **1 hour (3600s ±300s jitter)** | Caches full metadata of recent messages (capped at 50 messages per conversation) for fast conversation list rendering. |
+| `chat:recent:zset:{convId}` | **Sorted Set (ZSet)** | **1 hour (3600s ±300s jitter)** | Stores recent message IDs with `score` = timestamp (capped at 50 messages) for fast ID range slicing. |
+| `read_receipt:{convId}:{username}`| **String** | **7 days** | Caches latest read watermark timestamp for fast frontend synchronization. |
+| `unread_counts:{username}` | **Hash** | **7 days fallback TTL + jitter** | Caches unread message counts per conversation partner. Evicted upon read receipt upsert. |
 | `notif:unread:{username}` | **String** | Evicted on change| Caches unread notification count badge for the user. |
+| `relation:{user1}:{user2}` | **String** | **1 hour (NONE), 1 day (PENDING), 7 days (ACCEPTED/BLOCKED)** | Caches friendship status (`ACCEPTED`, `PENDING:<requester>`, `BLOCKED:<blocker>`, `NONE`) with alphabetically sorted usernames. |
 | `blacklist:{token}` | **String** | Remaining JWT TTL | Set upon logout to immediately invalidate unexpired JWT Access Tokens. |
 | `rt:{token}` | **Serialized Object** | **7 days** | Stores `RefreshTokenData` (UUID, username, `tokenVersion`) for token rotation and validation. |
+| `rt_grace:{token}` | **String / Object** | **15 seconds** | Short grace period window caching the new token pair during silent refresh to allow in-flight concurrent requests. |
 | `register:{email}` | **Serialized Object** | **5 minutes** | Temporary registration cache storing pending user details and verification OTP. |
+| `otp:{OtpType}:{identifier}` | **String** | **5 minutes** | Stores 6-digit OTP code (`OtpType`: `EMAIL_CHANGE`, `PASSWORD_RESET`, `PHONE_CHANGE`, `DEVICE_VERIFICATION`). |
+| `otp:{OtpType}:{identifier}:attempts` | **String (Counter)** | **5 minutes** | Tracks OTP verification attempts (max 5) before invalidating the code. |
+| `cooldown:resend:{identifier}` | **String** | **60 seconds** | Cooldown throttle preventing rapid repeated requests for OTP resends. |
+| `lock:session_cleanup` | **String (Distributed Lock)** | **20 seconds** | Distributed lock acquiring exclusive execution rights for `SessionCleanupScheduler`. |
+| `lock:presence_debounce` | **String (Distributed Lock)** | **2 seconds** | Distributed lock preventing duplicate processing of the offline debounce queue. |
+| `lock:notification_cleanup` | **String (Distributed Lock)** | **60 seconds** | Distributed lock ensuring only one node runs `NotificationCleanupScheduler` (purges expired notifications). |
+| `user_details::{username}` | **Serialized Object** | **Cache Default TTL** | Spring `@Cacheable` storing hydrated `UserDetails` to bypass PostgreSQL on repeated authenticated requests. |
 | `filter:usernames` | **Cuckoo Filter** | Persistent | High-speed probabilistic filter checking if a username is already registered (`CF.EXISTS`). |
 | `filter:emails` | **Cuckoo Filter** | Persistent | High-speed probabilistic filter checking if an email address is registered (`CF.EXISTS`). |
 | `rate_limit:{key}` | **Sorted Set (ZSet)** | Window + 2s | Sliding Window Log rate limiter managed atomically via custom Lua scripts. |

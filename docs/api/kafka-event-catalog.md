@@ -24,7 +24,7 @@ This document catalogs all Apache Kafka topics, binary serialization contracts (
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **`chat-messages`** | 12 | 2 | **Apache Avro** (`ChatMessageAvro`) | 1. `chat-websocket-group`<br/>2. `chat-save-group` | 4 (Realtime)<br/>2 (Batch Save) | Core chat stream: Fast WebSocket push delivery and bulk Write-Behind persistence into MongoDB. |
 | **`chat-messages-save-dlt`**| 12 | 2 | **Apache Avro** (`ChatMessageAvro`) | `chat-save-group-dlt` | 2 | Dead Letter Topic (DLT) holding records that failed MongoDB batch insertion after maximum retries. |
-| **`chat-system-messages`** | 6 | 2 | **JSON** (`SystemMessage`) | `system-websocket-group` | 2 | Broadcasts administrative system announcements to connected users via `/topic/public`. |
+| **`chat-system-messages`** | 6 | 2 | **JSON** (`SystemMessage`) | `system-websocket-group-${random.uuid}` (Dynamic fan-out per node) | 2 | Broadcasts administrative system announcements across all cluster nodes to connected users via `/topic/public`. |
 | **`message-update`** | 6 | 2 | **JSON** (`UpdateMessagePayload`) | `message-update-group-id` | 2 | Dispatches message edits, soft-deletions, emoji reactions, and watermark read receipt notifications. |
 | **`email-messages`** | 3 | 2 | **JSON** (`EmailPayload`) | `email-worker-group` | 1 | Asynchronously delivers verification OTPs and password reset emails without blocking web requests. |
 | **`friend-notifications`**| 6 | 2 | **JSON** (`FriendPayload`) | `friend-websocket-group` | 2 | Pushes real-time friend invitation and acceptance notifications to `/user/queue/notifications`. |

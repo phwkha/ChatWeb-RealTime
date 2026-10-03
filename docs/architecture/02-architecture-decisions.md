@@ -249,8 +249,8 @@ Implement a **Watermark-Based Read Receipt Architecture**:
      ```
    - Using `$max` guarantees that out-of-order client requests never regress the read watermark.
 3. **Cache Invalidation & Real-Time Fanout**:
-   - Writes the latest watermark to Redis key `read:receipt:{convId}:{username}` with a 7-day TTL.
-   - Evicts cached unread counts from `unread:counts:{username}`.
+   - Writes the latest watermark to Redis key `read_receipt:{convId}:{username}` with a 7-day TTL.
+   - Evicts cached unread counts from `unread_counts:{username}`.
    - Publishes a `ReadReceiptResponse` domain event to the `message-update` Kafka topic.
    - `UpdateMessageConsumer` processes the event and delivers a real-time read receipt notification to the message sender via `/user/queue/notifications`.
 

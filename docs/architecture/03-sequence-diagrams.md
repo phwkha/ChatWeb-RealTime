@@ -250,7 +250,7 @@ sequenceDiagram
     participant WSRouting as WebSocketRoutingService
     actor Alice as Alice (Original Sender)
 
-    Bob->>MsgCtrl: POST /api/messages/mark-as-read { sender: "alice", conversationId: "alice_bob" }
+    Bob->>MsgCtrl: POST /api/messages/mark-as-read { sender: "alice" }
     MsgCtrl->>MsgSvc: markMessagesAsRead("bob", request)
     MsgSvc->>MsgSvc: Validate friendship & generate receipt ID: "alice_bob:bob"
     
@@ -261,8 +261,8 @@ sequenceDiagram
 
     rect rgb(255, 250, 240)
         note over MsgSvc, Redis: Cache Watermark & Invalidate Unread Counters
-        MsgSvc->>Redis: SET read:receipt:alice_bob:bob = now (TTL = 7 days)
-        MsgSvc->>Redis: DEL unread:counts:bob
+        MsgSvc->>Redis: SET read_receipt:alice_bob:bob = now (TTL = 7 days)
+        MsgSvc->>Redis: DEL unread_counts:bob
     end
 
     rect rgb(240, 255, 240)
