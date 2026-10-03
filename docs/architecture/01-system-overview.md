@@ -67,11 +67,16 @@ graph TB
 ### 2.2. Ingress & Reverse Proxy Tier (Nginx)
 - Serves as the single unified entry point into the system from external networks (or behind an Edge Proxy such as Cloudflare / Tailscale Funnel), listening on port `80` (HTTP).
 - **Network-Level Rate Limiting**:
-  - **Authentication Zone**: Enforces a strict limit of 10 requests/minute (burst 5) on `/api/auth/` routes to mitigate credential stuffing and brute-force attacks.
-  - **Global Zone**: Enforces 30 requests/second (burst 20) across general API and static asset traffic.
-- **Upstream TLS Verification**:
-  - Nginx proxies internal traffic to the backend instances over HTTPS on port `8443`.
+  - **Authentication Zone (`auth_limit`)**: Enforces a strict limit of 10 requests/minute (burst 5) on `/api/auth/` and OAuth2 authorization routes to mitigate credential stuffing and brute-force attacks.
+  - **WebSocket Zone (`ws_limit`)**: Enforces 5 requests/second (burst 10) on `/ws` to prevent socket connection flooding.
+  - **Global Zone (`global_limit`)**: Enforces 30 requests/second (burst 20) across general `/api/` traffic.
+  - Returns HTTP `429 Too Many Requests` (`limit_req_status 429`) upon rate limit violations.
+- **Upstream TLS Verification & Dynamic Scaling**:
+  - Nginx load-balances internal traffic across backend instances (`backend_servers` upstream with `least_conn` strategy) over HTTPS on port `8443`.
+  - Service `cw_backend` is configured without static container naming to support dynamic multi-instance horizontal scaling (`docker compose up --scale cw_backend=N`).
   - Enforces `proxy_ssl_verify on` and validates backend certificates against the internal Private Root Certificate Authority (`rootCA.crt`).
+- **Telemetry Reverse Proxies**:
+  - Provides reverse proxying to Grafana (`/grafana/` $\rightarrow$ `grafana:3000`) and Kibana (`/kibana/` $\rightarrow$ `kibana:5601`).
 
 ### 2.3. Application Tier (Spring Boot Application)
 - Powered by **Java 21 LTS** and **Spring Boot 3.5.x**.

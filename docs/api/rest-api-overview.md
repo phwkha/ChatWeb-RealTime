@@ -17,25 +17,47 @@ This document provides a comprehensive reference for the ChatWeb REST API, inclu
 
 ### Standard Response Envelope (`ApiResponse<T>`)
 
-Every REST response follows a structured envelope model:
+Every REST response follows a structured envelope model (`ApiResponse.java`):
 
 ```json
 {
   "code": 200,
+  "status": "success",
   "message": "Operation completed successfully",
   "data": { ... }
 }
 ```
 
-When an exception occurs (validation error, business failure, or unauthorized access), `GlobalExceptionHandler` traps the exception and returns a standardized error payload:
+#### Field Specifications:
+- `code` (*Integer*): HTTP status code or application-specific error code (e.g. `200`, `201`, `400`, `4011`, `4012`, `429`).
+- `status` (*String*): Execution status flag — either `"success"` or `"error"`.
+- `message` (*String*): Human-readable localized description of the result or error message based on `Accept-Language`.
+- `data` (*Generic `T`, Nullable*): Payload object for successful operations, or structured error metadata (`null` or field validation mappings).
+
+#### Validation Error Handling (`MethodArgumentNotValidException`):
+When input validation fails on `@Valid` request bodies, `GlobalExceptionHandler` traps the violation and populates `data` with a key-value mapping of invalid fields to their constraint violation messages:
 
 ```json
 {
   "code": 400,
-  "message": "Password confirmation does not match",
-  "data": null
+  "status": "error",
+  "message": "Invalid input data",
+  "data": {
+    "email": "Email must be a well-formed email address",
+    "password": "Password must be between 8 and 32 characters"
+  }
 }
 ```
+
+#### Custom Authentication Error Codes (`4011` / `4012`):
+To support seamless token recovery and distinct UI routing, authentication failures are categorized into discrete application error codes:
+
+| Code | Status | Enum Identifier | Meaning & Client Action |
+| :--- | :--- | :--- | :--- |
+| `4011` | `error` | `TOKEN_EXPIRED` | The JWT Access Token has expired (`ExpiredJwtException`). Returned with HTTP `401`. |
+| `4012` | `error` | `TOKEN_INVALID` | The token has an invalid signature, is blacklisted in Redis (`blacklist:<token>`), or has an outdated `token_version` (`JwtException`). Returned with HTTP `401`. |
+
+**Client handling (`apiClient.js`)**: Any HTTP `401` response (including `4011` and `4012`) triggers a single, de-duplicated silent refresh via `POST /api/auth/refresh-token` (the server keeps a 15-second grace window `rt_grace:<token>` so concurrent refreshes receive the same token pair), after which the original request is retried. If the refresh fails, `notifySessionExpired()` dispatches the `chatweb:session-expired` event and the user must sign in again.
 
 ---
 
@@ -122,10 +144,47 @@ Provides self-service profile updates, credential management, language selection
 | `GET` | `/api/messages/search` | Searches text content within a private conversation (`?user2={recipient}&keyword={q}&cursor=&size=20`). Rate limit: 20 req/min. |
 | `GET` | `/api/messages/system` | Cursor-paginated list of active system announcements (`?cursor=&size=20`). |
 | `GET` | `/api/messages/{id}` | Fetches detailed metadata for an individual message. Rate limit: 60 req/min. |
-| `POST` | `/api/messages/mark-as-read` | Atomic read receipt watermark upsert (`{ "sender": "...", "conversationId": "..." }`). Updates MongoDB `$max`, evicts unread cache, and dispatches real-time Kafka event. Rate limit: 30 req/min. |
-| `POST` | `/api/messages/reaction` | Adds or updates an emoji reaction on a message (`{ "messageId": "...", "reaction": "..." }`). Rate limit: 30 req/min. |
-| `PUT` | `/api/messages/edit` | Edits message text content (`{ "messageId": "...", "content": "..." }`). Rate limit: 20 req/min. |
-| `DELETE` | `/api/messages/revoke` | Revokes a message (soft deletion - `{ "messageId": "..." }`). Rate limit: 20 req/min. |
+| `POST` | `/api/messages/mark-as-read` | Atomic read receipt watermark upsert (`MarkReadRequest`). Updates MongoDB `$max`, evicts Redis cache, and dispatches real-time Kafka event. Rate limit: 30 req/min. |
+| `POST` | `/api/messages/reaction` | Adds or updates an emoji reaction on a message (`ReactionRequest`). Rate limit: 30 req/min. |
+| `PUT` | `/api/messages/edit` | Edits message text content (`EditMessageRequest`). Rate limit: 20 req/min. |
+| `DELETE` | `/api/messages/revoke` | Revokes a message (`RevokeMessageRequest`). Soft deletion in MongoDB. Rate limit: 20 req/min. |
+
+#### Specific Request & Response Schemas:
+
+- **Mark As Read Request (`MarkReadRequest`)**:
+  ```json
+  {
+    "sender": "bob_smith"
+  }
+  ```
+  *(Note: `conversationId` is resolved server-side from the authenticated user and sender).*
+
+- **Reaction Request (`ReactionRequest`)**:
+  ```json
+  {
+    "messageId": "65e52b121f938b29c8e1a456",
+    "recipient": "bob_smith",
+    "reactionType": "HEART"
+  }
+  ```
+  *Allowed `reactionType`*: `LIKE`, `HEART`, `LAUGH`, `SAD`, `ANGRY`.
+
+- **Edit Message Request (`EditMessageRequest`)**:
+  ```json
+  {
+    "messageId": "65e52b121f938b29c8e1a456",
+    "recipient": "bob_smith",
+    "newContent": "Updated text message content"
+  }
+  ```
+
+- **Revoke Message Request (`RevokeMessageRequest`)**:
+  ```json
+  {
+    "messageId": "65e52b121f938b29c8e1a456",
+    "recipient": "bob_smith"
+  }
+  ```
 
 ---
 
@@ -148,7 +207,7 @@ Allows users to report abusive or violating behavior.
 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
-| `POST` | `/api/reports` | Submits a report (`{ "reportedUserId": 12, "reason": "SPAM", "details": "..." }`). Rate limit: 10 req/min. |
+| `POST` | `/api/reports` | Submits a report (`CreateReportRequest`: `{ "reportedUserId": 12, "reason": "SPAM", "details": "..." }`). Rate limit: 10 req/min. |
 | `GET` | `/api/reports/me` | Paginated list of reports filed by current user (`?page=0&size=10&sortDir=desc`). |
 | `DELETE`| `/api/reports/{id}` | Cancels a pending report filed by the current user. |
 
@@ -158,10 +217,11 @@ Allows users to report abusive or violating behavior.
 
 Processes multipart media uploads to Cloudinary storage with strict security sanitization.
 
-| Method | Endpoint | Allowed Formats & Limits | Description |
+| Method | Endpoint | Parameter & Limits | Description |
 | :--- | :--- | :--- | :--- |
-| `POST` | `/api/messages/upload/image` | JPEG, PNG, WEBP, GIF (Max 20MB). **SVG explicitly disallowed** to prevent Stored XSS attacks. | Uploads image and returns Cloudinary CDN URL. Supports `X-Idempotency-Key`. |
-| `POST` | `/api/messages/upload/video` | MP4, MOV, WEBM (Max 20MB). | Uploads video. Supports `X-Idempotency-Key`. |
+| `POST` | `/api/messages/upload/image` | `@RequestParam("image")` multipart file. JPEG, PNG, WEBP, GIF (Max 20MB). **SVG explicitly disallowed**. | Uploads image and returns Cloudinary CDN URL. Supports `X-Idempotency-Key`. |
+| `POST` | `/api/messages/upload/video` | `@RequestParam("video")` multipart file. MP4, MOV, WEBM (Max 20MB). | Uploads video. Supports `X-Idempotency-Key`. |
+| `PATCH`| `/api/users/avatar` | `@RequestParam("file")` multipart file (Max 5MB). Images only (No SVG). | Updates personal profile avatar image. |
 
 ---
 
@@ -174,8 +234,18 @@ Restricted to moderators with authority `ADMIN_VIEW_REPORTS`, `ADMIN_RESOLVE_REP
 | `GET` | `/api/admin/reports` | `ADMIN_VIEW_REPORTS` | Search, filter, and paginate reports (`?page=&size=&sorts=`). |
 | `GET` | `/api/admin/reports/statistics` | `ADMIN_VIEW_REPORTS` | Aggregates counts by report status (`PENDING`, `RESOLVED`, `DISMISSED`). |
 | `GET` | `/api/admin/reports/{id}` | `ADMIN_VIEW_REPORTS` | Retrieves full details of a specific report. |
-| `PUT` | `/api/admin/reports/{id}/resolve` | `ADMIN_RESOLVE_REPORTS`| Resolves or dismisses a report (`{ "status": "RESOLVED", "resolutionNote": "..." }`). |
+| `PUT` | `/api/admin/reports/{id}/resolve` | `ADMIN_RESOLVE_REPORTS`| Resolves/dismisses a report (`ResolveReportRequest`). |
 | `DELETE`| `/api/admin/reports/{id}` | `ADMIN_DELETE_REPORTS` | Permanently deletes a report record. |
+
+#### Resolve Report Request (`ResolveReportRequest`):
+```json
+{
+  "status": "RESOLVED",
+  "resolutionNote": "Confirmed Terms of Service violation. User has been temporarily suspended.",
+  "lockReportedUser": true
+}
+```
+*`status` values*: `RESOLVED`, `DISMISSED`. Optional `lockReportedUser` automatically locks the offender's account.
 
 ---
 
@@ -205,15 +275,31 @@ Restricted to administrative personnel.
 
 Administrative controls for user account governance.
 
-| Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| `GET` | `/api/admin/users` | Paginated search, sorting, and filtering by role, status, and gender. |
-| `GET` | `/api/admin/users/online` | Queries real-time online users directly from Redis Sorted Set `online_users`. |
-| `GET` | `/api/admin/users/{username}` | Retrieves complete profile and status for a specific user. |
-| `POST` | `/api/admin/users` | Admin creation of new user accounts. |
-| `PUT` | `/api/admin/users/{username}` | Admin update of user profile and role assignments. |
-| `DELETE`| `/api/admin/users/{username}` | Admin account deletion. |
-| `POST` | `/api/admin/users/{username}/lock` | Suspends an account (`user_status = LOCKED`). |
-| `POST` | `/api/admin/users/{username}/unlock` | Re-activates a locked account. |
-| `DELETE`| `/api/admin/users/{username}/avatar` | Purges inappropriate avatar media. |
-| `*` | `/api/admin/users/{username}/addresses...`| Administrative management of any user's address book entries. |
+| Method | Endpoint | Authority | Description |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/admin/users` | `ADMIN_VIEW_USERS` | Paginated search, sorting, and filtering by role, status, and gender. |
+| `GET` | `/api/admin/users/online` | `ADMIN_VIEW_ONLINE_USERS` | Queries real-time online users directly from Redis Sorted Set `online_users`. |
+| `GET` | `/api/admin/users/{username}` | `ADMIN_VIEW_USER_DETAIL` | Retrieves complete profile and status for a specific user. |
+| `POST` | `/api/admin/users` | `ADMIN_CREATE` | Admin creation of new user accounts. |
+| `PUT` | `/api/admin/users/{username}` | `ADMIN_UPDATE_USER` | Admin update of user profile and role assignments. |
+| `DELETE`| `/api/admin/users/{username}` | `ADMIN_DELETE_USER` | Admin account deletion. |
+| `POST` | `/api/admin/users/{username}/lock` | `ADMIN_LOCK` | Suspends an account (`user_status = LOCKED`). |
+| `POST` | `/api/admin/users/{username}/unlock` | `ADMIN_UNLOCK` | Re-activates a locked account. |
+| `DELETE`| `/api/admin/users/{username}/avatar` | `ADMIN_DELETE_AVATAR`| Purges inappropriate avatar media. |
+| `GET` | `/api/admin/users/{username}/addresses` | `ADMIN_VIEW_USER_ADDRESSES` | Lists all saved addresses for the target user -> `ApiResponse<List<AddressResponse>>`. |
+| `GET` | `/api/admin/users/{username}/addresses/{addressId}` | `ADMIN_VIEW_USER_ADDRESSES` | Fetches single address record for the target user -> `ApiResponse<AddressResponse>`. |
+| `PUT` | `/api/admin/users/{username}/addresses/{addressId}` | `ADMIN_UPDATE_USER_ADDRESS` | Updates an address record for the target user -> `ApiResponse<AddressResponse>`. |
+| `DELETE`| `/api/admin/users/{username}/addresses/{addressId}` | `ADMIN_DELETE_USER_ADDRESS` | Deletes an address record for the target user -> `ApiResponse<Void>`. |
+
+---
+
+### 2.13. Spring Boot Actuator Endpoints (`/actuator`)
+
+Operational monitoring, liveness, and Prometheus metric scraping endpoints configured in `SecurityConfig.java`:
+
+| Method | Endpoint | Access Control | Purpose |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/actuator/health` | Public (`permitAll()`) | Liveness and readiness probe for Docker / Kubernetes container orchestration. |
+| `GET` | `/actuator/info` | Public (`permitAll()`) | Exposes application build information and Git commit metadata. |
+| `GET` | `/actuator/prometheus` | Public (`permitAll()`) | Exposes Micrometer metrics formatted for Prometheus server scraping. |
+| `GET` | `/actuator/**` | Restricted (`ADMIN_VIEW_USERS`) | Access to extended operational endpoints (metrics, env, loggers, thread dump). |
