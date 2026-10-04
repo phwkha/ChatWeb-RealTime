@@ -1,10 +1,13 @@
 package com.web.backend.kafka.consumer;
 
+import java.time.Duration;
+import java.util.List;
+
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.annotation.RetryableTopic;
-import org.springframework.retry.annotation.Backoff;
 import org.springframework.kafka.retrytopic.DltStrategy;
 import org.springframework.kafka.retrytopic.SameIntervalTopicReuseStrategy;
+import org.springframework.retry.annotation.Backoff;
 import org.springframework.stereotype.Component;
 
 import com.web.backend.common.NotificationsType;
@@ -12,9 +15,8 @@ import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.response.SocketNotificationResponse;
 import com.web.backend.exception.custom.MessageProcessingException;
 import com.web.backend.kafka.payload.FriendPayload;
+import com.web.backend.service.ConsumerDeduplicationService;
 import com.web.backend.service.WebSocketRoutingService;
-
-import java.util.List;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +27,10 @@ import lombok.extern.slf4j.Slf4j;
 public class FriendConsumer {
 
     private final WebSocketRoutingService webSocketRoutingService;
+
+    private final ConsumerDeduplicationService dedupService;
+    private static final String CONSUMER_NAME = "friend_push";
+    private static final Duration DEDUP_TTL = Duration.ofMinutes(10);
 
     private static final String QUEUE_NOTIFICATIONS_STRING = "/queue/notifications";
 
@@ -43,6 +49,11 @@ public class FriendConsumer {
     @KafkaListener(topics = "${spring.kafka.topic.friend.friend-topic}", groupId = "${spring.kafka.topic.friend.friend-group-id}", containerFactory = "jsonKafkaListenerContainerFactory")
     public void listenFriendNotifications(FriendPayload friendEvent) {
         if (friendEvent == null) {
+            return;
+        }
+
+        if (dedupService.isDuplicate(CONSUMER_NAME, friendEvent.eventId(), DEDUP_TTL)) {
+            log.debug("Skipping duplicate WebSocket dispatch for friendEvent '{}'", friendEvent.eventId());
             return;
         }
 
@@ -71,6 +82,7 @@ public class FriendConsumer {
                 webSocketRoutingService.routeMessage(sender, QUEUE_NOTIFICATIONS_STRING, senderResp);
             }
         } catch (Exception e) {
+            dedupService.clearOnFailure(CONSUMER_NAME, friendEvent.eventId());
             log.error("Failed to route WebSocket friend notification: sender='{}', recipient='{}'", sender, recipient,
                     e);
             throw new MessageProcessingException("Failed to process message in FriendConsumer", e);
@@ -116,6 +128,7 @@ public class FriendConsumer {
                 translationKey = EMPTY_STRING;
         }
 
-        return SocketNotificationResponse.notificationData(notificationId, type, relatedUsername, Translator.tolocale(translationKey));
+        return SocketNotificationResponse.notificationData(notificationId, type, relatedUsername,
+                Translator.tolocale(translationKey));
     }
 }

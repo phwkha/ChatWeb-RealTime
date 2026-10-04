@@ -14,6 +14,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.kafka.support.Acknowledgment;
 
 import com.web.backend.kafka.payload.EmailPayload;
+import com.web.backend.service.ConsumerDeduplicationService;
 import com.web.backend.service.EmailService;
 
 @ExtendWith(MockitoExtension.class)
@@ -24,6 +25,9 @@ class EmailConsumerTest {
 
     @Mock
     private Acknowledgment acknowledgment;
+
+    @Mock
+    private ConsumerDeduplicationService dedupService;
 
     @InjectMocks
     private EmailConsumer emailConsumer;
@@ -60,6 +64,18 @@ class EmailConsumerTest {
     }
 
     @Test
+    void testConsumeEmailTask_DuplicateEvent_SkippedAndAcknowledged() {
+        EmailPayload payload = EmailPayload.createOtpEvent("user@example.com", "John", "123456");
+        org.mockito.Mockito.when(dedupService.isDuplicate(org.mockito.ArgumentMatchers.eq("email"), org.mockito.ArgumentMatchers.eq(payload.eventId()), org.mockito.ArgumentMatchers.any(java.time.Duration.class)))
+                .thenReturn(true);
+
+        emailConsumer.consumeEmailTask(payload, acknowledgment);
+
+        verify(emailService, never()).sendOtpEmail(any(), any(), any());
+        verify(acknowledgment).acknowledge();
+    }
+
+    @Test
     void testConsumeEmailTask_EmailServiceThrowsException_DoesNotAcknowledge() {
         EmailPayload payload = EmailPayload.createOtpEvent("user@example.com", "John", "123456");
         doThrow(new RuntimeException("Mail server down"))
@@ -67,6 +83,7 @@ class EmailConsumerTest {
 
         assertThrows(RuntimeException.class, () -> emailConsumer.consumeEmailTask(payload, acknowledgment));
         verify(acknowledgment, never()).acknowledge();
+        verify(dedupService).clearOnFailure("email", payload.eventId());
     }
 
     @Test

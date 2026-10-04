@@ -1,5 +1,7 @@
 package com.web.backend.kafka.consumer;
 
+import java.time.Duration;
+
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.annotation.RetryableTopic;
 import org.springframework.kafka.retrytopic.DltStrategy;
@@ -11,10 +13,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.web.backend.common.NotificationsType;
 import com.web.backend.common.UpdateMessageType;
 import com.web.backend.config.localresolverconfig.Translator;
-import com.web.backend.controller.response.SocketNotificationResponse;
 import com.web.backend.controller.response.ReadReceiptResponse;
+import com.web.backend.controller.response.SocketNotificationResponse;
 import com.web.backend.exception.custom.MessageProcessingException;
 import com.web.backend.kafka.payload.UpdateMessagePayload;
+import com.web.backend.service.ConsumerDeduplicationService;
 import com.web.backend.service.WebSocketRoutingService;
 
 import lombok.RequiredArgsConstructor;
@@ -27,6 +30,9 @@ public class UpdateMessageConsumer {
 
     private final WebSocketRoutingService webSocketRoutingService;
     private final ObjectMapper objectMapper;
+    private final ConsumerDeduplicationService dedupService;
+    private static final String CONSUMER_NAME = "message_push_update";
+    private static final Duration DEDUP_TTL = Duration.ofMinutes(10);
 
     private static final String QUEUE_NOTIFICATIONS_STRING = "/queue/notifications";
     private static final String SYS_MSG_STATUS_MESSAGE_STRING = "sys.msg.status_message";
@@ -43,6 +49,12 @@ public class UpdateMessageConsumer {
     }
 
     private void processStatusUpdate(UpdateMessagePayload updateEvent) {
+
+        if (dedupService.isDuplicate(CONSUMER_NAME, updateEvent.eventId(), DEDUP_TTL)) {
+            log.debug("Skipping duplicate WebSocket dispatch for update message '{}'", updateEvent.eventId());
+            return;
+        }
+
         ReadReceiptResponse receiptData = extractReadReceiptData(updateEvent);
         if (receiptData == null || receiptData.getConversationId() == null || receiptData.getReader() == null) {
             log.warn("Invalid read receipt status update event: {}", updateEvent);
@@ -67,6 +79,7 @@ public class UpdateMessageConsumer {
                 log.debug("Dispatched read receipt notification to sender '{}' for conv '{}'", sender, convId);
             }
         } catch (Exception e) {
+            dedupService.clearOnFailure(CONSUMER_NAME, updateEvent.eventId());
             log.error("Failed to route read receipt WebSocket notification for conv '{}'", convId, e);
             throw new MessageProcessingException("Failed to process message in UpdateMessageConsumer", e);
         }
