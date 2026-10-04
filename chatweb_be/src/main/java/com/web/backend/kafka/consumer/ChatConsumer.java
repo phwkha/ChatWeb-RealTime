@@ -1,5 +1,7 @@
 package com.web.backend.kafka.consumer;
 
+import java.time.Duration;
+
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.annotation.RetryableTopic;
 import org.springframework.kafka.retrytopic.DltStrategy;
@@ -10,6 +12,7 @@ import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.stereotype.Component;
+
 import com.web.backend.common.ActionType;
 import com.web.backend.common.MessageType;
 import com.web.backend.common.NotificationsType;
@@ -21,6 +24,7 @@ import com.web.backend.exception.custom.MessageProcessingException;
 import com.web.backend.kafka.avro.ChatMessageAvro;
 import com.web.backend.mapper.MessageMapper;
 import com.web.backend.model.mongodb.SystemMessage;
+import com.web.backend.service.ConsumerDeduplicationService;
 import com.web.backend.service.WebSocketRoutingService;
 
 import lombok.RequiredArgsConstructor;
@@ -37,6 +41,10 @@ public class ChatConsumer {
 
     private final WebSocketRoutingService webSocketRoutingService;
 
+    private final ConsumerDeduplicationService dedupService;
+    private static final String CONSUMER_NAME = "chat_push";
+    private static final Duration DEDUP_TTL = Duration.ofMinutes(10);
+
     private static final String QUEUE_MESSAGES_STRING = "/queue/messages";
 
     private static final String QUEUE_NOTIFICATIONS_STRING = "/queue/notifications";
@@ -52,13 +60,19 @@ public class ChatConsumer {
     public void listenChatMessages(
             @Payload ChatMessageAvro message,
             @Header(name = KafkaHeaders.RECEIVED_KEY, required = false) String conversationKey) {
-        if (message == null) {
+        if (message == null || message.getId() == null) {
             return;
         }
         String recipient = message.getRecipient();
         String sender = message.getSender();
         String actionTypeStr = message.getActionType();
         ActionType action = parseActionType(actionTypeStr);
+        String dedupId = message.getId() + ":" + action.name();
+
+        if (dedupService.isDuplicate(CONSUMER_NAME, dedupId, DEDUP_TTL)) {
+            log.debug("Skipping duplicate WebSocket dispatch for message '{}' action '{}'", message.getId(), action);
+            return;
+        }
         log.debug("Consumed chat message (Avro) [key='{}', action='{}']: sender='{}', recipient='{}'",
                 conversationKey, action, sender, recipient);
         try {
@@ -102,6 +116,7 @@ public class ChatConsumer {
                         action, otherParticipant, actionPerformer);
             }
         } catch (Exception e) {
+            dedupService.clearOnFailure(CONSUMER_NAME, dedupId);
             log.error("Failed to route WebSocket chat message for sender '{}' and recipient '{}'", sender, recipient,
                     e);
             throw new MessageProcessingException("Failed to process message in ChatConsumer", e);

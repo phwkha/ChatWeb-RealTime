@@ -27,6 +27,7 @@ import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.response.SocketNotificationResponse;
 import com.web.backend.exception.custom.MessageProcessingException;
 import com.web.backend.kafka.payload.FriendPayload;
+import com.web.backend.service.ConsumerDeduplicationService;
 import com.web.backend.service.WebSocketRoutingService;
 
 @ExtendWith(MockitoExtension.class)
@@ -34,6 +35,9 @@ class FriendConsumerTest {
 
     @Mock
     private WebSocketRoutingService webSocketRoutingService;
+
+    @Mock
+    private ConsumerDeduplicationService dedupService;
 
     @InjectMocks
     private FriendConsumer friendConsumer;
@@ -187,5 +191,23 @@ class FriendConsumerTest {
                 eq("/queue/notifications"),
                 any()
         );
+        verify(dedupService).clearOnFailure("friend_push", payload.eventId());
+    }
+
+    @Test
+    void testListenFriendNotifications_DuplicateEvent_Skipped() throws Exception {
+        FriendPayload payload = FriendPayload.builder()
+                .notificationId(101L)
+                .senderUsername("sender_user")
+                .recipientUsername("recipient_user")
+                .recipientType(NotificationsType.FRIEND_REQUEST)
+                .build();
+
+        org.mockito.Mockito.when(dedupService.isDuplicate(eq("friend_push"), eq(payload.eventId()), any(java.time.Duration.class)))
+                .thenReturn(true);
+
+        friendConsumer.listenFriendNotifications(payload);
+
+        verify(webSocketRoutingService, never()).routeMessage(any(), any(), any());
     }
 }

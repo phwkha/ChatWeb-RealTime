@@ -25,6 +25,7 @@ import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.response.SocketNotificationResponse;
 import com.web.backend.controller.response.ReadReceiptResponse;
 import com.web.backend.kafka.payload.UpdateMessagePayload;
+import com.web.backend.service.ConsumerDeduplicationService;
 import com.web.backend.service.WebSocketRoutingService;
 
 @ExtendWith(MockitoExtension.class)
@@ -34,6 +35,8 @@ class UpdateMessageConsumerTest {
     private WebSocketRoutingService webSocketRoutingService;
     @Mock
     private ObjectMapper objectMapper;
+    @Mock
+    private ConsumerDeduplicationService dedupService;
 
     @InjectMocks
     private UpdateMessageConsumer updateMessageConsumer;
@@ -72,5 +75,53 @@ class UpdateMessageConsumerTest {
                 ArgumentMatchers.<SocketNotificationResponse<?>>any());
         verify(webSocketRoutingService, never()).routeMessage(eq("recipient1"), eq("/queue/notifications"),
                 ArgumentMatchers.<SocketNotificationResponse<?>>any());
+    }
+
+    @Test
+    void testHandleMessageUpdates_DuplicateEvent_Skipped() throws Exception {
+        ReadReceiptResponse data = ReadReceiptResponse.builder()
+                .conversationId("sender1_recipient1")
+                .reader("recipient1")
+                .sender("sender1")
+                .readTimestamp(Instant.now())
+                .build();
+
+        UpdateMessagePayload payload = UpdateMessagePayload.builder()
+                .type(UpdateMessageType.STATUS)
+                .relatedUsername("recipient1")
+                .updateEvent(data)
+                .build();
+
+        org.mockito.Mockito.when(dedupService.isDuplicate(eq("message_push_update"), eq(payload.eventId()), any(java.time.Duration.class)))
+                .thenReturn(true);
+
+        updateMessageConsumer.handleMessageUpdates(payload);
+
+        verify(webSocketRoutingService, never()).routeMessage(any(), any(), any());
+    }
+
+    @Test
+    void testHandleMessageUpdates_RoutingException_ClearsDedupKey() throws Exception {
+        ReadReceiptResponse data = ReadReceiptResponse.builder()
+                .conversationId("sender1_recipient1")
+                .reader("recipient1")
+                .sender("sender1")
+                .readTimestamp(Instant.now())
+                .build();
+
+        UpdateMessagePayload payload = UpdateMessagePayload.builder()
+                .type(UpdateMessageType.STATUS)
+                .relatedUsername("recipient1")
+                .updateEvent(data)
+                .build();
+
+        org.mockito.Mockito.doThrow(new RuntimeException("Simulated WS error"))
+                .when(webSocketRoutingService).routeMessage(eq("sender1"), eq("/queue/notifications"), any());
+
+        org.junit.jupiter.api.Assertions.assertThrows(
+                com.web.backend.exception.custom.MessageProcessingException.class,
+                () -> updateMessageConsumer.handleMessageUpdates(payload));
+
+        verify(dedupService).clearOnFailure("message_push_update", payload.eventId());
     }
 }

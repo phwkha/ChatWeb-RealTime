@@ -1,9 +1,11 @@
 package com.web.backend.kafka.consumer;
 
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -27,6 +29,7 @@ import com.web.backend.controller.response.ChatMessageResponse;
 import com.web.backend.controller.response.SocketNotificationResponse;
 import com.web.backend.kafka.avro.ChatMessageAvro;
 import com.web.backend.mapper.MessageMapper;
+import com.web.backend.service.ConsumerDeduplicationService;
 import com.web.backend.service.WebSocketRoutingService;
 
 @ExtendWith(MockitoExtension.class)
@@ -40,6 +43,9 @@ class ChatConsumerTest {
 
         @Mock
         private WebSocketRoutingService webSocketRoutingService;
+
+        @Mock
+        private ConsumerDeduplicationService dedupService;
 
         @InjectMocks
         private ChatConsumer chatConsumer;
@@ -240,5 +246,43 @@ class ChatConsumerTest {
                                                 .getType() == NotificationsType.EDIT_MESSAGE
                                                 && "userA".equals(notif.getRelatedUsername())));
                 verify(webSocketRoutingService, never()).routeMessage(eq("userA"), anyString(), any());
+        }
+
+        @Test
+        void testListenChatMessages_DuplicateMessage_Skipped() throws Exception {
+                ChatMessageAvro message = new ChatMessageAvro();
+                message.setId("msg1");
+                message.setActionType(ActionType.CREATE.name());
+
+                when(dedupService.isDuplicate(eq("chat_push"), eq("msg1:CREATE"), any(java.time.Duration.class)))
+                                .thenReturn(true);
+
+                chatConsumer.listenChatMessages(message, "conv_key");
+
+                verify(webSocketRoutingService, never()).routeMessage(anyString(), anyString(), any());
+        }
+
+        @Test
+        void testListenChatMessages_RoutingException_ClearsDedupKey() throws Exception {
+                ChatMessageAvro message = new ChatMessageAvro();
+                message.setId("msg1");
+                message.setSender("userA");
+                message.setRecipient("userB");
+                message.setActionType(ActionType.CREATE.name());
+
+                ChatMessageResponse response = ChatMessageResponse.builder()
+                                .id("msg1")
+                                .sender("userA")
+                                .recipient("userB")
+                                .build();
+
+                when(messageMapper.avroToResponse(message)).thenReturn(response);
+                doThrow(new RuntimeException("Simulated WS error"))
+                                .when(webSocketRoutingService).routeMessage(eq("userB"), eq("/queue/messages"), any());
+
+                assertThrows(com.web.backend.exception.custom.MessageProcessingException.class,
+                                () -> chatConsumer.listenChatMessages(message, "conv_key"));
+
+                verify(dedupService).clearOnFailure("chat_push", "msg1:CREATE");
         }
 }
