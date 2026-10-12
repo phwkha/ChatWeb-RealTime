@@ -9,22 +9,6 @@ public class FacebookOAuth2UserInfo extends OAuth2UserInfo {
     }
 
     @Override
-    public String getId() {
-        Object id = attributes.get("id");
-        return id != null ? String.valueOf(id) : null;
-    }
-
-    @Override
-    public String getName() {
-        return (String) attributes.get("name");
-    }
-
-    @Override
-    public String getEmail() {
-        return (String) attributes.get("email");
-    }
-
-    @Override
     public String getFirstName() {
         return (String) attributes.get("first_name");
     }
