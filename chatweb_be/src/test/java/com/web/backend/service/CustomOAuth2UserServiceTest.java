@@ -340,7 +340,7 @@ class CustomOAuth2UserServiceTest {
 	}
 
 	@Test
-	void testLoadUser_UnknownAuthProvider_FallsBackToGoogle() {
+	void testLoadUser_UnsupportedAuthProvider_ThrowsOAuth2AuthenticationException() {
 		OAuth2UserRequest userRequest = createOAuth2UserRequest("customprovider", "sub");
 
 		Map<String, Object> attributes = new HashMap<>();
@@ -349,20 +349,10 @@ class CustomOAuth2UserServiceTest {
 
 		mockUserInfoResponse(attributes);
 
-		when(userRepository.findByProviderId("cust-111")).thenReturn(Optional.empty());
-		when(userRepository.findByEmail("custom@example.com")).thenReturn(Optional.empty());
+		OAuth2AuthenticationException ex = assertThrows(OAuth2AuthenticationException.class,
+				() -> customOAuth2UserService.loadUser(userRequest));
 
-		RoleEntity role = new RoleEntity();
-		role.setName("USER");
-		when(roleRepository.findByNameOauth2("USER")).thenReturn(Optional.of(role));
-		when(passwordEncoder.encode(anyString())).thenReturn("hashed-pwd");
-		when(userRepository.save(any(UserEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
-
-		OAuth2User result = customOAuth2UserService.loadUser(userRequest);
-
-		assertNotNull(result);
-		ArgumentCaptor<UserEntity> userCaptor = ArgumentCaptor.forClass(UserEntity.class);
-		verify(userRepository).save(userCaptor.capture());
-		assertEquals(AuthProvider.GOOGLE, userCaptor.getValue().getAuthProvider());
+		assertEquals("error.oauth2.unsupported_provider", ex.getError().getErrorCode());
+		verify(userRepository, never()).save(any());
 	}
 }
