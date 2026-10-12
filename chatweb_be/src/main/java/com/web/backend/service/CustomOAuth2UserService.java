@@ -15,6 +15,8 @@ import com.web.backend.common.AuthProvider;
 import com.web.backend.common.UserStatus;
 import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.oauth2.CustomOAuth2User;
+import com.web.backend.oauth2.userinfo.OAuth2UserInfo;
+import com.web.backend.oauth2.userinfo.OAuth2UserInfoFactory;
 import com.web.backend.repository.RoleRepository;
 import com.web.backend.repository.UserRepository;
 
@@ -36,17 +38,6 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
     private static final String ERROR_OAUTH2_EMAIL_MISSING_STRING = "error.oauth2.email_missing";
     private static final String ERROR_ROLE_NOT_FOUND_STRING = "error.role.not_found";
 
-    private static final String EMAIL_STRING = "email";
-    private static final String FACEBOOK_STRING = "facebook";
-    private static final String FAMILY_NAME_STRING = "family_name";
-    private static final String GITHUB_STRING = "github";
-    private static final String GIVEN_NAME_STRING = "given_name";
-    private static final String GOOGLE_STRING = "google";
-    private static final String NAME_STRING = "name";
-    private static final String PICTURE_STRING = "picture";
-    private static final String SUB_STRING = "sub";
-
-    private static final String ID_STRING = "id";
     private static final String USER_STRING = "USER";
     private static final String REGEX_WHITESPACE_STRING = "\\s+";
     private static final String EMPTY_STRING = "";
@@ -59,64 +50,47 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
         OAuth2User oAuth2User = super.loadUser(userRequest);
 
         String registrationId = userRequest.getClientRegistration().getRegistrationId();
-        String providerId = extractProviderId(oAuth2User, registrationId);
-        String email = oAuth2User.getAttribute(EMAIL_STRING);
+        OAuth2UserInfo userInfo = OAuth2UserInfoFactory.getOAuth2UserInfo(registrationId, oAuth2User.getAttributes());
 
-        if (email == null || email.isEmpty()) {
-            log.error("OAuth2 authentication failed: Provider returned empty email [providerId={}]", providerId);
+        if (userInfo.getEmail() == null || userInfo.getEmail().isEmpty()) {
+            log.error("OAuth2 authentication failed: Provider returned empty email [providerId={}]", registrationId);
             throw new OAuth2AuthenticationException(ERROR_OAUTH2_EMAIL_MISSING_STRING);
         }
 
-        log.info("Processing OAuth2 login for user '{}'", email);
-        UserEntity user = processOAuth2User(userRequest, oAuth2User, providerId, email);
+        log.info("Processing OAuth2 login for user '{}'", userInfo.getEmail());
+        UserEntity user = processOAuth2User(userRequest, userInfo);
         return new CustomOAuth2User(user, oAuth2User.getAttributes());
     }
 
-    private String extractProviderId(OAuth2User oAuth2User, String registrationId) {
-        if (GOOGLE_STRING.equalsIgnoreCase(registrationId)) {
-            return oAuth2User.getAttribute(SUB_STRING);
-        } else if (GITHUB_STRING.equalsIgnoreCase(registrationId) || FACEBOOK_STRING.equalsIgnoreCase(registrationId)) {
-            Object idAttr = oAuth2User.getAttribute(ID_STRING);
-            return idAttr != null ? String.valueOf(idAttr) : null;
-        }
-
-        Object sub = oAuth2User.getAttribute(SUB_STRING);
-        if (sub != null)
-            return String.valueOf(sub);
-        Object id = oAuth2User.getAttribute(ID_STRING);
-        return id != null ? String.valueOf(id) : null;
-    }
-
-    private UserEntity processOAuth2User(OAuth2UserRequest userRequest, OAuth2User oAuth2User, String providerId,
-            String email) {
-        Optional<UserEntity> userByProviderId = userRepository.findByProviderId(providerId);
+    private UserEntity processOAuth2User(OAuth2UserRequest userRequest, OAuth2UserInfo userInfo) {
+        Optional<UserEntity> userByProviderId = userRepository.findByProviderId(userInfo.getId());
 
         if (userByProviderId.isPresent()) {
-            log.debug("Found existing user by OAuth2 providerId '{}'", providerId);
+            log.debug("Found existing user by OAuth2 providerId '{}'", userInfo.getId());
             return userByProviderId.get();
         }
 
-        Optional<UserEntity> userByEmail = userRepository.findByEmail(email);
+        Optional<UserEntity> userByEmail = userRepository.findByEmail(userInfo.getEmail());
         if (userByEmail.isPresent()) {
-            log.warn("OAuth2 login conflict: Email '{}' is already registered with another auth provider", email);
+            log.warn("OAuth2 login conflict: Email '{}' is already registered with another auth provider",
+                    userInfo.getEmail());
             throw new OAuth2AuthenticationException(ERROR_OAUTH2_EMAIL_ALREADY_EXISTS_STRING);
         }
 
-        log.info("Registering new OAuth2 user with email '{}'", email);
-        return registerNewUser(userRequest, oAuth2User, providerId, email);
+        log.info("Registering new OAuth2 user with email '{}'", userInfo.getEmail());
+        return registerNewUser(userRequest, userInfo);
     }
 
-    private UserEntity registerNewUser(OAuth2UserRequest userRequest, OAuth2User oAuth2User, String providerId,
-            String email) {
+    private UserEntity registerNewUser(OAuth2UserRequest userRequest, OAuth2UserInfo userInfo) {
         UserEntity newUser = new UserEntity();
 
-        newUser.setEmail(email);
+        newUser.setEmail(userInfo.getEmail());
         newUser.setPassword(passwordEncoder.encode(UUID.randomUUID().toString()));
-        newUser.setProviderId(providerId);
+        newUser.setProviderId(userInfo.getId());
         newUser.setAuthProvider(determineAuthProvider(userRequest));
         newUser.setUserStatus(UserStatus.ACTIVE);
 
-        String username = oAuth2User.getAttribute(NAME_STRING);
+        String username = userInfo.getName();
         if (username != null) {
             username = username.replaceAll(REGEX_WHITESPACE_STRING, EMPTY_STRING);
         } else {
@@ -130,9 +104,9 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
                     return new OAuth2AuthenticationException(ERROR_ROLE_NOT_FOUND_STRING);
                 }));
 
-        newUser.setFirstName(oAuth2User.getAttribute(GIVEN_NAME_STRING));
-        newUser.setLastName(oAuth2User.getAttribute(FAMILY_NAME_STRING));
-        newUser.setAvatar(oAuth2User.getAttribute(PICTURE_STRING));
+        newUser.setFirstName(userInfo.getFirstName());
+        newUser.setLastName(userInfo.getLastName());
+        newUser.setAvatar(userInfo.getAvatarUrl());
 
         return userRepository.save(newUser);
     }
