@@ -1,6 +1,7 @@
 package com.web.backend.oauth2;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -48,6 +49,7 @@ public class OAuth2AuthenticationFailureHandler extends SimpleUrlAuthenticationF
         String targetUrl = UriComponentsBuilder.fromUriString(Objects.requireNonNull(redirectUri))
                 .queryParam(ERROR_STRING, message)
                 .queryParam(ERROR_DESCRIPTION_STRING, message)
+                .encode(StandardCharsets.UTF_8)
                 .build().toUriString();
 
         getRedirectStrategy().sendRedirect(request, response, targetUrl);
