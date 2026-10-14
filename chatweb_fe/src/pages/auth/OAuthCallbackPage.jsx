@@ -15,7 +15,7 @@ function OAuthCallbackPage() {
   const oauthError = oauthErrorCode ? getErrorMessage({
     code: oauthErrorCode,
     message: oauthErrorDescription || oauthErrorCode,
-  }, 'Không thể đăng nhập bằng Google. Vui lòng thử lại.') : ''
+  }, 'Không thể đăng nhập bằng mạng xã hội. Vui lòng thử lại.') : ''
   const [error, setError] = useState(oauthError)
   const hasHandledCallback = useRef(false)
 
@@ -31,7 +31,7 @@ function OAuthCallbackPage() {
     refreshUser().then((currentUser) => {
       if (currentUser) navigate(isAdminUser(currentUser) ? '/admin' : '/chat', { replace: true })
       else {
-        const message = 'Google đã xác thực nhưng ChatWeb chưa nhận được phiên đăng nhập.'
+        const message = 'Xác thực thành công nhưng ChatWeb chưa nhận được phiên đăng nhập.'
         setError(message)
         window.setTimeout(() => navigate('/login', { replace: true, state: { error: message } }), 1800)
       }
@@ -44,7 +44,7 @@ function OAuthCallbackPage() {
       <div className={`oauth-card${error ? ' oauth-card--error' : ''}`} role="status">
         <div className="oauth-loader">{error ? '!' : <><i /><i /><i /></>}</div>
         <h1>{error ? 'Chưa thể đăng nhập' : 'Đang hoàn tất đăng nhập'}</h1>
-        <p>{error || 'ChatWeb đang kết nối tài khoản Google của bạn...'}</p>
+        <p>{error || 'ChatWeb đang kết nối tài khoản của bạn...'}</p>
       </div>
     </main>
   )
