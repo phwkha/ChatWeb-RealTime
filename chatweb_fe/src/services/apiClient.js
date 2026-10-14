@@ -296,7 +296,3 @@ export async function apiRequest(path, options = {}) {
 export function getGoogleAuthUrl() {
   return `${API_BASE_URL}/oauth2/authorization/google`
 }
-
-export function getFacebookAuthUrl() {
-  return `${API_BASE_URL}/oauth2/authorization/facebook`
-}

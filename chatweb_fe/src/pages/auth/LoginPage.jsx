@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import AuthShell from '../../components/auth/AuthShell.jsx'
 import GoogleButton from '../../components/auth/GoogleButton.jsx'
-import FacebookButton from '../../components/auth/FacebookButton.jsx'
 import { useAuth } from '../../context/auth-context.js'
 import { getErrorMessage } from '../../services/apiClient.js'
 import { isAdminUser } from '../../services/authorization.js'
@@ -109,10 +108,7 @@ function LoginPage() {
       </form>
 
       <div className="auth-divider"><span>hoặc</span></div>
-      <div className="auth-social-buttons">
-        <GoogleButton label="Đăng nhập với Google" />
-        <FacebookButton label="Đăng nhập với Facebook" />
-      </div>
+      <GoogleButton label="Đăng nhập với Google" />
       <p className="auth-switch">Chưa có tài khoản? <Link to="/register">Đăng ký miễn phí</Link></p>
       <p className="auth-privacy">Bằng cách tiếp tục, bạn đồng ý với <a href="#terms">Điều khoản</a> và <a href="#privacy">Chính sách riêng tư</a>.</p>
     </AuthShell>

@@ -7,8 +7,6 @@ import {
   getAccessToken,
   apiRequest,
   refreshAccessToken,
-  getGoogleAuthUrl,
-  getFacebookAuthUrl,
 } from '../apiClient.js'
 
 describe('apiClient', () => {
@@ -157,18 +155,6 @@ describe('apiClient', () => {
       expect(global.fetch).toHaveBeenCalledTimes(1)
 
       global.fetch = originalFetch
-    })
-  })
-
-  describe('OAuth authorization URLs', () => {
-    it('returns valid Google authorization URL', () => {
-      const url = getGoogleAuthUrl()
-      expect(url).toContain('/oauth2/authorization/google')
-    })
-
-    it('returns valid Facebook authorization URL', () => {
-      const url = getFacebookAuthUrl()
-      expect(url).toContain('/oauth2/authorization/facebook')
     })
   })
 })

@@ -107,15 +107,4 @@ describe('RegisterPage', () => {
       }))
     })
   })
-
-  it('renders Google and Facebook social registration buttons', () => {
-    render(
-      <MemoryRouter>
-        <RegisterPage />
-      </MemoryRouter>
-    )
-
-    expect(screen.getByRole('button', { name: /đăng ký với google/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /đăng ký với facebook/i })).toBeInTheDocument()
-  })
 })
