@@ -115,4 +115,15 @@ describe('LoginPage', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Sai mật khẩu')
   })
+
+  it('renders Google and Facebook social login buttons', () => {
+    render(
+      <MemoryRouter>
+        <LoginPage />
+      </MemoryRouter>
+    )
+
+    expect(screen.getByRole('button', { name: /đăng nhập với google/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /đăng nhập với facebook/i })).toBeInTheDocument()
+  })
 })
