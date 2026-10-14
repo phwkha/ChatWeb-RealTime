@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import AuthShell from '../../components/auth/AuthShell.jsx'
 import GoogleButton from '../../components/auth/GoogleButton.jsx'
+import FacebookButton from '../../components/auth/FacebookButton.jsx'
 import { useAuth } from '../../context/auth-context.js'
 import { getErrorMessage } from '../../services/apiClient.js'
 
@@ -81,7 +82,10 @@ function RegisterPage() {
 
       {error && <div className="form-alert form-alert--error" role="alert"><span>!</span>{error}</div>}
 
-      <GoogleButton label="Đăng ký với Google" />
+      <div className="auth-social-buttons">
+        <GoogleButton label="Đăng ký với Google" />
+        <FacebookButton label="Đăng ký với Facebook" />
+      </div>
       <div className="auth-divider"><span>hoặc đăng ký bằng email</span></div>
 
       <form className="auth-form auth-form--compact" noValidate onSubmit={handleSubmit}>

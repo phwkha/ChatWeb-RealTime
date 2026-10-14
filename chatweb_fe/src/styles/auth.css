@@ -503,7 +503,8 @@
 .auth-privacy a { color: var(--auth-violet-dark); }
 
 .auth-submit,
-.google-button {
+.google-button,
+.facebook-button {
   display: flex;
   width: 100%;
   min-height: 50px;
@@ -535,19 +536,29 @@
   opacity: 0.65;
 }
 
-.google-button {
+.auth-social-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.google-button,
+.facebook-button {
   border: 1px solid var(--auth-line);
   background: white;
   color: #313932;
 }
 
-.google-button:hover {
+.google-button:hover,
+.facebook-button:hover {
   border-color: rgba(117, 87, 246, 0.28);
   box-shadow: 0 10px 25px rgba(37, 32, 57, 0.08);
   transform: translateY(-2px);
 }
 
-.google-button svg { width: 19px; }
+.google-button svg,
+.facebook-button svg { width: 19px; height: 19px; flex-shrink: 0; }
 
 .auth-divider {
   display: flex;
