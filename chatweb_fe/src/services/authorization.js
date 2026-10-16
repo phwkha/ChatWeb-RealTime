@@ -1,9 +1,13 @@
 const ADMIN_PERMISSION_PATTERN = /^(ADMIN[_-]|ROLE_|SEND_EMAIL)/
 
-export function isAdminUser(user) {
+export function isSuperAdmin(user) {
   return String(user?.role || '').toUpperCase().includes('ADMIN')
-    || (user?.permissions || []).some((permission) => ADMIN_PERMISSION_PATTERN.test(permission))
     || (user?.roles || []).some((role) => String(role).toUpperCase().includes('ADMIN'))
+}
+
+export function isAdminUser(user) {
+  return isSuperAdmin(user)
+    || (user?.permissions || []).some((permission) => ADMIN_PERMISSION_PATTERN.test(permission))
 }
 
 export function isAdminAccount(person) {
@@ -16,6 +20,7 @@ export function isAdminAccount(person) {
 }
 
 export function hasPermission(user, permission) {
-  return isAdminUser(user)
+  if (!user || !permission) return false
+  return isSuperAdmin(user)
     || (user?.permissions || []).includes(permission)
 }
