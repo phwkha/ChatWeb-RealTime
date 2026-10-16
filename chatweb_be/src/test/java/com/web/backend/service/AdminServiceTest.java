@@ -192,6 +192,67 @@ class AdminServiceTest {
     }
 
     @Test
+    void testAdminCreateUser_Success_WithDefaultRole() {
+        AdminCreateUserRequest req = new AdminCreateUserRequest();
+        req.setUsername("defaultuser");
+        req.setEmail("default@example.com");
+        req.setPassword("pass");
+        req.setRoleId(null);
+
+        RoleEntity defaultRole = new RoleEntity();
+        defaultRole.setName("USER");
+
+        when(userRepository.existsByUsername("defaultuser")).thenReturn(false);
+        when(userRepository.existsByEmail("default@example.com")).thenReturn(false);
+        when(userMapper.toEntity(req)).thenReturn(new UserEntity());
+        when(passwordEncoder.encode("pass")).thenReturn("encoded");
+        when(roleRepository.findByName("USER")).thenReturn(Optional.of(defaultRole));
+        when(userRepository.save(any(UserEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(userMapper.toUserResponse(any())).thenReturn(new UserResponse());
+
+        UserResponse response = adminService.adminCreateUser(req);
+        assertThat(response).isNotNull();
+        verify(roleRepository).findByName("USER");
+        verify(roleRepository, never()).findById(any());
+    }
+
+    @Test
+    void testAdminCreateUser_DefaultRoleNotFound() {
+        AdminCreateUserRequest req = new AdminCreateUserRequest();
+        req.setUsername("defaultuser");
+        req.setEmail("default@example.com");
+        req.setPassword("pass");
+        req.setRoleId(null);
+
+        when(userRepository.existsByUsername("defaultuser")).thenReturn(false);
+        when(userRepository.existsByEmail("default@example.com")).thenReturn(false);
+        when(userMapper.toEntity(req)).thenReturn(new UserEntity());
+        when(passwordEncoder.encode("pass")).thenReturn("encoded");
+        when(roleRepository.findByName("USER")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> adminService.adminCreateUser(req))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void testAdminCreateUser_RoleNotFound() {
+        AdminCreateUserRequest req = new AdminCreateUserRequest();
+        req.setUsername("newuser");
+        req.setEmail("new@example.com");
+        req.setPassword("pass");
+        req.setRoleId(99L);
+
+        when(userRepository.existsByUsername("newuser")).thenReturn(false);
+        when(userRepository.existsByEmail("new@example.com")).thenReturn(false);
+        when(userMapper.toEntity(req)).thenReturn(new UserEntity());
+        when(passwordEncoder.encode("pass")).thenReturn("encoded");
+        when(roleRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> adminService.adminCreateUser(req))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
     void testAdminCreateUser_UsernameExists() {
         AdminCreateUserRequest req = new AdminCreateUserRequest();
         req.setUsername("newuser");
