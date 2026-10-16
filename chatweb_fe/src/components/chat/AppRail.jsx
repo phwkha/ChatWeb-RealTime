@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import Brand from '../Brand.jsx'
 import { useAuth } from '../../context/auth-context.js'
 import { useLanguage } from '../../context/language-context.js'
+import { isAdminUser } from '../../services/authorization.js'
 import ChatIcon from './ChatIcon.jsx'
 
 const SETTINGS_ITEMS = [
@@ -46,8 +47,7 @@ export default function AppRail({
   const navigate = useNavigate()
   const menuRef = useRef(null)
   const [menuOpen, setMenuOpen] = useState(false)
-  const permissions = useMemo(() => new Set(user?.permissions || []), [user?.permissions])
-  const isAdmin = String(user?.role || '').toUpperCase().includes('ADMIN') || permissions.has('ADMIN_SEND-MESSAGE')
+  const isAdmin = isAdminUser(user)
 
   useEffect(() => {
     if (!menuOpen) return undefined

@@ -80,13 +80,13 @@ public class AdminServiceImpl implements AdminService {
     private static final String DELIMITE_STRING = ":";
 
     private static final String ASC_STRING = "asc";
-    private static final String ROLEID_CANNOT_BE_NULL_STRING = "RoleId cannot be null";
 
     private static final String ID_STRING = "id";
 
     private static final String USER_DETAILS_STRING = "user_details";
     private static final String USERNAME_STRING = "#username";
     private static final String AVATARS_STRING = "avatars";
+    private static final String DEFAULT_ROLE_USER_STRING = "USER";
 
     private static final String ERROR_USER_NOT_FOUND_WITH_STRING = "error.user.not_found_with";
     private static final String ERROR_ADMIN_USERNAME_EXISTS_STRING = "error.admin.username_exists";
@@ -243,11 +243,16 @@ public class AdminServiceImpl implements AdminService {
             user.setUserStatus(UserStatus.ACTIVE);
         }
 
-        Long roleId = Objects.requireNonNull(request.getRoleId(), ROLEID_CANNOT_BE_NULL_STRING);
-        RoleEntity role = roleRepository.findById(roleId)
-                .orElseThrow(
-                        () -> new ResourceNotFoundException(
-                                Translator.tolocale(ERROR_ROLE_NOT_FOUND_WITH_STRING, roleId)));
+        RoleEntity role;
+        if (request.getRoleId() != null) {
+            role = roleRepository.findById(request.getRoleId())
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            Translator.tolocale(ERROR_ROLE_NOT_FOUND_WITH_STRING, request.getRoleId())));
+        } else {
+            role = roleRepository.findByName(DEFAULT_ROLE_USER_STRING)
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            Translator.tolocale(ERROR_ROLE_NOT_FOUND_STRING)));
+        }
 
         checkRoleAssignmentPrivilege(role);
         user.setRole(role);

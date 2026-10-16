@@ -29,4 +29,13 @@ describe('authorization service', () => {
     expect(hasPermission({ permissions: ['DELETE_MESSAGE'] }, 'DELETE_MESSAGE')).toBe(true)
     expect(hasPermission({ permissions: ['READ_MESSAGE'] }, 'DELETE_MESSAGE')).toBe(false)
   })
+
+  it('does not grant all permissions to users with only specific admin permissions', () => {
+    const userWithOnlyCreate = { role: 'MANAGER', permissions: ['ADMIN_CREATE'] }
+    expect(isAdminUser(userWithOnlyCreate)).toBe(true)
+    expect(hasPermission(userWithOnlyCreate, 'ADMIN_CREATE')).toBe(true)
+    expect(hasPermission(userWithOnlyCreate, 'ADMIN_LOCK')).toBe(false)
+    expect(hasPermission(userWithOnlyCreate, 'ROLE_DELETE')).toBe(false)
+    expect(hasPermission(userWithOnlyCreate, 'SEND_EMAIL')).toBe(false)
+  })
 })
