@@ -47,6 +47,44 @@ function ProtectedRoute({ children }) {
   return user ? children : <Navigate to="/login" replace state={{ error: redirectError }} />
 }
 
+function PermissionRoute({
+  permission = null,
+  anyOf = null,
+  allOf = null,
+  requireAdminAccess = false,
+  redirectTo = '/chat',
+  fallback = null,
+  children,
+}) {
+  const { user, isInitializing, sessionExpiredMessage, can, canAny, canAll, hasAdminAccess } = useAuth()
+
+  if (isInitializing) {
+    return (
+      <div className="app-loading" role="status" aria-label="Đang kiểm tra phiên đăng nhập">
+        <img className="app-loading__logo" src="/logo_chatweb.png" alt="" aria-hidden="true" />
+        <p>Đang kết nối ChatWeb...</p>
+      </div>
+    )
+  }
+
+  if (!user) {
+    const redirectError = sessionExpiredMessage || 'Vui lòng đăng nhập để tiếp tục.'
+    return <Navigate to="/login" replace state={{ error: redirectError }} />
+  }
+
+  let allowed = true
+  if (requireAdminAccess) allowed = allowed && Boolean(hasAdminAccess)
+  if (permission) allowed = allowed && Boolean(can?.(permission))
+  if (Array.isArray(anyOf) && anyOf.length > 0) allowed = allowed && Boolean(canAny?.(anyOf))
+  if (Array.isArray(allOf) && allOf.length > 0) allowed = allowed && Boolean(canAll?.(allOf))
+
+  if (!allowed) {
+    return fallback || <Navigate to={redirectTo} replace />
+  }
+
+  return children
+}
+
 function App() {
   return (
     <AuthProvider>
@@ -59,7 +97,14 @@ function App() {
             <Route path="/security" element={<SecurityPage />} />
             <Route path="/chat" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
-            <Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
+            <Route
+              path="/admin"
+              element={(
+                <PermissionRoute requireAdminAccess redirectTo="/chat">
+                  <AdminPage />
+                </PermissionRoute>
+              )}
+            />
             <Route path="/login" element={<PublicOnlyRoute><LoginPage /></PublicOnlyRoute>} />
             <Route path="/register" element={<PublicOnlyRoute><RegisterPage /></PublicOnlyRoute>} />
             <Route path="/forgot-password" element={<PublicOnlyRoute><ForgotPasswordPage /></PublicOnlyRoute>} />

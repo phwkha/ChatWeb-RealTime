@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { apiRequest, setAccessToken, setSessionExpiredHandler } from '../services/apiClient.js'
+import { isAdminUser, isSuperAdmin } from '../services/authorization.js'
 import { AuthContext } from './auth-context.js'
 
 function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [isInitializing, setIsInitializing] = useState(true)
   const [sessionExpiredMessage, setSessionExpiredMessage] = useState('')
+  const lastPermissionDeniedSyncRef = useRef(0)
 
   const refreshUser = useCallback(async () => {
     try {
@@ -44,6 +46,20 @@ function AuthProvider({ children }) {
       window.removeEventListener('chatweb:session-expired', handleSessionExpired)
     }
   }, [])
+
+  useEffect(() => {
+    const handlePermissionDenied = () => {
+      const now = Date.now()
+      if (now - lastPermissionDeniedSyncRef.current < 5000) return
+      lastPermissionDeniedSyncRef.current = now
+      refreshUser()
+    }
+
+    window.addEventListener('chatweb:permission-denied', handlePermissionDenied)
+    return () => {
+      window.removeEventListener('chatweb:permission-denied', handlePermissionDenied)
+    }
+  }, [refreshUser])
 
   const login = useCallback(async (credentials) => {
     const response = await apiRequest('/api/auth/login', {
@@ -102,6 +118,41 @@ function AuthProvider({ children }) {
     setSessionExpiredMessage('')
   }, [])
 
+  const permissionSet = useMemo(
+    () => new Set(Array.isArray(user?.permissions) ? user.permissions : []),
+    [user?.permissions]
+  )
+
+  const superAdmin = useMemo(() => isSuperAdmin(user), [user])
+  const hasAdminAccess = useMemo(() => isAdminUser(user), [user])
+
+  const can = useCallback(
+    (permission) => {
+      if (!permission) return true
+      if (!user) return false
+      return superAdmin || permissionSet.has(permission)
+    },
+    [permissionSet, superAdmin, user]
+  )
+
+  const canAny = useCallback(
+    (permissions = []) => {
+      if (!Array.isArray(permissions) || permissions.length === 0) return true
+      if (!user) return false
+      return superAdmin || permissions.some((p) => permissionSet.has(p))
+    },
+    [permissionSet, superAdmin, user]
+  )
+
+  const canAll = useCallback(
+    (permissions = []) => {
+      if (!Array.isArray(permissions) || permissions.length === 0) return true
+      if (!user) return false
+      return superAdmin || permissions.every((p) => permissionSet.has(p))
+    },
+    [permissionSet, superAdmin, user]
+  )
+
   const value = useMemo(() => ({
     user,
     isAuthenticated: Boolean(user),
@@ -116,7 +167,32 @@ function AuthProvider({ children }) {
     register,
     resendOtp,
     verifyAccount,
-  }), [clearSessionExpiredMessage, deleteAccount, isInitializing, login, logout, logoutEverywhere, refreshUser, register, resendOtp, sessionExpiredMessage, user, verifyAccount])
+    permissions: permissionSet,
+    can,
+    canAny,
+    canAll,
+    isSuperAdmin: superAdmin,
+    hasAdminAccess,
+  }), [
+    clearSessionExpiredMessage,
+    deleteAccount,
+    isInitializing,
+    login,
+    logout,
+    logoutEverywhere,
+    refreshUser,
+    register,
+    resendOtp,
+    sessionExpiredMessage,
+    user,
+    verifyAccount,
+    permissionSet,
+    can,
+    canAny,
+    canAll,
+    superAdmin,
+    hasAdminAccess,
+  ])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

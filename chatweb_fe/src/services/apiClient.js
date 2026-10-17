@@ -281,6 +281,19 @@ export async function apiRequest(path, options = {}) {
   }
 
   if (!response.ok) {
+    if (response.status === 403 && typeof window !== 'undefined' && path !== '/api/users/me') {
+      window.dispatchEvent(
+        new CustomEvent('chatweb:permission-denied', {
+          detail: {
+            path,
+            status: 403,
+            code: payload?.code || 403,
+            message: payload?.message,
+          },
+        })
+      )
+    }
+
     const code = payload?.code || response.status
     throw new ApiError(payload?.message || fallbackMessage(fallbackKeyForCode(code)), {
       status: response.status,

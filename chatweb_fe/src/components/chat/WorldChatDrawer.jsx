@@ -9,6 +9,7 @@ export const WorldChatDrawer = React.memo(function WorldChatDrawer({
   worldCursor = null,
   worldDraft = '',
   isAdmin = false,
+  canBroadcast = undefined,
   language,
   t,
   onClose,
@@ -73,7 +74,7 @@ export const WorldChatDrawer = React.memo(function WorldChatDrawer({
           ))}
         </div>
 
-        {isAdmin && (
+        {(canBroadcast !== undefined ? Boolean(canBroadcast) : Boolean(isAdmin)) && (
           <form className="world-composer" onSubmit={onSubmitBroadcast}>
             <label>{t('adminBroadcast')}</label>
             <div>

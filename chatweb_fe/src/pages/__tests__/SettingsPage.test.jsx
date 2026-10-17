@@ -431,4 +431,78 @@ describe('SettingsPage Reports Tab', () => {
       expect(screen.getByText('Bad Actor')).toBeInTheDocument()
     })
   })
+
+  describe('SettingsPage topbar Admin link conditional rendering', () => {
+    it('does NOT render Quản trị link for standard USER without admin permissions', () => {
+      vi.mocked(authContext.useAuth).mockReturnValue({
+        user: { username: 'normal_user', role: 'USER', permissions: [] },
+        refreshUser: vi.fn(),
+        logoutEverywhere: vi.fn(),
+        deleteAccount: vi.fn(),
+      })
+
+      render(
+        <MemoryRouter initialEntries={['/settings?tab=profile']}>
+          <SettingsPage />
+        </MemoryRouter>
+      )
+
+      expect(screen.queryByRole('link', { name: 'Quản trị' })).toBeNull()
+    })
+
+    it('renders Quản trị link for user with ADMIN role', () => {
+      vi.mocked(authContext.useAuth).mockReturnValue({
+        user: { username: 'admin_user', role: 'ADMIN', permissions: [] },
+        refreshUser: vi.fn(),
+        logoutEverywhere: vi.fn(),
+        deleteAccount: vi.fn(),
+      })
+
+      render(
+        <MemoryRouter initialEntries={['/settings?tab=profile']}>
+          <SettingsPage />
+        </MemoryRouter>
+      )
+
+      const adminLink = screen.getByRole('link', { name: 'Quản trị' })
+      expect(adminLink).toBeInTheDocument()
+      expect(adminLink).toHaveAttribute('href', '/admin')
+    })
+
+    it('renders Quản trị link for MODERATOR with admin permissions (e.g., ADMIN_VIEW_REPORTS)', () => {
+      vi.mocked(authContext.useAuth).mockReturnValue({
+        user: { username: 'mod_user', role: 'MODERATOR', permissions: ['ADMIN_VIEW_REPORTS'] },
+        refreshUser: vi.fn(),
+        logoutEverywhere: vi.fn(),
+        deleteAccount: vi.fn(),
+      })
+
+      render(
+        <MemoryRouter initialEntries={['/settings?tab=profile']}>
+          <SettingsPage />
+        </MemoryRouter>
+      )
+
+      const adminLink = screen.getByRole('link', { name: 'Quản trị' })
+      expect(adminLink).toBeInTheDocument()
+      expect(adminLink).toHaveAttribute('href', '/admin')
+    })
+
+    it('does NOT render Quản trị link for SUB_ADMIN if they possess zero admin permissions', () => {
+      vi.mocked(authContext.useAuth).mockReturnValue({
+        user: { username: 'sub_admin', role: 'SUB_ADMIN', permissions: ['READ_CHAT'] },
+        refreshUser: vi.fn(),
+        logoutEverywhere: vi.fn(),
+        deleteAccount: vi.fn(),
+      })
+
+      render(
+        <MemoryRouter initialEntries={['/settings?tab=profile']}>
+          <SettingsPage />
+        </MemoryRouter>
+      )
+
+      expect(screen.queryByRole('link', { name: 'Quản trị' })).toBeNull()
+    })
+  })
 })
