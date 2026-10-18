@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -52,7 +53,6 @@ import com.web.backend.model.postgres.AddressEntity;
 import com.web.backend.model.postgres.RoleEntity;
 import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.repository.AddressRepository;
-import com.web.backend.repository.MessageRepository;
 import com.web.backend.repository.RoleRepository;
 import com.web.backend.repository.UserRepository;
 import com.web.backend.repository.projection.UserAvatarProjection;
@@ -66,7 +66,7 @@ class AdminServiceTest {
     @Mock
     private AddressRepository addressRepository;
     @Mock
-    private MessageRepository messageRepository;
+    private UserService userService;
     @Mock
     private PasswordEncoder passwordEncoder;
     @Mock
@@ -365,26 +365,9 @@ class AdminServiceTest {
     }
 
     @Test
-    void testAdminDeleteUser_SoftDelete() {
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(activeUser));
-        when(messageRepository.existsBySenderOrRecipient("testuser")).thenReturn(true);
-
+    void testAdminDeleteUser() {
         adminService.adminDeleteUser("testuser", "admin");
-
-        assertThat(activeUser.getUserStatus()).isEqualTo(UserStatus.INACTIVE);
-        verify(userRepository).save(activeUser);
-        verify(userRepository, never()).delete(activeUser);
-    }
-
-    @Test
-    void testAdminDeleteUser_HardDelete() {
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(activeUser));
-        when(messageRepository.existsBySenderOrRecipient("testuser")).thenReturn(false);
-
-        adminService.adminDeleteUser("testuser", "admin");
-
-        verify(userRepository).delete(activeUser);
-        verify(cuckooFilterService).delete("filter:usernames", "testuser");
+        verify(userService).deleteUser("testuser");
     }
 
     @Test
@@ -480,7 +463,7 @@ class AdminServiceTest {
 
     @Test
     void testAdminDeleteUser_NotFound() {
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.empty());
+        doThrow(new ResourceNotFoundException("User not found")).when(userService).deleteUser("testuser");
         assertThatThrownBy(() -> adminService.adminDeleteUser("testuser", "admin"))
                 .isInstanceOf(ResourceNotFoundException.class);
     }

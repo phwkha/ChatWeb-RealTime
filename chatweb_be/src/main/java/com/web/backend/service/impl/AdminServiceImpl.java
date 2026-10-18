@@ -45,7 +45,6 @@ import com.web.backend.model.postgres.PermissionEntity;
 import com.web.backend.model.postgres.RoleEntity;
 import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.repository.AddressRepository;
-import com.web.backend.repository.MessageRepository;
 import com.web.backend.repository.RoleRepository;
 import com.web.backend.repository.UserRepository;
 import com.web.backend.repository.projection.UserAvatarProjection;
@@ -53,6 +52,7 @@ import com.web.backend.repository.specification.UserSearchSpecifications;
 import com.web.backend.service.AdminService;
 import com.web.backend.service.CuckooFilterService;
 import com.web.backend.service.StorageService;
+import com.web.backend.service.UserService;
 import org.springframework.data.jpa.domain.Specification;
 
 import lombok.RequiredArgsConstructor;
@@ -67,7 +67,7 @@ public class AdminServiceImpl implements AdminService {
 
     private final AddressRepository addressRepository;
 
-    private final MessageRepository messageRepository;
+    private final UserService userService;
 
     private final PasswordEncoder passwordEncoder;
 
@@ -104,8 +104,6 @@ public class AdminServiceImpl implements AdminService {
     private static final String ERROR_ADMIN_ADDRESS_NOT_OWNED_STRING = "error.admin.address_not_owned";
     private static final String ERROR_USER_ADDRESS_NOT_FOUND_STRING = "error.user.address_not_found";
 
-    private static final String SYS_ACCOUNT_STRING = "sys.account";
-    private static final String SYS_DELETED_STRING = "sys.deleted";
     private static final String ERROR_ROLE_ESCALATION_STRING = "error.role.escalation";
 
     private static final String ERROR_ROLE_SELF_MODIFICATION_STRING = "error.role.self_modification";
@@ -370,33 +368,8 @@ public class AdminServiceImpl implements AdminService {
     @Transactional
     @CacheEvict(value = USER_DETAILS_STRING, key = "#targetUsername")
     public void adminDeleteUser(String targetUsername, String requesterUsername) {
-        UserEntity userEntity = userRepository.findByUsername(targetUsername)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        Translator.tolocale(ERROR_USER_NOT_FOUND_WITH_STRING, targetUsername)));
-        boolean hasChatHistory = messageRepository.existsBySenderOrRecipient(targetUsername);
-
-        if (hasChatHistory) {
-            userEntity.setUserStatus(UserStatus.INACTIVE);
-            userEntity.setOnline(false);
-            userEntity.setEmail(null);
-            userEntity.setPhone(null);
-            userEntity.setFirstName(Translator.tolocale(SYS_ACCOUNT_STRING));
-            userEntity.setLastName(Translator.tolocale(SYS_DELETED_STRING));
-            userEntity.setAvatar(null);
-            userRepository.save(userEntity);
-            log.info("Admin '{}' soft-deleted user '{}' (retaining chat history)", requesterUsername, targetUsername);
-        } else {
-            userRepository.delete(Objects.requireNonNull(userEntity));
-            try {
-                cuckooFilterService.delete(USERNAME_FILTER_KEY, targetUsername);
-                if (userEntity.getEmail() != null) {
-                    cuckooFilterService.delete(EMAIL_FILTER_KEY, userEntity.getEmail());
-                }
-            } catch (Exception ex) {
-                log.warn("Failed to delete user '{}' from Cuckoo filter: {}", targetUsername, ex.getMessage());
-            }
-            log.info("Admin '{}' hard-deleted user '{}'", requesterUsername, targetUsername);
-        }
+        log.info("Admin '{}' requested deletion for user '{}'", requesterUsername, targetUsername);
+        userService.deleteUser(targetUsername);
     }
 
     @Override
