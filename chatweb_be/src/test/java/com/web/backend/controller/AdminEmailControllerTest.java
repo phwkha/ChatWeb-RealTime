@@ -31,7 +31,10 @@ import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.assertj.core.api.Assertions.assertThat;
 
+import java.lang.reflect.Method;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 @ActiveProfiles("test")
@@ -93,5 +96,13 @@ class AdminEmailControllerTest {
                 .andExpect(jsonPath("$.code").value(200));
 
         verify(emailService).sendTextEmail("test@gmail.com", "Test Subject", "Test Content");
+    }
+
+    @Test
+    void testPreAuthorizeAnnotation() throws NoSuchMethodException {
+        Method method = AdminEmailController.class.getMethod("sendEmail", EmailRequest.class);
+        PreAuthorize preAuthorize = method.getAnnotation(PreAuthorize.class);
+        assertThat(preAuthorize).isNotNull();
+        assertThat(preAuthorize.value()).isEqualTo("hasAuthority('ADMIN_SEND_EMAIL')");
     }
 }

@@ -31,7 +31,7 @@ public class AdminEmailController {
 
     @Operation(summary = "Send email", description = "API endpoint for send email")
     @PostMapping("/send")
-    @PreAuthorize("hasAuthority('SEND_EMAIL')")
+    @PreAuthorize("hasAuthority('ADMIN_SEND_EMAIL')")
     public ResponseEntity<ApiResponse<Void>> sendEmail(@RequestBody @Valid EmailRequest request) {
         log.debug("Email dispatch requested for recipient '{}'", request.getTo());
 

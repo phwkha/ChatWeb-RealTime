@@ -35,7 +35,6 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -80,8 +79,7 @@ class DataSeederTest {
                 passwordEncoder,
                 cuckooFilterService,
                 redisTemplate,
-                mongoTemplate
-        );
+                mongoTemplate);
         ReflectionTestUtils.setField(dataSeeder, "adminPassword", "admin123");
     }
 
@@ -216,5 +214,53 @@ class DataSeederTest {
 
         verify(userRepository, never()).save(any(UserEntity.class));
         verify(cuckooFilterService, never()).add(anyString(), anyString());
+    }
+
+    @Test
+    void run_VerifiesAllAdminAndUserPermissionsSeeded() throws Exception {
+        Set<String> createdPermissions = new HashSet<>();
+        when(permissionRepository.findByName(anyString())).thenAnswer(invocation -> Optional.empty());
+        when(permissionRepository.save(any(PermissionEntity.class))).thenAnswer(invocation -> {
+            PermissionEntity p = invocation.getArgument(0);
+            createdPermissions.add(p.getName());
+            return p;
+        });
+
+        RoleEntity adminRole = new RoleEntity();
+        adminRole.setName("ADMIN");
+        RoleEntity userRole = new RoleEntity();
+        userRole.setName("USER");
+
+        when(roleRepository.findByName(eq("ADMIN"))).thenReturn(Optional.empty());
+        when(roleRepository.findByName(eq("USER"))).thenReturn(Optional.empty());
+        when(roleRepository.save(any(RoleEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        when(userRepository.existsByUsername("admin")).thenReturn(true);
+        when(redisTemplate.hasKey("filter:emails")).thenReturn(true);
+
+        dataSeeder.run();
+
+        // Verify newly standardized admin role and email permissions
+        org.assertj.core.api.Assertions.assertThat(createdPermissions).contains(
+                "ADMIN_ROLE_VIEW_ALL",
+                "ADMIN_ROLE_VIEW_ALL_PERMISSION",
+                "ADMIN_ROLE_ADD",
+                "ADMIN_ROLE_UPDATE",
+                "ADMIN_ROLE_DELETE",
+                "ADMIN_SEND_EMAIL",
+                "USER_SEND_WORLD_CHAT",
+                "ADMIN_SEND-MESSAGE");
+
+        // Verify that only USER_SEND_WORLD_CHAT starts with USER_
+        List<String> userPermissions = createdPermissions.stream()
+                .filter(p -> p.startsWith("USER_"))
+                .toList();
+        org.assertj.core.api.Assertions.assertThat(userPermissions).containsExactly("USER_SEND_WORLD_CHAT");
+
+        // Verify all other permissions start with ADMIN_
+        List<String> nonAdminNonRole = createdPermissions.stream()
+                .filter(p -> !p.startsWith("ADMIN_") && !p.startsWith("USER_"))
+                .toList();
+        org.assertj.core.api.Assertions.assertThat(nonAdminNonRole).isEmpty();
     }
 }

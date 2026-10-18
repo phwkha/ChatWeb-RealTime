@@ -40,7 +40,11 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.assertj.core.api.Assertions.assertThat;
 
+import java.lang.reflect.Method;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 @ActiveProfiles("test")
@@ -181,5 +185,33 @@ class AdminRoleControllerTest {
                                 .andExpect(jsonPath("$.code").value(204));
 
                 verify(roleService).deleteRole(2L);
+        }
+
+        @Test
+        void testPreAuthorizeAnnotations() throws NoSuchMethodException {
+                Method getAllRoles = AdminRoleController.class.getMethod("getAllRoles");
+                PreAuthorize preAuthGetAllRoles = getAllRoles.getAnnotation(PreAuthorize.class);
+                assertThat(preAuthGetAllRoles).isNotNull();
+                assertThat(preAuthGetAllRoles.value()).isEqualTo("hasAuthority('ADMIN_ROLE_VIEW_ALL')");
+
+                Method getAllPermissions = AdminRoleController.class.getMethod("getAllPermissions");
+                PreAuthorize preAuthGetAllPermissions = getAllPermissions.getAnnotation(PreAuthorize.class);
+                assertThat(preAuthGetAllPermissions).isNotNull();
+                assertThat(preAuthGetAllPermissions.value()).isEqualTo("hasAuthority('ADMIN_ROLE_VIEW_ALL_PERMISSION')");
+
+                Method createRole = AdminRoleController.class.getMethod("createRole", RoleRequest.class, Authentication.class);
+                PreAuthorize preAuthCreateRole = createRole.getAnnotation(PreAuthorize.class);
+                assertThat(preAuthCreateRole).isNotNull();
+                assertThat(preAuthCreateRole.value()).isEqualTo("hasAuthority('ADMIN_ROLE_ADD')");
+
+                Method updateRole = AdminRoleController.class.getMethod("updateRole", Long.class, RoleRequest.class, Authentication.class);
+                PreAuthorize preAuthUpdateRole = updateRole.getAnnotation(PreAuthorize.class);
+                assertThat(preAuthUpdateRole).isNotNull();
+                assertThat(preAuthUpdateRole.value()).isEqualTo("hasAuthority('ADMIN_ROLE_UPDATE')");
+
+                Method deleteRole = AdminRoleController.class.getMethod("deleteRole", Long.class, Authentication.class);
+                PreAuthorize preAuthDeleteRole = deleteRole.getAnnotation(PreAuthorize.class);
+                assertThat(preAuthDeleteRole).isNotNull();
+                assertThat(preAuthDeleteRole.value()).isEqualTo("hasAuthority('ADMIN_ROLE_DELETE')");
         }
 }

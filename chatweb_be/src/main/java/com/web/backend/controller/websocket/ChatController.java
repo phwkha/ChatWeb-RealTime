@@ -2,6 +2,7 @@ package com.web.backend.controller.websocket;
 
 import com.web.backend.controller.request.ChatMessageRequest;
 import com.web.backend.controller.request.MessageSystemRequest;
+import com.web.backend.controller.request.WorldChatRequest;
 import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.service.ChatService;
 import jakarta.validation.Valid;
@@ -30,6 +31,16 @@ public class ChatController {
 
         log.debug("STOMP public system message received from admin '{}'", currentUsername);
         chatService.sendSystemMessage(currentUsername, request);
+    }
+
+    @MessageMapping("/chat/sendWorldChat")
+    @PreAuthorize("hasAnyAuthority('USER_SEND_WORLD_CHAT', 'ADMIN_SEND-MESSAGE')")
+    public void sendWorldChat(@Payload @Valid WorldChatRequest request,
+            Authentication authentication) {
+
+        UserEntity userPrincipal = (UserEntity) authentication.getPrincipal();
+        log.debug("STOMP world chat received from user '{}'", userPrincipal.getUsername());
+        chatService.sendWorldChatMessage(userPrincipal, request);
     }
 
     @MessageMapping("/chat/sendPrivateMessage")
