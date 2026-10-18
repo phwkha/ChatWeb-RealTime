@@ -229,6 +229,53 @@ class RoleServiceTest {
     }
 
     @Test
+    void testUpdateRole_SystemRoleUser_ThrowsAccessForbidden() {
+        RoleRequest req = new RoleRequest();
+        req.setName("CUSTOM_NAME");
+
+        RoleEntity role = new RoleEntity();
+        role.setId(2L);
+        role.setName("User");
+        when(roleRepository.findById(2L)).thenReturn(Optional.of(role));
+
+        assertThrows(AccessForbiddenException.class, () -> roleService.updateRole(2L, req));
+        verify(roleRepository, never()).save(any());
+    }
+
+    @Test
+    void testUpdateRole_RenameToSystemRoleUser_ThrowsAccessForbidden() {
+        RoleRequest req = new RoleRequest();
+        req.setName("user");
+
+        RoleEntity role = new RoleEntity();
+        role.setId(1L);
+        role.setName("MODERATOR");
+        when(roleRepository.findById(1L)).thenReturn(Optional.of(role));
+
+        assertThrows(AccessForbiddenException.class, () -> roleService.updateRole(1L, req));
+        verify(roleRepository, never()).save(any());
+    }
+
+    @Test
+    void testUpdateRole_SameName_Success() {
+        RoleRequest req = new RoleRequest();
+        req.setName("MODERATOR");
+        req.setPermissionIds(null);
+
+        RoleEntity role = new RoleEntity();
+        role.setId(1L);
+        role.setName("MODERATOR");
+
+        when(roleRepository.findById(1L)).thenReturn(Optional.of(role));
+        when(roleRepository.findByNameIgnoreCase("MODERATOR")).thenReturn(Optional.of(role));
+        when(roleRepository.save(role)).thenReturn(role);
+        RoleResponse mockRoleResponse = mock(RoleResponse.class);
+        when(userMapper.toRoleResponse(role)).thenReturn(mockRoleResponse);
+
+        assertNotNull(roleService.updateRole(1L, req));
+    }
+
+    @Test
     void testUpdateRole_NotFound() {
         RoleRequest req = new RoleRequest();
         when(roleRepository.findById(1L)).thenReturn(Optional.empty());

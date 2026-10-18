@@ -333,5 +333,128 @@ describe('AdminPage Permission-Based UI Rendering', () => {
     // adminApi.createRole should NOT be called
     expect(adminApi.createRole).not.toHaveBeenCalled()
   })
+
+  it('prevents updating role with system name (ADMIN or USER) in RolesSection', async () => {
+    vi.mocked(authContext.useAuth).mockReturnValue({
+      user: {
+        username: 'role_admin',
+        role: 'ADMIN',
+        permissions: ['ROLE_VIEW_ALL', 'ROLE_UPDATE'],
+      },
+      logout: vi.fn(),
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/admin']}>
+        <AdminPage />
+      </MemoryRouter>
+    )
+
+    const nav = screen.getByRole('navigation')
+    await waitFor(() => {
+      expect(within(nav).getByText('Role & quyền')).toBeInTheDocument()
+    })
+    fireEvent.click(within(nav).getByText('Role & quyền'))
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { level: 3, name: 'MODERATOR' })).toBeInTheDocument()
+    })
+
+    const editBtn = screen.getByRole('button', { name: /Sửa/i })
+    fireEvent.click(editBtn)
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { level: 2, name: 'Cập nhật role' })).toBeInTheDocument()
+    })
+
+    const roleNameInput = screen.getByLabelText(/Tên role/i)
+    fireEvent.change(roleNameInput, { target: { value: 'USER' } })
+
+    const updateSubmitBtn = screen.getByRole('button', { name: 'Lưu thay đổi' })
+    fireEvent.click(updateSubmitBtn)
+
+    // adminApi.updateRole should NOT be called
+    expect(adminApi.updateRole).not.toHaveBeenCalled()
+  })
+
+  it('allows root admin to edit self in UserDrawer (inputs enabled and "Lưu thay đổi" button present)', async () => {
+    vi.mocked(authContext.useAuth).mockReturnValue({
+      user: {
+        username: 'admin',
+        role: 'ADMIN',
+        permissions: ['ADMIN_VIEW_USERS', 'ADMIN_VIEW_USER_DETAIL', 'ADMIN_UPDATE_USER'],
+      },
+      logout: vi.fn(),
+    })
+
+    vi.mocked(adminApi.getUsers).mockResolvedValue({
+      data: {
+        content: [
+          {
+            id: 1,
+            username: 'admin',
+            firstName: 'Root',
+            lastName: 'Admin',
+            email: 'admin@cw.com',
+            role: 'ADMIN',
+            roleId: 1,
+            userStatus: 'ACTIVE',
+          },
+        ],
+        totalElements: 1,
+        totalPages: 1,
+      },
+    })
+
+    vi.mocked(adminApi.getUser).mockResolvedValue({
+      data: {
+        id: 1,
+        username: 'admin',
+        firstName: 'Root',
+        lastName: 'Admin',
+        email: 'admin@cw.com',
+        role: 'ADMIN',
+        roleId: 1,
+        userStatus: 'ACTIVE',
+      },
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/admin']}>
+        <AdminPage />
+      </MemoryRouter>
+    )
+
+    const nav = screen.getByRole('navigation')
+    await waitFor(() => {
+      expect(within(nav).getByText('Người dùng')).toBeInTheDocument()
+    })
+    fireEvent.click(within(nav).getByText('Người dùng'))
+
+    await waitFor(() => {
+      expect(screen.getAllByText('@admin').length).toBeGreaterThanOrEqual(1)
+      expect(screen.getByRole('button', { name: /Chi tiết/i })).toBeInTheDocument()
+    })
+
+    const detailBtn = screen.getByRole('button', { name: /Chi tiết/i })
+    fireEvent.click(detailBtn)
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+
+    const dialog = screen.getByRole('dialog')
+
+    // Warning banner should NOT be present
+    expect(within(dialog).queryByText('Chỉ tài khoản quản trị viên gốc mới có quyền tự cập nhật thông tin của mình.')).toBeNull()
+
+    // Form inputs must be enabled for root admin self-editing
+    expect(within(dialog).getByLabelText(/Email/i)).toBeEnabled()
+    expect(within(dialog).getByLabelText(/Họ/i)).toBeEnabled()
+    expect(within(dialog).getByLabelText(/Tên/i)).toBeEnabled()
+
+    // "Lưu thay đổi" button MUST be present
+    expect(within(dialog).getByRole('button', { name: 'Lưu thay đổi' })).toBeInTheDocument()
+  })
 })
 

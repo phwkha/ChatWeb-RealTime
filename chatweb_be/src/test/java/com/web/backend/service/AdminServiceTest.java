@@ -649,5 +649,59 @@ class AdminServiceTest {
         adminService.adminUpdateUser("admin", req);
         verify(userMapper).updateAdminUserFromRequest(req, rootAdmin);
     }
+
+    @Test
+    void testDeleteAvatar_RootAdminSelf_Success() {
+        Authentication auth = mock(Authentication.class);
+        when(auth.getName()).thenReturn("admin");
+        SecurityContext sc = mock(SecurityContext.class);
+        when(sc.getAuthentication()).thenReturn(auth);
+        SecurityContextHolder.setContext(sc);
+
+        when(userRepository.findAvatarProjectionByUsername("admin"))
+                .thenReturn(Optional.of(new UserAvatarProjection("avatar.png")));
+
+        adminService.deleteAvatar("admin");
+        verify(userRepository).updateAvatar("admin", null);
+        verify(storageService).delete("avatar.png", "avatars");
+    }
+
+    @Test
+    void testAdminUpdateAddress_RootAdminSelf_Success() {
+        Authentication auth = mock(Authentication.class);
+        when(auth.getName()).thenReturn("admin");
+        SecurityContext sc = mock(SecurityContext.class);
+        when(sc.getAuthentication()).thenReturn(auth);
+        SecurityContextHolder.setContext(sc);
+
+        AddressEntity addr = new AddressEntity();
+        addr.setId(1L);
+        when(addressRepository.findByIdAndUser_Username(1L, "admin")).thenReturn(Optional.of(addr));
+
+        AddressRequest req = new AddressRequest();
+        adminService.adminUpdateAddress("admin", 1L, req);
+
+        verify(userMapper).updateAddressFromRequest(req, addr);
+        verify(addressRepository).save(addr);
+    }
+
+    @Test
+    void testAdminDeleteAddress_RootAdminSelf_Success() {
+        Authentication auth = mock(Authentication.class);
+        when(auth.getName()).thenReturn("admin");
+        SecurityContext sc = mock(SecurityContext.class);
+        when(sc.getAuthentication()).thenReturn(auth);
+        SecurityContextHolder.setContext(sc);
+
+        AddressEntity addr = new AddressEntity();
+        addr.setId(1L);
+        UserEntity rootAdmin = new UserEntity();
+        rootAdmin.setUsername("admin");
+        when(userRepository.findByUsername("admin")).thenReturn(Optional.of(rootAdmin));
+        when(addressRepository.findByIdAndUser_Username(1L, "admin")).thenReturn(Optional.of(addr));
+
+        adminService.adminDeleteAddress("admin", 1L);
+        verify(addressRepository).delete(addr);
+    }
 }
 
