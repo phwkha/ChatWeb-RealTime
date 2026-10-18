@@ -21,7 +21,7 @@ import { useConversationMessages } from '../hooks/useConversationMessages.js'
 import { useMessageSearch } from '../hooks/useMessageSearch.js'
 import { useNotifications } from '../hooks/useNotifications.js'
 import { useUserDiscovery } from '../hooks/useUserDiscovery.js'
-import { isAdminAccount, isAdminUser } from '../services/authorization.js'
+import { isAdminAccount, isAdminUser, PERMISSIONS } from '../services/authorization.js'
 import {
   getNotificationNavigationTarget,
   initialChatSection,
@@ -34,7 +34,7 @@ import '../styles/chat.css'
 export const ACTIVE_CONVERSATION_STORAGE_KEY = 'chatweb-active-conversation'
 
 function ChatPage() {
-  const { user: currentUser } = useAuth()
+  const { user: currentUser, can } = useAuth()
   const { language, t } = useLanguage()
   const { playNotificationSound, playInboxSound } = useChatAudio()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -53,6 +53,11 @@ function ChatPage() {
   const lastSelectedUsernameRef = useRef(null)
   const conversationMenuRef = useRef(null)
   const isAdmin = isAdminUser(currentUser)
+  const canSendWorldChat = Boolean(
+    can
+      ? (can(PERMISSIONS.USER_SEND_WORLD_CHAT) || can(PERMISSIONS.ADMIN_SEND_MESSAGE))
+      : (currentUser?.permissions?.includes?.('USER_SEND_WORLD_CHAT') || isAdmin)
+  )
   const currentUsernameKey = String(currentUser?.username || '').trim().toLocaleLowerCase('en-US')
 
   const showToast = useCallback((message, tone = 'success') => {
@@ -183,7 +188,7 @@ function ChatPage() {
   })
 
   const {
-    connectionState, sendPrivateMessage, sendWorldMessage, unreadCounts, unreadCountsRef,
+    connectionState, sendPrivateMessage, sendWorldMessage, sendWorldChat, unreadCounts, unreadCountsRef,
     typingUsers, worldMessages, worldCursor, worldHasMore, worldNotifications,
     loadWorldHistory, sendTypingStatus, markAsRead,
   } = realtime
@@ -448,13 +453,15 @@ function ChatPage() {
       <WorldChatDrawer
         isOpen={worldOpen} worldMessages={worldMessages} worldHasMore={worldHasMore}
         worldCursor={worldCursor} worldDraft={worldDraft} isAdmin={isAdmin}
+        canBroadcast={canSendWorldChat}
         language={language} t={t} onClose={() => setWorldOpen(false)}
         onLoadOlder={loadWorldHistory} onChangeDraft={setWorldDraft}
         onSubmitBroadcast={(e) => {
           e.preventDefault()
           const c = worldDraft.trim()
-          if (!c || !isAdmin) return
-          if (sendWorldMessage({ content: c, survivalTime: null })) setWorldDraft('')
+          if (!c || !canSendWorldChat) return
+          const sent = sendWorldChat ? sendWorldChat({ content: c }) : sendWorldMessage({ content: c, survivalTime: null })
+          if (sent) setWorldDraft('')
           else showToast(t('socketError'), 'error')
         }}
       />

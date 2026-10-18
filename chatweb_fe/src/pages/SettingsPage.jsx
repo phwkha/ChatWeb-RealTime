@@ -8,6 +8,7 @@ import { useConfirm } from '../context/ConfirmDialogContext.jsx'
 import { accountApi } from '../services/accountApi.js'
 import { getErrorMessage } from '../services/apiClient.js'
 import { reportApi } from '../services/reportApi.js'
+import { isAdminUser } from '../services/authorization.js'
 import '../styles/workspace.css'
 import '../styles/chat.css'
 
@@ -295,7 +296,7 @@ function SettingsPage() {
     <main className="settings-app-shell">
       <AppRail activeSection="settings" online onSelectSettings={selectTab} />
       <section className="workspace-page workspace-page--embedded">
-      <header className="workspace-topbar workspace-topbar--embedded"><nav><Link to="/chat">← Trò chuyện</Link>{String(user.role || '').includes('ADMIN') && <Link to="/admin">Quản trị</Link>}</nav></header>
+      <header className="workspace-topbar workspace-topbar--embedded"><nav><Link to="/chat">← Trò chuyện</Link>{isAdminUser(user) && <Link to="/admin">Quản trị</Link>}</nav></header>
       <div className="workspace-layout">
         <aside className="workspace-sidebar">
           <div className="workspace-user"><span>{(user.firstName?.[0] || user.username?.[0] || 'U').toUpperCase()}</span><div><strong>{user.firstName || user.username}</strong><small>@{user.username}</small></div></div>

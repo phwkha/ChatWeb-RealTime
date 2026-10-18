@@ -72,18 +72,19 @@ public class DataSeeder implements CommandLineRunner {
         PermissionEntity pAdminDeleteAvatar = createPermissionIfNotFound("ADMIN_DELETE_AVATAR", "Xóa avatar user");
 
         // Role permissions
-        PermissionEntity pRoleViewAll = createPermissionIfNotFound("ROLE_VIEW_ALL", "Xem danh sách role");
-        PermissionEntity pRoleViewAllPermission = createPermissionIfNotFound("ROLE_VIEW_ALL_PERMISSION",
+        PermissionEntity pRoleViewAll = createPermissionIfNotFound("ADMIN_ROLE_VIEW_ALL", "Xem danh sách role");
+        PermissionEntity pRoleViewAllPermission = createPermissionIfNotFound("ADMIN_ROLE_VIEW_ALL_PERMISSION",
                 "Xem tất cả quyền");
-        PermissionEntity pRoleAdd = createPermissionIfNotFound("ROLE_ADD", "Thêm role");
-        PermissionEntity pRoleUpdate = createPermissionIfNotFound("ROLE_UPDATE", "Cập nhật role");
-        PermissionEntity pRoleDelete = createPermissionIfNotFound("ROLE_DELETE", "Xóa role");
+        PermissionEntity pRoleAdd = createPermissionIfNotFound("ADMIN_ROLE_ADD", "Thêm role");
+        PermissionEntity pRoleUpdate = createPermissionIfNotFound("ADMIN_ROLE_UPDATE", "Cập nhật role");
+        PermissionEntity pRoleDelete = createPermissionIfNotFound("ADMIN_ROLE_DELETE", "Xóa role");
 
         // Email permissions
-        PermissionEntity pSendEmail = createPermissionIfNotFound("SEND_EMAIL", "Gửi email");
+        PermissionEntity pSendEmail = createPermissionIfNotFound("ADMIN_SEND_EMAIL", "Gửi email");
 
         // Chat permissions
         PermissionEntity pAdminSendMessage = createPermissionIfNotFound("ADMIN_SEND-MESSAGE", "Gửi tin nhắn hệ thống");
+        PermissionEntity pUserSendWorldChat = createPermissionIfNotFound("USER_SEND_WORLD_CHAT", "Gửi tin nhắn chat thế giới");
 
         // Report moderation permissions
         PermissionEntity pAdminViewReports = createPermissionIfNotFound("ADMIN_VIEW_REPORTS", "Xem danh sách báo cáo vi phạm");
@@ -99,7 +100,7 @@ public class DataSeeder implements CommandLineRunner {
                 pAdminDeleteUser, pAdminDeleteUserAddress,
                 pAdminLock, pAdminUnlock, pAdminDeleteAvatar,
                 pRoleViewAll, pRoleViewAllPermission, pRoleAdd, pRoleUpdate, pRoleDelete,
-                pSendEmail, pAdminSendMessage,
+                pSendEmail, pAdminSendMessage, pUserSendWorldChat,
                 pAdminViewReports, pAdminResolveReports, pAdminDeleteReports);
 
         if (!userRepository.existsByUsername("admin")) {

@@ -9,6 +9,7 @@ export const WorldChatDrawer = React.memo(function WorldChatDrawer({
   worldCursor = null,
   worldDraft = '',
   isAdmin = false,
+  canBroadcast = undefined,
   language,
   t,
   onClose,
@@ -64,7 +65,7 @@ export const WorldChatDrawer = React.memo(function WorldChatDrawer({
               <div>
                 <strong>
                   {message.sender || t('admin')}
-                  <em>{t('admin')}</em>
+                  <em>{message.type === 'WORLD_CHAT' ? (t('worldShort') || 'Thế giới') : t('admin')}</em>
                 </strong>
                 <p>{message.content}</p>
                 <time>{formatTime(message.timestamp, language)}</time>
@@ -73,7 +74,7 @@ export const WorldChatDrawer = React.memo(function WorldChatDrawer({
           ))}
         </div>
 
-        {isAdmin && (
+        {(canBroadcast !== undefined ? Boolean(canBroadcast) : Boolean(isAdmin)) && (
           <form className="world-composer" onSubmit={onSubmitBroadcast}>
             <label>{t('adminBroadcast')}</label>
             <div>

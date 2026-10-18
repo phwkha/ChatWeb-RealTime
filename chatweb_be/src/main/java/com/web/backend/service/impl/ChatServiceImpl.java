@@ -17,10 +17,13 @@ import com.web.backend.common.ActionType;
 import com.web.backend.common.ContentType;
 import com.web.backend.common.MessageStatus;
 import com.web.backend.common.MessageType;
+import com.web.backend.common.SystemMessageType;
 import com.web.backend.common.UserStatus;
 import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.request.ChatMessageRequest;
 import com.web.backend.controller.request.MessageSystemRequest;
+import com.web.backend.controller.request.WorldChatRequest;
+import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.exception.WebSocketErrorHandler;
 import com.web.backend.exception.custom.AccessForbiddenException;
 import com.web.backend.exception.custom.InvalidDataException;
@@ -73,6 +76,11 @@ public class ChatServiceImpl implements ChatService {
     private static final String RATE_LIMIT_WS_TYPING_KEY_STRING = "ws_chat_typing";
     private static final int RATE_LIMIT_WS_TYPING_LIMIT = 60;
     private static final int RATE_LIMIT_WS_TYPING_PERIOD_SECONDS = 60;
+
+    private static final String RATE_LIMIT_WS_WORLD_KEY_STRING = "ws_chat_world";
+    private static final int RATE_LIMIT_WS_WORLD_LIMIT = 1;
+    private static final long RATE_LIMIT_WS_WORLD_PERIOD_SECONDS = 15;
+    private static final long DEFAULT_WORLD_CHAT_TTL_HOURS = 24;
 
     private static final String ERROR_RATE_LIMIT_STRING = "error.auth.too_many_attempts";
 
@@ -168,6 +176,7 @@ public class ChatServiceImpl implements ChatService {
     public void sendSystemMessage(String currentUsername, MessageSystemRequest request) {
         SystemMessage systemMsg = new SystemMessage();
         systemMsg.setSender(currentUsername);
+        systemMsg.setType(SystemMessageType.ANNOUNCEMENT);
         systemMsg.setTimestamp(Instant.now());
         systemMsg.setExpiresAt(request.getSurvivalTime() == null ? null
                 : Instant.now().plus(request.getSurvivalTime(), ChronoUnit.SECONDS));
@@ -178,6 +187,29 @@ public class ChatServiceImpl implements ChatService {
             chatProducer.sendSystemMessage(systemMsg);
         } catch (Exception e) {
             log.error("Failed to save system message to database for user '{}'", currentUsername, e);
+            throw new SystemOverloadException(Translator.tolocale(ERROR_MSG_SYSTEM_OVERLOAD_STRING), request, e);
+        }
+    }
+
+    @Override
+    public void sendWorldChatMessage(UserEntity user, WorldChatRequest request) {
+        if (user == null || request == null) {
+            throw new InvalidDataException("User and request cannot be null");
+        }
+        checkWorldChatRateLimit(user.getUsername());
+
+        SystemMessage worldMsg = new SystemMessage();
+        worldMsg.setSender(user.getUsername());
+        worldMsg.setType(SystemMessageType.WORLD_CHAT);
+        worldMsg.setTimestamp(Instant.now());
+        worldMsg.setExpiresAt(Instant.now().plus(DEFAULT_WORLD_CHAT_TTL_HOURS, ChronoUnit.HOURS));
+        worldMsg.setContent(request.getContent().trim());
+
+        try {
+            systemMessageRepository.save(worldMsg);
+            chatProducer.sendSystemMessage(worldMsg);
+        } catch (Exception e) {
+            log.error("Failed to save world chat message to database for user '{}'", user.getUsername(), e);
             throw new SystemOverloadException(Translator.tolocale(ERROR_MSG_SYSTEM_OVERLOAD_STRING), request, e);
         }
     }
@@ -310,6 +342,15 @@ public class ChatServiceImpl implements ChatService {
                 targetKey, RATE_LIMIT_WS_TYPING_LIMIT, RATE_LIMIT_WS_TYPING_PERIOD_SECONDS);
         if (!allowed) {
             throw new TooManyRequestsException(ERROR_RATE_LIMIT_STRING, RATE_LIMIT_WS_TYPING_PERIOD_SECONDS);
+        }
+    }
+
+    private void checkWorldChatRateLimit(String sender) {
+        String targetKey = RATE_LIMIT_WS_WORLD_KEY_STRING + DELIMITER_COLON_STRING + sender;
+        boolean allowed = rateLimitingService.isAllowed(
+                targetKey, RATE_LIMIT_WS_WORLD_LIMIT, RATE_LIMIT_WS_WORLD_PERIOD_SECONDS);
+        if (!allowed) {
+            throw new TooManyRequestsException(ERROR_RATE_LIMIT_STRING, RATE_LIMIT_WS_WORLD_PERIOD_SECONDS);
         }
     }
 

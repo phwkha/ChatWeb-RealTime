@@ -241,7 +241,7 @@ export function useChatRealtime({
     }
   }, [blockedMessageIntervals, currentUser?.username, isActivelyViewingConversation, loadConversation, markAsRead])
 
-  const { connectionState, sendPrivateMessage, sendWorldMessage } = useChatSocket({
+  const { connectionState, sendPrivateMessage, sendWorldMessage, sendWorldChat } = useChatSocket({
     enabled: Boolean(currentUser), language, subscribeToWorld: true,
     onMessage: handleIncomingMessage, onNotification: handleNotification,
     onWorldMessage: handleWorldMessage, onError: handleSocketError, onConnected: handleSocketConnected,
@@ -312,6 +312,7 @@ export function useChatRealtime({
     connectionState,
     sendPrivateMessage,
     sendWorldMessage,
+    sendWorldChat,
     unreadCounts,
     unreadCountsRef,
     setUnreadCounts,

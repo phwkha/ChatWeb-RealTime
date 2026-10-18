@@ -22,9 +22,13 @@ import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import com.web.backend.common.SystemMessageType;
+import com.web.backend.controller.request.WorldChatRequest;
+import com.web.backend.model.postgres.RoleEntity;
 import org.springframework.context.support.ResourceBundleMessageSource;
 import org.springframework.data.redis.core.HashOperations;
 import org.springframework.data.redis.core.ListOperations;
@@ -447,5 +451,120 @@ class ChatServiceTest {
 
         verify(userRepository, never()).findUserStatusByUsername(anyString());
         verify(chatProducer, never()).sendChatMessage(any());
+    }
+
+    @Test
+    void testSendWorldChatMessage_Success() {
+        RoleEntity vipRole = new RoleEntity();
+        vipRole.setName("VIP");
+
+        UserEntity user = new UserEntity();
+        user.setUsername("vip_user");
+        user.setFirstName("John");
+        user.setLastName("Doe");
+        user.setAvatar("https://example.com/avatar.jpg");
+        user.setRole(vipRole);
+
+        WorldChatRequest request = new WorldChatRequest("Hello VIP World!");
+
+        when(rateLimitingService.isAllowed(eq("ws_chat_world:vip_user"), eq(1), eq(15L))).thenReturn(true);
+        @SuppressWarnings("unchecked")
+        SendResult<String, Object> sendResult = mock(SendResult.class, RETURNS_DEEP_STUBS);
+        when(chatProducer.sendSystemMessage(any())).thenReturn(CompletableFuture.completedFuture(sendResult));
+
+        chatService.sendWorldChatMessage(user, request);
+
+        ArgumentCaptor<SystemMessage> captor = ArgumentCaptor.forClass(SystemMessage.class);
+        verify(systemMessageRepository).save(captor.capture());
+        SystemMessage saved = captor.getValue();
+
+        assertThat(saved.getSender()).isEqualTo("vip_user");
+        assertThat(saved.getType()).isEqualTo(SystemMessageType.WORLD_CHAT);
+        assertThat(saved.getContent()).isEqualTo("Hello VIP World!");
+        assertThat(saved.getExpiresAt()).isNotNull();
+
+        verify(chatProducer).sendSystemMessage(saved);
+    }
+
+    @Test
+    void testSendWorldChatMessage_RateLimitExceeded_ThrowsTooManyRequestsException() {
+        UserEntity user = new UserEntity();
+        user.setUsername("spammer_vip");
+
+        WorldChatRequest request = new WorldChatRequest("Spamming!");
+
+        when(rateLimitingService.isAllowed(eq("ws_chat_world:spammer_vip"), eq(1), eq(15L))).thenReturn(false);
+
+        assertThatThrownBy(() -> chatService.sendWorldChatMessage(user, request))
+                .isInstanceOf(TooManyRequestsException.class);
+
+        verify(systemMessageRepository, never()).save(any());
+        verify(chatProducer, never()).sendSystemMessage(any());
+    }
+
+    @Test
+    void testSendWorldChatMessage_DbException_ThrowsSystemOverloadException() {
+        UserEntity user = new UserEntity();
+        user.setUsername("vip_user");
+
+        WorldChatRequest request = new WorldChatRequest("Hello World!");
+
+        when(rateLimitingService.isAllowed(eq("ws_chat_world:vip_user"), eq(1), eq(15L))).thenReturn(true);
+        when(systemMessageRepository.save(any(SystemMessage.class))).thenThrow(new RuntimeException("MongoDB failure"));
+
+        assertThatThrownBy(() -> chatService.sendWorldChatMessage(user, request))
+                .isInstanceOf(SystemOverloadException.class);
+
+        verify(chatProducer, never()).sendSystemMessage(any());
+    }
+
+    @Test
+    void testSendWorldChatMessage_NullUserOrRequest_ThrowsInvalidDataException() {
+        assertThatThrownBy(() -> chatService.sendWorldChatMessage(null, new WorldChatRequest("test")))
+                .isInstanceOf(InvalidDataException.class);
+
+        assertThatThrownBy(() -> chatService.sendWorldChatMessage(new UserEntity(), null))
+                .isInstanceOf(InvalidDataException.class);
+    }
+
+    @Test
+    void testSendWorldChatMessage_TrimsContent() {
+        UserEntity user = new UserEntity();
+        user.setUsername("vip_user");
+
+        WorldChatRequest request = new WorldChatRequest("   Content with spaces   ");
+
+        when(rateLimitingService.isAllowed(eq("ws_chat_world:vip_user"), eq(1), eq(15L))).thenReturn(true);
+        @SuppressWarnings("unchecked")
+        SendResult<String, Object> sendResult = mock(SendResult.class, RETURNS_DEEP_STUBS);
+        when(chatProducer.sendSystemMessage(any())).thenReturn(CompletableFuture.completedFuture(sendResult));
+
+        chatService.sendWorldChatMessage(user, request);
+
+        ArgumentCaptor<SystemMessage> captor = ArgumentCaptor.forClass(SystemMessage.class);
+        verify(systemMessageRepository).save(captor.capture());
+        assertThat(captor.getValue().getContent()).isEqualTo("Content with spaces");
+    }
+
+    @Test
+    void testSendSystemMessage_SetsAnnouncementType() {
+        MessageSystemRequest request = new MessageSystemRequest();
+        request.setContent("System reboot announcement");
+        request.setSurvivalTime(3600L);
+
+        @SuppressWarnings("unchecked")
+        SendResult<String, Object> sendResult = mock(SendResult.class, RETURNS_DEEP_STUBS);
+        when(chatProducer.sendSystemMessage(any())).thenReturn(CompletableFuture.completedFuture(sendResult));
+
+        chatService.sendSystemMessage("admin", request);
+
+        ArgumentCaptor<SystemMessage> captor = ArgumentCaptor.forClass(SystemMessage.class);
+        verify(systemMessageRepository).save(captor.capture());
+        SystemMessage saved = captor.getValue();
+
+        assertThat(saved.getSender()).isEqualTo("admin");
+        assertThat(saved.getType()).isEqualTo(SystemMessageType.ANNOUNCEMENT);
+        assertThat(saved.getContent()).isEqualTo("System reboot announcement");
+        assertThat(saved.getExpiresAt()).isNotNull();
     }
 }

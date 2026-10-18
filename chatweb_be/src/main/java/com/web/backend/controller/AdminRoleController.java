@@ -38,7 +38,7 @@ public class AdminRoleController {
 
     @Operation(summary = "Get all roles", description = "API endpoint for get all roles")
     @GetMapping
-    @PreAuthorize("hasAuthority('ROLE_VIEW_ALL')")
+    @PreAuthorize("hasAuthority('ADMIN_ROLE_VIEW_ALL')")
     public ResponseEntity<ApiResponse<List<RoleResponse>>> getAllRoles() {
         return ResponseEntity.ok(ApiResponse.success(
                 HttpStatus.OK.value(),
@@ -48,7 +48,7 @@ public class AdminRoleController {
 
     @Operation(summary = "Get all permissions", description = "API endpoint for get all permissions")
     @GetMapping("/permissions")
-    @PreAuthorize("hasAuthority('ROLE_VIEW_ALL_PERMISSION')")
+    @PreAuthorize("hasAuthority('ADMIN_ROLE_VIEW_ALL_PERMISSION')")
     public ResponseEntity<ApiResponse<List<PermissionResponse>>> getAllPermissions() {
         return ResponseEntity.ok(ApiResponse.success(
                 HttpStatus.OK.value(),
@@ -58,7 +58,7 @@ public class AdminRoleController {
 
     @Operation(summary = "Create role", description = "API endpoint for create role")
     @PostMapping
-    @PreAuthorize("hasAuthority('ROLE_ADD')")
+    @PreAuthorize("hasAuthority('ADMIN_ROLE_ADD')")
     public ResponseEntity<ApiResponse<RoleResponse>> createRole(@RequestBody @Valid RoleRequest request,
             Authentication authentication) {
         UserEntity userEntityPrincipal = (UserEntity) authentication.getPrincipal();
@@ -71,7 +71,7 @@ public class AdminRoleController {
 
     @Operation(summary = "Update role", description = "API endpoint for update role")
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('ROLE_UPDATE')")
+    @PreAuthorize("hasAuthority('ADMIN_ROLE_UPDATE')")
     public ResponseEntity<ApiResponse<RoleResponse>> updateRole(@PathVariable @NonNull Long id,
             @RequestBody @Valid RoleRequest request, Authentication authentication) {
         UserEntity userEntityPrincipal = (UserEntity) authentication.getPrincipal();
@@ -84,7 +84,7 @@ public class AdminRoleController {
 
     @Operation(summary = "Delete role", description = "API endpoint for delete role")
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('ROLE_DELETE')")
+    @PreAuthorize("hasAuthority('ADMIN_ROLE_DELETE')")
     public ResponseEntity<ApiResponse<Void>> deleteRole(@PathVariable @NonNull Long id, Authentication authentication) {
         UserEntity userEntityPrincipal = (UserEntity) authentication.getPrincipal();
         log.debug("User '{}' deleting role id={}", userEntityPrincipal.getUsername(), id);
