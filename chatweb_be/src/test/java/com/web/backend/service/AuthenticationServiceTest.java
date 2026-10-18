@@ -3,6 +3,7 @@ package com.web.backend.service;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
@@ -493,6 +494,40 @@ class AuthenticationServiceTest {
         verify(userRepository).save(any(UserEntity.class));
         verify(cuckooFilterService).add(anyString(), eq("testuser"));
         verify(redisTemplate).delete("register:test@example.com");
+    }
+
+    @Test
+    void testVerifyUser_RoleAdminFallsBackToUser() {
+        VerifyOtpRequest request = new VerifyOtpRequest();
+        request.setEmail("test@example.com");
+        request.setOtp("123456");
+
+        RegisterData data = RegisterData.builder()
+                .username("testuser")
+                .email("test@example.com")
+                .password("encoded")
+                .roleId(99L)
+                .otp("123456")
+                .build();
+
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get("register:test@example.com")).thenReturn(data);
+        when(userRepository.existsByUsername("testuser")).thenReturn(false);
+        when(userRepository.existsByEmail("test@example.com")).thenReturn(false);
+
+        RoleEntity adminRole = new RoleEntity();
+        adminRole.setId(99L);
+        adminRole.setName("ADMIN");
+        when(roleRepository.findById(99L)).thenReturn(Optional.of(adminRole));
+
+        RoleEntity defaultRole = new RoleEntity();
+        defaultRole.setId(1L);
+        defaultRole.setName("USER");
+        when(roleRepository.findByName("USER")).thenReturn(Optional.of(defaultRole));
+
+        authenticationService.verifyUser(request);
+
+        verify(userRepository).save(argThat(u -> "USER".equals(u.getRole().getName())));
     }
 
     @Test

@@ -546,4 +546,11 @@ class UserServiceTest {
         assertThrows(ResourceNotFoundException.class, () -> userService.updateLanguage("unknown", "en"));
         verify(userRepository, never()).save(any());
     }
+
+    @Test
+    void testDeleteUser_CannotDeleteRootAdmin() {
+        assertThrows(AccessForbiddenException.class, () -> userService.deleteUser("admin"));
+        verify(userRepository, never()).findByUsername("admin");
+    }
 }
+

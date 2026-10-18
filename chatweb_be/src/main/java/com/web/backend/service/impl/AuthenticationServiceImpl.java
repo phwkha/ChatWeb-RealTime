@@ -101,6 +101,8 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     private static final String EMPTY_STRING = "";
     private static final String ONE_STRING = "1";
 
+    private static final String SYSTEM_ROLE_ADMIN_STRING = "ADMIN";
+
     private static final String ERROR_AUTH_INVALID_OTP_ATTEMPTS_STRING = "error.auth.invalid_otp_attempts";
     private static final String ERROR_AUTH_EMAIL_USED_STRING = "error.auth.email_used";
     private static final String ERROR_AUTH_USERNAME_EXISTS_STRING = "error.auth.username_exists";
@@ -324,7 +326,8 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         return false;
     }
 
-    private void validateTokenVersion(UserEntity user, Integer tokenVersion, Integer currentVersion, String refreshToken) {
+    private void validateTokenVersion(UserEntity user, Integer tokenVersion, Integer currentVersion,
+            String refreshToken) {
         if (!Objects.equals(tokenVersion, currentVersion)) {
             jwtService.revokeRefreshToken(refreshToken);
             log.warn("Refresh token version mismatch for user '{}' [tokenVersion={}, currentVersion={}]",
@@ -406,6 +409,12 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             role = roleRepository.findById(roleId)
                     .orElseThrow(() -> new ResourceNotFoundException(Translator.tolocale(ERROR_ROLE_NOT_FOUND_STRING)));
         } else {
+            role = roleRepository.findByName(USER_STRING)
+                    .orElseThrow(
+                            () -> new ResourceNotFoundException(
+                                    Translator.tolocale(ERROR_ROLE_DEFAULT_NOT_FOUND_STRING)));
+        }
+        if (role == null || SYSTEM_ROLE_ADMIN_STRING.equalsIgnoreCase(role.getName())) {
             role = roleRepository.findByName(USER_STRING)
                     .orElseThrow(
                             () -> new ResourceNotFoundException(

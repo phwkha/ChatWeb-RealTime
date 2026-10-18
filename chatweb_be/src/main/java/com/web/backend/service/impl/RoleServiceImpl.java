@@ -82,7 +82,11 @@ public class RoleServiceImpl implements RoleService {
     @Override
     @Transactional
     public RoleResponse createRole(RoleRequest request) {
-        if (roleRepository.findByName(request.getName()).isPresent()) {
+        if (SYSTEM_ROLE_ADMIN_STRING.equalsIgnoreCase(request.getName()) || SYSTEM_ROLE_USER_STRING.equalsIgnoreCase(request.getName())) {
+            throw new AccessForbiddenException(Translator.tolocale(ERROR_ROLE_SYSTEM_MODIFICATION_STRING));
+        }
+
+        if (roleRepository.findByNameIgnoreCase(request.getName()).isPresent()) {
             throw new ResourceConflictException(Translator.tolocale(ERROR_ROLE_EXISTS_STRING, request.getName()));
         }
 
@@ -109,9 +113,19 @@ public class RoleServiceImpl implements RoleService {
         RoleEntity role = roleRepository.findById(roleId)
                 .orElseThrow(() -> new ResourceNotFoundException(Translator.tolocale(ERROR_ROLE_NOT_FOUND_STRING)));
 
-        if (SYSTEM_ROLE_ADMIN_STRING.equals(role.getName()) || SYSTEM_ROLE_USER_STRING.equals(role.getName())) {
+        if (SYSTEM_ROLE_ADMIN_STRING.equalsIgnoreCase(role.getName()) || SYSTEM_ROLE_USER_STRING.equalsIgnoreCase(role.getName())) {
             throw new AccessForbiddenException(Translator.tolocale(ERROR_ROLE_SYSTEM_MODIFICATION_STRING));
         }
+
+        if (SYSTEM_ROLE_ADMIN_STRING.equalsIgnoreCase(request.getName()) || SYSTEM_ROLE_USER_STRING.equalsIgnoreCase(request.getName())) {
+            throw new AccessForbiddenException(Translator.tolocale(ERROR_ROLE_SYSTEM_MODIFICATION_STRING));
+        }
+
+        roleRepository.findByNameIgnoreCase(request.getName()).ifPresent(existingRole -> {
+            if (!existingRole.getId().equals(roleId)) {
+                throw new ResourceConflictException(Translator.tolocale(ERROR_ROLE_EXISTS_STRING, request.getName()));
+            }
+        });
 
         role.setName(request.getName());
         role.setDescription(request.getDescription());
@@ -135,7 +149,7 @@ public class RoleServiceImpl implements RoleService {
         RoleEntity role = roleRepository.findById(roleId)
                 .orElseThrow(() -> new ResourceNotFoundException(Translator.tolocale(ERROR_ROLE_NOT_FOUND_STRING)));
 
-        if (SYSTEM_ROLE_ADMIN_STRING.equals(role.getName()) || SYSTEM_ROLE_USER_STRING.equals(role.getName())) {
+        if (SYSTEM_ROLE_ADMIN_STRING.equalsIgnoreCase(role.getName()) || SYSTEM_ROLE_USER_STRING.equalsIgnoreCase(role.getName())) {
             throw new AccessForbiddenException(Translator.tolocale(ERROR_ROLE_SYSTEM_MODIFICATION_STRING));
         }
 

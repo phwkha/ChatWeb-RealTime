@@ -110,6 +110,8 @@ public class UserServiceImpl implements UserService {
 
     private static final String SYS_ACCOUNT_STRING = "sys.account";
     private static final String SYS_DELETED_STRING = "sys.deleted";
+    private static final String ROOT_ADMIN_USERNAME = "admin";
+    private static final String ERROR_ADMIN_CANNOT_DELETE_ROOT_STRING = "error.admin.cannot_delete_root";
 
     @Override
     @Transactional(readOnly = true)
@@ -281,6 +283,9 @@ public class UserServiceImpl implements UserService {
     @Transactional
     @CacheEvict(value = USER_DETAILS_STRING, key = USERNAME_STRING)
     public void deleteUser(String username) {
+        if (ROOT_ADMIN_USERNAME.equalsIgnoreCase(username)) {
+            throw new AccessForbiddenException(Translator.tolocale(ERROR_ADMIN_CANNOT_DELETE_ROOT_STRING));
+        }
         UserEntity userEntity = userRepository.findByUsername(username)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         Translator.tolocale(ERROR_USER_NOT_FOUND_WITH_STRING, username)));

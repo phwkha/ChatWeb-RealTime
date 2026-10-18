@@ -15,6 +15,8 @@ public interface RoleRepository extends JpaRepository<RoleEntity, Long> {
 
     Optional<RoleEntity> findByName(String name);
 
+    Optional<RoleEntity> findByNameIgnoreCase(String name);
+
     @EntityGraph(attributePaths = { "permissions" })
     @Query("SELECT r FROM RoleEntity r WHERE r.name = :name")
     Optional<RoleEntity> findByNameOauth2(@Param("name") String name);

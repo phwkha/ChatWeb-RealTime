@@ -107,6 +107,14 @@ public class AdminServiceImpl implements AdminService {
     private static final String ERROR_ROLE_ESCALATION_STRING = "error.role.escalation";
 
     private static final String ERROR_ROLE_SELF_MODIFICATION_STRING = "error.role.self_modification";
+    private static final String ROOT_ADMIN_USERNAME = "admin";
+    private static final String SYSTEM_ROLE_ADMIN_STRING = "ADMIN";
+    private static final String ERROR_ADMIN_CANNOT_ASSIGN_ADMIN_ROLE_STRING = "error.admin.cannot_assign_admin_role";
+    private static final String ERROR_ADMIN_CANNOT_CHANGE_ROOT_ROLE_STRING = "error.admin.cannot_change_root_role";
+    private static final String ERROR_ADMIN_CANNOT_DELETE_ROOT_STRING = "error.admin.cannot_delete_root";
+    private static final String ERROR_ADMIN_CANNOT_DELETE_SELF_STRING = "error.admin.cannot_delete_self";
+    private static final String ERROR_ADMIN_CANNOT_LOCK_ROOT_STRING = "error.admin.cannot_lock_root";
+    private static final String ERROR_ADMIN_CANNOT_MODIFY_ROOT_STRING = "error.admin.cannot_modify_root";
 
     private static final String ONLINE_USERS_KEY = "online_users";
 
@@ -260,6 +268,10 @@ public class AdminServiceImpl implements AdminService {
                             Translator.tolocale(ERROR_ROLE_NOT_FOUND_STRING)));
         }
 
+        if (SYSTEM_ROLE_ADMIN_STRING.equalsIgnoreCase(role.getName())) {
+            throw new AccessForbiddenException(Translator.tolocale(ERROR_ADMIN_CANNOT_ASSIGN_ADMIN_ROLE_STRING));
+        }
+
         checkRoleAssignmentPrivilege(role);
         user.setRole(role);
         UserEntity savedUser = userRepository.save(user);
@@ -280,6 +292,10 @@ public class AdminServiceImpl implements AdminService {
     @Transactional
     @CacheEvict(value = USER_DETAILS_STRING, key = USERNAME_STRING)
     public UserResponse lockUser(String username) {
+        if (ROOT_ADMIN_USERNAME.equalsIgnoreCase(username)) {
+            throw new AccessForbiddenException(Translator.tolocale(ERROR_ADMIN_CANNOT_LOCK_ROOT_STRING));
+        }
+
         UserEntity userEntity = userRepository.findByUsername(username)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         Translator.tolocale(ERROR_USER_NOT_FOUND_WITH_STRING, username)));
@@ -319,6 +335,7 @@ public class AdminServiceImpl implements AdminService {
     @Transactional
     @CacheEvict(value = USER_DETAILS_STRING, key = USERNAME_STRING)
     public void deleteAvatar(String username) {
+        checkRootAdminModificationPrivilege(username);
         UserAvatarProjection userAvatar = userRepository.findAvatarProjectionByUsername(username)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         Translator.tolocale(ERROR_USER_NOT_FOUND_WITH_STRING, username)));
@@ -336,6 +353,7 @@ public class AdminServiceImpl implements AdminService {
     @Transactional
     @CacheEvict(value = USER_DETAILS_STRING, key = USERNAME_STRING)
     public UserResponse adminUpdateUser(String username, AdminUpdateUserRequest request) {
+        checkRootAdminModificationPrivilege(username);
         UserEntity userEntity = userRepository.findWithAuthoritiesByUsername(username)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         Translator.tolocale(ERROR_USER_NOT_FOUND_WITH_STRING, username)));
@@ -355,6 +373,17 @@ public class AdminServiceImpl implements AdminService {
             Long roleId = Objects.requireNonNull(request.getRoleId());
             RoleEntity newRole = roleRepository.findById(roleId)
                     .orElseThrow(() -> new ResourceNotFoundException(Translator.tolocale(ERROR_ROLE_NOT_FOUND_STRING)));
+
+            if (ROOT_ADMIN_USERNAME.equalsIgnoreCase(username)) {
+                if (!SYSTEM_ROLE_ADMIN_STRING.equalsIgnoreCase(newRole.getName())) {
+                    throw new AccessForbiddenException(Translator.tolocale(ERROR_ADMIN_CANNOT_CHANGE_ROOT_ROLE_STRING));
+                }
+            } else {
+                if (SYSTEM_ROLE_ADMIN_STRING.equalsIgnoreCase(newRole.getName())) {
+                    throw new AccessForbiddenException(Translator.tolocale(ERROR_ADMIN_CANNOT_ASSIGN_ADMIN_ROLE_STRING));
+                }
+            }
+
             checkRoleAssignmentPrivilege(newRole);
             userEntity.setRole(newRole);
         }
@@ -368,6 +397,12 @@ public class AdminServiceImpl implements AdminService {
     @Transactional
     @CacheEvict(value = USER_DETAILS_STRING, key = "#targetUsername")
     public void adminDeleteUser(String targetUsername, String requesterUsername) {
+        if (ROOT_ADMIN_USERNAME.equalsIgnoreCase(targetUsername)) {
+            throw new AccessForbiddenException(Translator.tolocale(ERROR_ADMIN_CANNOT_DELETE_ROOT_STRING));
+        }
+        if (targetUsername != null && targetUsername.equalsIgnoreCase(requesterUsername)) {
+            throw new AccessForbiddenException(Translator.tolocale(ERROR_ADMIN_CANNOT_DELETE_SELF_STRING));
+        }
         log.info("Admin '{}' requested deletion for user '{}'", requesterUsername, targetUsername);
         userService.deleteUser(targetUsername);
     }
@@ -400,6 +435,7 @@ public class AdminServiceImpl implements AdminService {
     @Transactional
     @CacheEvict(value = USER_DETAILS_STRING, key = "#targetUsername")
     public AddressResponse adminUpdateAddress(String targetUsername, Long addressId, AddressRequest request) {
+        checkRootAdminModificationPrivilege(targetUsername);
         AddressEntity addressToUpdate = addressRepository.findByIdAndUser_Username(addressId, targetUsername)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         Translator.tolocale(ERROR_ADMIN_ADDRESS_NOT_OWNED_STRING)));
@@ -415,6 +451,7 @@ public class AdminServiceImpl implements AdminService {
     @Transactional
     @CacheEvict(value = USER_DETAILS_STRING, key = "#targetUsername")
     public void adminDeleteAddress(String targetUsername, Long addressId) {
+        checkRootAdminModificationPrivilege(targetUsername);
         UserEntity user = userRepository.findByUsername(targetUsername)
                 .orElseThrow(
                         () -> new ResourceNotFoundException(
@@ -428,6 +465,15 @@ public class AdminServiceImpl implements AdminService {
         addressRepository.delete(addressToDelete);
 
         log.info("Admin deleted address id={} for user '{}'", addressId, targetUsername);
+    }
+
+    private void checkRootAdminModificationPrivilege(String targetUsername) {
+        if (ROOT_ADMIN_USERNAME.equalsIgnoreCase(targetUsername)) {
+            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+            if (authentication != null && !ROOT_ADMIN_USERNAME.equalsIgnoreCase(authentication.getName())) {
+                throw new AccessForbiddenException(Translator.tolocale(ERROR_ADMIN_CANNOT_MODIFY_ROOT_STRING));
+            }
+        }
     }
 
     private void checkRoleAssignmentPrivilege(RoleEntity roleToAssign) {

@@ -30,6 +30,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import com.web.backend.common.AuthProvider;
@@ -97,6 +100,8 @@ class AdminServiceTest {
         activeUser.setUsername("testuser");
         activeUser.setEmail("test@example.com");
         activeUser.setUserStatus(UserStatus.ACTIVE);
+
+        SecurityContextHolder.clearContext();
     }
 
     @Test
@@ -467,4 +472,182 @@ class AdminServiceTest {
         assertThatThrownBy(() -> adminService.adminDeleteUser("testuser", "admin"))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
+
+    @Test
+    void testAdminCreateUser_CannotAssignAdminRole() {
+        AdminCreateUserRequest req = new AdminCreateUserRequest();
+        req.setUsername("newuser");
+        req.setEmail("new@example.com");
+        req.setPassword("pass");
+        req.setRoleId(1L);
+
+        RoleEntity adminRole = new RoleEntity();
+        adminRole.setId(1L);
+        adminRole.setName("ADMIN");
+
+        when(userRepository.existsByUsername("newuser")).thenReturn(false);
+        when(userRepository.existsByEmail("new@example.com")).thenReturn(false);
+        when(userMapper.toEntity(req)).thenReturn(new UserEntity());
+        when(passwordEncoder.encode("pass")).thenReturn("encoded");
+        when(roleRepository.findById(1L)).thenReturn(Optional.of(adminRole));
+
+        assertThatThrownBy(() -> adminService.adminCreateUser(req))
+                .isInstanceOf(AccessForbiddenException.class);
+    }
+
+    @Test
+    void testLockUser_CannotLockRootAdmin() {
+        assertThatThrownBy(() -> adminService.lockUser("admin"))
+                .isInstanceOf(AccessForbiddenException.class);
+    }
+
+    @Test
+    void testAdminUpdateUser_CannotAssignAdminRoleToNonRootUser() {
+        AdminUpdateUserRequest req = new AdminUpdateUserRequest();
+        req.setRoleId(1L);
+
+        RoleEntity adminRole = new RoleEntity();
+        adminRole.setId(1L);
+        adminRole.setName("ADMIN");
+
+        when(userRepository.findWithAuthoritiesByUsername("testuser")).thenReturn(Optional.of(activeUser));
+        when(roleRepository.findById(1L)).thenReturn(Optional.of(adminRole));
+
+        assertThatThrownBy(() -> adminService.adminUpdateUser("testuser", req))
+                .isInstanceOf(AccessForbiddenException.class);
+    }
+
+    @Test
+    void testAdminUpdateUser_CannotChangeRootAdminRole() {
+        AdminUpdateUserRequest req = new AdminUpdateUserRequest();
+        req.setRoleId(2L);
+
+        RoleEntity userRole = new RoleEntity();
+        userRole.setId(2L);
+        userRole.setName("USER");
+
+        UserEntity rootAdmin = new UserEntity();
+        rootAdmin.setUsername("admin");
+        RoleEntity rootRole = new RoleEntity();
+        rootRole.setId(1L);
+        rootRole.setName("ADMIN");
+        rootAdmin.setRole(rootRole);
+
+        when(userRepository.findWithAuthoritiesByUsername("admin")).thenReturn(Optional.of(rootAdmin));
+        when(roleRepository.findById(2L)).thenReturn(Optional.of(userRole));
+
+        assertThatThrownBy(() -> adminService.adminUpdateUser("admin", req))
+                .isInstanceOf(AccessForbiddenException.class);
+    }
+
+    @Test
+    void testAdminUpdateUser_RootAdminRoleAdminSuccess() {
+        AdminUpdateUserRequest req = new AdminUpdateUserRequest();
+        req.setRoleId(1L);
+
+        RoleEntity adminRole = new RoleEntity();
+        adminRole.setId(1L);
+        adminRole.setName("ADMIN");
+
+        UserEntity rootAdmin = new UserEntity();
+        rootAdmin.setUsername("admin");
+        rootAdmin.setRole(adminRole);
+
+        when(userRepository.findWithAuthoritiesByUsername("admin")).thenReturn(Optional.of(rootAdmin));
+        when(roleRepository.findById(1L)).thenReturn(Optional.of(adminRole));
+        when(userRepository.save(rootAdmin)).thenReturn(rootAdmin);
+
+        adminService.adminUpdateUser("admin", req);
+        verify(userMapper).updateAdminUserFromRequest(req, rootAdmin);
+    }
+
+    @Test
+    void testAdminDeleteUser_CannotDeleteRootAdmin() {
+        assertThatThrownBy(() -> adminService.adminDeleteUser("admin", "manager"))
+                .isInstanceOf(AccessForbiddenException.class);
+    }
+
+    @Test
+    void testAdminDeleteUser_CannotDeleteSelf() {
+        assertThatThrownBy(() -> adminService.adminDeleteUser("manager", "manager"))
+                .isInstanceOf(AccessForbiddenException.class);
+    }
+
+    @Test
+    void testAdminUpdateUser_SubAdminCannotModifyRootAdmin() {
+        Authentication auth = mock(Authentication.class);
+        when(auth.getName()).thenReturn("subadmin");
+        SecurityContext sc = mock(SecurityContext.class);
+        when(sc.getAuthentication()).thenReturn(auth);
+        SecurityContextHolder.setContext(sc);
+
+        AdminUpdateUserRequest req = new AdminUpdateUserRequest();
+
+        assertThatThrownBy(() -> adminService.adminUpdateUser("admin", req))
+                .isInstanceOf(AccessForbiddenException.class);
+    }
+
+    @Test
+    void testDeleteAvatar_SubAdminCannotDeleteRootAvatar() {
+        Authentication auth = mock(Authentication.class);
+        when(auth.getName()).thenReturn("subadmin");
+        SecurityContext sc = mock(SecurityContext.class);
+        when(sc.getAuthentication()).thenReturn(auth);
+        SecurityContextHolder.setContext(sc);
+
+        assertThatThrownBy(() -> adminService.deleteAvatar("admin"))
+                .isInstanceOf(AccessForbiddenException.class);
+    }
+
+    @Test
+    void testAdminUpdateAddress_SubAdminCannotUpdateRootAddress() {
+        Authentication auth = mock(Authentication.class);
+        when(auth.getName()).thenReturn("subadmin");
+        SecurityContext sc = mock(SecurityContext.class);
+        when(sc.getAuthentication()).thenReturn(auth);
+        SecurityContextHolder.setContext(sc);
+
+        AddressRequest req = new AddressRequest();
+        assertThatThrownBy(() -> adminService.adminUpdateAddress("admin", 1L, req))
+                .isInstanceOf(AccessForbiddenException.class);
+    }
+
+    @Test
+    void testAdminDeleteAddress_SubAdminCannotDeleteRootAddress() {
+        Authentication auth = mock(Authentication.class);
+        when(auth.getName()).thenReturn("subadmin");
+        SecurityContext sc = mock(SecurityContext.class);
+        when(sc.getAuthentication()).thenReturn(auth);
+        SecurityContextHolder.setContext(sc);
+
+        assertThatThrownBy(() -> adminService.adminDeleteAddress("admin", 1L))
+                .isInstanceOf(AccessForbiddenException.class);
+    }
+
+    @Test
+    void testAdminUpdateUser_RootAdminUpdatesSelf_Success() {
+        Authentication auth = mock(Authentication.class);
+        when(auth.getName()).thenReturn("admin");
+        SecurityContext sc = mock(SecurityContext.class);
+        when(sc.getAuthentication()).thenReturn(auth);
+        SecurityContextHolder.setContext(sc);
+
+        UserEntity rootAdmin = new UserEntity();
+        rootAdmin.setUsername("admin");
+        rootAdmin.setEmail("admin@cw.com");
+        RoleEntity adminRole = new RoleEntity();
+        adminRole.setId(1L);
+        adminRole.setName("ADMIN");
+        rootAdmin.setRole(adminRole);
+
+        AdminUpdateUserRequest req = new AdminUpdateUserRequest();
+        req.setFirstName("UpdatedRoot");
+
+        when(userRepository.findWithAuthoritiesByUsername("admin")).thenReturn(Optional.of(rootAdmin));
+        when(userRepository.save(rootAdmin)).thenReturn(rootAdmin);
+
+        adminService.adminUpdateUser("admin", req);
+        verify(userMapper).updateAdminUserFromRequest(req, rootAdmin);
+    }
 }
+
