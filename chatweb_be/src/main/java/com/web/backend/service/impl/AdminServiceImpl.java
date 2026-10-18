@@ -292,7 +292,7 @@ public class AdminServiceImpl implements AdminService {
     @Transactional
     @CacheEvict(value = USER_DETAILS_STRING, key = USERNAME_STRING)
     public UserResponse lockUser(String username) {
-        if (ROOT_ADMIN_USERNAME.equalsIgnoreCase(username)) {
+        if (isRootAdmin(username)) {
             throw new AccessForbiddenException(Translator.tolocale(ERROR_ADMIN_CANNOT_LOCK_ROOT_STRING));
         }
 
@@ -374,14 +374,12 @@ public class AdminServiceImpl implements AdminService {
             RoleEntity newRole = roleRepository.findById(roleId)
                     .orElseThrow(() -> new ResourceNotFoundException(Translator.tolocale(ERROR_ROLE_NOT_FOUND_STRING)));
 
-            if (ROOT_ADMIN_USERNAME.equalsIgnoreCase(username)) {
+            if (isRootAdmin(username)) {
                 if (!SYSTEM_ROLE_ADMIN_STRING.equalsIgnoreCase(newRole.getName())) {
                     throw new AccessForbiddenException(Translator.tolocale(ERROR_ADMIN_CANNOT_CHANGE_ROOT_ROLE_STRING));
                 }
-            } else {
-                if (SYSTEM_ROLE_ADMIN_STRING.equalsIgnoreCase(newRole.getName())) {
-                    throw new AccessForbiddenException(Translator.tolocale(ERROR_ADMIN_CANNOT_ASSIGN_ADMIN_ROLE_STRING));
-                }
+            } else if (SYSTEM_ROLE_ADMIN_STRING.equalsIgnoreCase(newRole.getName())) {
+                throw new AccessForbiddenException(Translator.tolocale(ERROR_ADMIN_CANNOT_ASSIGN_ADMIN_ROLE_STRING));
             }
 
             checkRoleAssignmentPrivilege(newRole);
@@ -397,7 +395,7 @@ public class AdminServiceImpl implements AdminService {
     @Transactional
     @CacheEvict(value = USER_DETAILS_STRING, key = "#targetUsername")
     public void adminDeleteUser(String targetUsername, String requesterUsername) {
-        if (ROOT_ADMIN_USERNAME.equalsIgnoreCase(targetUsername)) {
+        if (isRootAdmin(targetUsername)) {
             throw new AccessForbiddenException(Translator.tolocale(ERROR_ADMIN_CANNOT_DELETE_ROOT_STRING));
         }
         if (targetUsername != null && targetUsername.equalsIgnoreCase(requesterUsername)) {
@@ -467,10 +465,14 @@ public class AdminServiceImpl implements AdminService {
         log.info("Admin deleted address id={} for user '{}'", addressId, targetUsername);
     }
 
+    private boolean isRootAdmin(String username) {
+        return ROOT_ADMIN_USERNAME.equalsIgnoreCase(username);
+    }
+
     private void checkRootAdminModificationPrivilege(String targetUsername) {
-        if (ROOT_ADMIN_USERNAME.equalsIgnoreCase(targetUsername)) {
+        if (isRootAdmin(targetUsername)) {
             Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-            if (authentication != null && !ROOT_ADMIN_USERNAME.equalsIgnoreCase(authentication.getName())) {
+            if (authentication != null && !isRootAdmin(authentication.getName())) {
                 throw new AccessForbiddenException(Translator.tolocale(ERROR_ADMIN_CANNOT_MODIFY_ROOT_STRING));
             }
         }

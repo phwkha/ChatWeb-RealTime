@@ -82,7 +82,7 @@ public class RoleServiceImpl implements RoleService {
     @Override
     @Transactional
     public RoleResponse createRole(RoleRequest request) {
-        if (SYSTEM_ROLE_ADMIN_STRING.equalsIgnoreCase(request.getName()) || SYSTEM_ROLE_USER_STRING.equalsIgnoreCase(request.getName())) {
+        if (isSystemRole(request.getName())) {
             throw new AccessForbiddenException(Translator.tolocale(ERROR_ROLE_SYSTEM_MODIFICATION_STRING));
         }
 
@@ -113,11 +113,7 @@ public class RoleServiceImpl implements RoleService {
         RoleEntity role = roleRepository.findById(roleId)
                 .orElseThrow(() -> new ResourceNotFoundException(Translator.tolocale(ERROR_ROLE_NOT_FOUND_STRING)));
 
-        if (SYSTEM_ROLE_ADMIN_STRING.equalsIgnoreCase(role.getName()) || SYSTEM_ROLE_USER_STRING.equalsIgnoreCase(role.getName())) {
-            throw new AccessForbiddenException(Translator.tolocale(ERROR_ROLE_SYSTEM_MODIFICATION_STRING));
-        }
-
-        if (SYSTEM_ROLE_ADMIN_STRING.equalsIgnoreCase(request.getName()) || SYSTEM_ROLE_USER_STRING.equalsIgnoreCase(request.getName())) {
+        if (isSystemRole(role.getName()) || isSystemRole(request.getName())) {
             throw new AccessForbiddenException(Translator.tolocale(ERROR_ROLE_SYSTEM_MODIFICATION_STRING));
         }
 
@@ -149,7 +145,7 @@ public class RoleServiceImpl implements RoleService {
         RoleEntity role = roleRepository.findById(roleId)
                 .orElseThrow(() -> new ResourceNotFoundException(Translator.tolocale(ERROR_ROLE_NOT_FOUND_STRING)));
 
-        if (SYSTEM_ROLE_ADMIN_STRING.equalsIgnoreCase(role.getName()) || SYSTEM_ROLE_USER_STRING.equalsIgnoreCase(role.getName())) {
+        if (isSystemRole(role.getName())) {
             throw new AccessForbiddenException(Translator.tolocale(ERROR_ROLE_SYSTEM_MODIFICATION_STRING));
         }
 
@@ -158,6 +154,11 @@ public class RoleServiceImpl implements RoleService {
         }
         roleRepository.delete(Objects.requireNonNull(role));
         log.info("Deleted role id={} and evicted user details cache", roleId);
+    }
+
+    private boolean isSystemRole(String roleName) {
+        return SYSTEM_ROLE_ADMIN_STRING.equalsIgnoreCase(roleName)
+                || SYSTEM_ROLE_USER_STRING.equalsIgnoreCase(roleName);
     }
 
     private void checkPrivilegeEscalation(Set<PermissionEntity> requestedPermissions) {

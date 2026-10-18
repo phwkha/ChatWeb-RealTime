@@ -982,7 +982,8 @@ function UserDrawer({ currentUser, selectedUser, addresses, editingAddress, setE
   const canCreate = can(PERMISSIONS.ADMIN_CREATE)
   const isSelf = Boolean(selectedUser && currentUser && selectedUser.username === currentUser.username)
   const isRootAdmin = Boolean(selectedUser && selectedUser.username === 'admin')
-  const canSubmitForm = isEditing ? (canUpdate && (!isRootAdmin || isSelf)) : canCreate
+  const isTargetProtected = isRootAdmin && !isSelf
+  const canSubmitForm = isEditing ? (canUpdate && !isTargetProtected) : canCreate
 
   return (
     <div className="admin-drawer-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
@@ -999,7 +1000,7 @@ function UserDrawer({ currentUser, selectedUser, addresses, editingAddress, setE
           <button type="button" onClick={onClose}><ChatIcon name="close" /></button>
         </header>
         <div className="admin-user-drawer__body">
-          {isRootAdmin && !isSelf && (
+          {isTargetProtected && (
             <div className="admin-warning-banner" style={{ padding: '10px 14px', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', borderRadius: '8px', marginBottom: '14px', fontSize: '0.875rem', fontWeight: 500 }}>
               Chỉ tài khoản quản trị viên gốc mới có quyền tự cập nhật thông tin của mình.
             </div>
@@ -1096,7 +1097,7 @@ function UserDrawer({ currentUser, selectedUser, addresses, editingAddress, setE
                     Không thể tự thay đổi vai trò của chính mình
                   </small>
                 )}
-                {isRootAdmin && !isSelf && (
+                {isTargetProtected && (
                   <small style={{ color: '#888', fontStyle: 'italic', display: 'block', marginTop: '4px' }}>
                     Không thể thay đổi vai trò của tài khoản quản trị viên gốc
                   </small>
@@ -1125,7 +1126,7 @@ function UserDrawer({ currentUser, selectedUser, addresses, editingAddress, setE
                         can(PERMISSIONS.ADMIN_LOCK) && <button type="button" onClick={() => void onAction('lock')}>Khóa tài khoản</button>
                       )
                     )}
-                    {can(PERMISSIONS.ADMIN_DELETE_AVATAR) && Boolean(selectedUser.avatar) && (!isRootAdmin || isSelf) && (
+                    {can(PERMISSIONS.ADMIN_DELETE_AVATAR) && Boolean(selectedUser.avatar) && !isTargetProtected && (
                       <button type="button" onClick={() => void onAction('avatar')}>Xóa avatar</button>
                     )}
                     {!isSelf && !isRootAdmin && can(PERMISSIONS.ADMIN_DELETE_USER) && (
@@ -1148,10 +1149,10 @@ function UserDrawer({ currentUser, selectedUser, addresses, editingAddress, setE
                         <p>{[address.ward, address.district, address.city, address.country].filter(Boolean).join(', ')}</p>
                       </div>
                       <span>
-                        {can(PERMISSIONS.ADMIN_UPDATE_USER_ADDRESS) && (!isRootAdmin || isSelf) && (
+                        {can(PERMISSIONS.ADMIN_UPDATE_USER_ADDRESS) && !isTargetProtected && (
                           <button type="button" onClick={() => void onAddressEdit(address.id)}>Sửa</button>
                         )}
-                        {can(PERMISSIONS.ADMIN_DELETE_USER_ADDRESS) && (!isRootAdmin || isSelf) && (
+                        {can(PERMISSIONS.ADMIN_DELETE_USER_ADDRESS) && !isTargetProtected && (
                           <button className="is-danger" type="button" onClick={() => void onAddressDelete(address.id)}>Xóa</button>
                         )}
                       </span>
