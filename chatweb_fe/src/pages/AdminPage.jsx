@@ -13,7 +13,9 @@ import {
   hasPermission,
   isAdminUser,
   isSystemRole,
+  normalizeRoleName,
   PERMISSIONS,
+  SYSTEM_ROLES,
 } from '../services/authorization.js'
 import '../styles/admin.css'
 
@@ -459,7 +461,12 @@ function AdminPage() {
   }
 
   const saveRole = async (event) => {
-    event.preventDefault(); const body = { ...roleForm, permissionIds: roleForm.permissionIds.map(Number) }
+    event.preventDefault();
+    if (isSystemRole(roleForm.name)) {
+      notify('Không thể tạo hoặc sửa đổi vai trò hệ thống (ADMIN, USER).', 'error')
+      return
+    }
+    const body = { ...roleForm, permissionIds: roleForm.permissionIds.map(Number) }
     const response = editingRoleId ? await run('role-save', () => adminApi.updateRole(editingRoleId, body), 'Đã cập nhật role.') : await run('role-save', () => adminApi.createRole(body), 'Đã tạo role.')
     if (response) { setRoleForm(EMPTY_ROLE); setEditingRoleId(null); await loadRoles() }
   }
@@ -973,8 +980,10 @@ function UserDrawer({ currentUser, selectedUser, addresses, editingAddress, setE
   const isEditing = Boolean(selectedUser)
   const canUpdate = can(PERMISSIONS.ADMIN_UPDATE_USER)
   const canCreate = can(PERMISSIONS.ADMIN_CREATE)
-  const canSubmitForm = isEditing ? canUpdate : canCreate
   const isSelf = Boolean(selectedUser && currentUser && selectedUser.username === currentUser.username)
+  const isRootAdmin = Boolean(selectedUser && selectedUser.username === 'admin')
+  const isTargetProtected = isRootAdmin && !isSelf
+  const canSubmitForm = isEditing ? (canUpdate && !isTargetProtected) : canCreate
 
   return (
     <div className="admin-drawer-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
@@ -991,6 +1000,11 @@ function UserDrawer({ currentUser, selectedUser, addresses, editingAddress, setE
           <button type="button" onClick={onClose}><ChatIcon name="close" /></button>
         </header>
         <div className="admin-user-drawer__body">
+          {isTargetProtected && (
+            <div className="admin-warning-banner" style={{ padding: '10px 14px', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', borderRadius: '8px', marginBottom: '14px', fontSize: '0.875rem', fontWeight: 500 }}>
+              Chỉ tài khoản quản trị viên gốc mới có quyền tự cập nhật thông tin của mình.
+            </div>
+          )}
           {selectedUser && (
             <div className="admin-user-overview">
               <StatusBadge status={selectedUser.userStatus} />
@@ -1061,16 +1075,19 @@ function UserDrawer({ currentUser, selectedUser, addresses, editingAddress, setE
               <label>
                 Role
                 <select
-                  disabled={!canSubmitForm || isSelf}
+                  disabled={!canSubmitForm || isSelf || isRootAdmin}
                   value={form.roleId}
                   onChange={(event) => setForm({ ...form, roleId: event.target.value })}
                 >
                   <option value="">Role mặc định</option>
                   {roles.map((role) => {
-                    const assignable = canAssignRole(currentUser, role)
+                    const isRoleAdmin = normalizeRoleName(role.name).replace(/^ROLE_/, '') === SYSTEM_ROLES.ADMIN
+                    const isReservedAdmin = isRoleAdmin && !isRootAdmin
+                    const assignable = !isReservedAdmin && canAssignRole(currentUser, role)
                     return (
                       <option key={role.id} value={role.id} disabled={!assignable}>
-                        {role.name}{!assignable ? ' (Vượt quá quyền)' : ''}
+                        {role.name}
+                        {isReservedAdmin ? ' (Dành riêng cho root admin)' : !assignable ? ' (Vượt quá quyền)' : ''}
                       </option>
                     )
                   })}
@@ -1078,6 +1095,11 @@ function UserDrawer({ currentUser, selectedUser, addresses, editingAddress, setE
                 {isSelf && (
                   <small style={{ color: '#888', fontStyle: 'italic', display: 'block', marginTop: '4px' }}>
                     Không thể tự thay đổi vai trò của chính mình
+                  </small>
+                )}
+                {isTargetProtected && (
+                  <small style={{ color: '#888', fontStyle: 'italic', display: 'block', marginTop: '4px' }}>
+                    Không thể thay đổi vai trò của tài khoản quản trị viên gốc
                   </small>
                 )}
               </label>
@@ -1097,17 +1119,17 @@ function UserDrawer({ currentUser, selectedUser, addresses, editingAddress, setE
                 <section className="admin-danger-actions">
                   <h3>Thao tác tài khoản</h3>
                   <div>
-                    {!isSelf && (
+                    {!isSelf && !isRootAdmin && (
                       selectedUser.userStatus === 'LOCKED' ? (
                         can(PERMISSIONS.ADMIN_UNLOCK) && <button type="button" onClick={() => void onAction('unlock')}>Mở khóa</button>
                       ) : (
                         can(PERMISSIONS.ADMIN_LOCK) && <button type="button" onClick={() => void onAction('lock')}>Khóa tài khoản</button>
                       )
                     )}
-                    {can(PERMISSIONS.ADMIN_DELETE_AVATAR) && Boolean(selectedUser.avatar) && (
+                    {can(PERMISSIONS.ADMIN_DELETE_AVATAR) && Boolean(selectedUser.avatar) && !isTargetProtected && (
                       <button type="button" onClick={() => void onAction('avatar')}>Xóa avatar</button>
                     )}
-                    {!isSelf && can(PERMISSIONS.ADMIN_DELETE_USER) && (
+                    {!isSelf && !isRootAdmin && can(PERMISSIONS.ADMIN_DELETE_USER) && (
                       <button className="is-danger" type="button" onClick={() => void onAction('delete')}>Xóa người dùng</button>
                     )}
                   </div>
@@ -1127,10 +1149,10 @@ function UserDrawer({ currentUser, selectedUser, addresses, editingAddress, setE
                         <p>{[address.ward, address.district, address.city, address.country].filter(Boolean).join(', ')}</p>
                       </div>
                       <span>
-                        {can(PERMISSIONS.ADMIN_UPDATE_USER_ADDRESS) && (
+                        {can(PERMISSIONS.ADMIN_UPDATE_USER_ADDRESS) && !isTargetProtected && (
                           <button type="button" onClick={() => void onAddressEdit(address.id)}>Sửa</button>
                         )}
-                        {can(PERMISSIONS.ADMIN_DELETE_USER_ADDRESS) && (
+                        {can(PERMISSIONS.ADMIN_DELETE_USER_ADDRESS) && !isTargetProtected && (
                           <button className="is-danger" type="button" onClick={() => void onAddressDelete(address.id)}>Xóa</button>
                         )}
                       </span>

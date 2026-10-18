@@ -24,6 +24,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.web.backend.common.AuthProvider;
 import com.web.backend.common.UserStatus;
 import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.request.AddressRequest;
@@ -44,13 +45,14 @@ import com.web.backend.model.postgres.PermissionEntity;
 import com.web.backend.model.postgres.RoleEntity;
 import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.repository.AddressRepository;
-import com.web.backend.repository.MessageRepository;
 import com.web.backend.repository.RoleRepository;
 import com.web.backend.repository.UserRepository;
 import com.web.backend.repository.projection.UserAvatarProjection;
 import com.web.backend.repository.specification.UserSearchSpecifications;
 import com.web.backend.service.AdminService;
+import com.web.backend.service.CuckooFilterService;
 import com.web.backend.service.StorageService;
+import com.web.backend.service.UserService;
 import org.springframework.data.jpa.domain.Specification;
 
 import lombok.RequiredArgsConstructor;
@@ -65,7 +67,7 @@ public class AdminServiceImpl implements AdminService {
 
     private final AddressRepository addressRepository;
 
-    private final MessageRepository messageRepository;
+    private final UserService userService;
 
     private final PasswordEncoder passwordEncoder;
 
@@ -76,6 +78,11 @@ public class AdminServiceImpl implements AdminService {
     private final StorageService storageService;
 
     private final RedisTemplate<String, Object> redisTemplate;
+
+    private final CuckooFilterService cuckooFilterService;
+
+    private static final String USERNAME_FILTER_KEY = "filter:usernames";
+    private static final String EMAIL_FILTER_KEY = "filter:emails";
 
     private static final String DELIMITE_STRING = ":";
 
@@ -97,11 +104,17 @@ public class AdminServiceImpl implements AdminService {
     private static final String ERROR_ADMIN_ADDRESS_NOT_OWNED_STRING = "error.admin.address_not_owned";
     private static final String ERROR_USER_ADDRESS_NOT_FOUND_STRING = "error.user.address_not_found";
 
-    private static final String SYS_ACCOUNT_STRING = "sys.account";
-    private static final String SYS_DELETED_STRING = "sys.deleted";
     private static final String ERROR_ROLE_ESCALATION_STRING = "error.role.escalation";
 
     private static final String ERROR_ROLE_SELF_MODIFICATION_STRING = "error.role.self_modification";
+    private static final String ROOT_ADMIN_USERNAME = "admin";
+    private static final String SYSTEM_ROLE_ADMIN_STRING = "ADMIN";
+    private static final String ERROR_ADMIN_CANNOT_ASSIGN_ADMIN_ROLE_STRING = "error.admin.cannot_assign_admin_role";
+    private static final String ERROR_ADMIN_CANNOT_CHANGE_ROOT_ROLE_STRING = "error.admin.cannot_change_root_role";
+    private static final String ERROR_ADMIN_CANNOT_DELETE_ROOT_STRING = "error.admin.cannot_delete_root";
+    private static final String ERROR_ADMIN_CANNOT_DELETE_SELF_STRING = "error.admin.cannot_delete_self";
+    private static final String ERROR_ADMIN_CANNOT_LOCK_ROOT_STRING = "error.admin.cannot_lock_root";
+    private static final String ERROR_ADMIN_CANNOT_MODIFY_ROOT_STRING = "error.admin.cannot_modify_root";
 
     private static final String ONLINE_USERS_KEY = "online_users";
 
@@ -238,6 +251,7 @@ public class AdminServiceImpl implements AdminService {
         UserEntity user = userMapper.toEntity(request);
 
         user.setPassword(passwordEncoder.encode(request.getPassword()));
+        user.setAuthProvider(AuthProvider.LOCAL);
 
         if (user.getUserStatus() == null) {
             user.setUserStatus(UserStatus.ACTIVE);
@@ -254,9 +268,21 @@ public class AdminServiceImpl implements AdminService {
                             Translator.tolocale(ERROR_ROLE_NOT_FOUND_STRING)));
         }
 
+        if (SYSTEM_ROLE_ADMIN_STRING.equalsIgnoreCase(role.getName())) {
+            throw new AccessForbiddenException(Translator.tolocale(ERROR_ADMIN_CANNOT_ASSIGN_ADMIN_ROLE_STRING));
+        }
+
         checkRoleAssignmentPrivilege(role);
         user.setRole(role);
         UserEntity savedUser = userRepository.save(user);
+
+        try {
+            cuckooFilterService.add(USERNAME_FILTER_KEY, savedUser.getUsername());
+            cuckooFilterService.add(EMAIL_FILTER_KEY, savedUser.getEmail());
+        } catch (Exception ex) {
+            log.warn("Failed to add user '{}' to Cuckoo filter: {}", savedUser.getUsername(), ex.getMessage());
+        }
+
         log.info("Admin created new user '{}'", savedUser.getUsername());
 
         return userMapper.toUserResponse(savedUser);
@@ -266,6 +292,10 @@ public class AdminServiceImpl implements AdminService {
     @Transactional
     @CacheEvict(value = USER_DETAILS_STRING, key = USERNAME_STRING)
     public UserResponse lockUser(String username) {
+        if (isRootAdmin(username)) {
+            throw new AccessForbiddenException(Translator.tolocale(ERROR_ADMIN_CANNOT_LOCK_ROOT_STRING));
+        }
+
         UserEntity userEntity = userRepository.findByUsername(username)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         Translator.tolocale(ERROR_USER_NOT_FOUND_WITH_STRING, username)));
@@ -305,6 +335,7 @@ public class AdminServiceImpl implements AdminService {
     @Transactional
     @CacheEvict(value = USER_DETAILS_STRING, key = USERNAME_STRING)
     public void deleteAvatar(String username) {
+        checkRootAdminModificationPrivilege(username);
         UserAvatarProjection userAvatar = userRepository.findAvatarProjectionByUsername(username)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         Translator.tolocale(ERROR_USER_NOT_FOUND_WITH_STRING, username)));
@@ -322,6 +353,7 @@ public class AdminServiceImpl implements AdminService {
     @Transactional
     @CacheEvict(value = USER_DETAILS_STRING, key = USERNAME_STRING)
     public UserResponse adminUpdateUser(String username, AdminUpdateUserRequest request) {
+        checkRootAdminModificationPrivilege(username);
         UserEntity userEntity = userRepository.findWithAuthoritiesByUsername(username)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         Translator.tolocale(ERROR_USER_NOT_FOUND_WITH_STRING, username)));
@@ -341,6 +373,15 @@ public class AdminServiceImpl implements AdminService {
             Long roleId = Objects.requireNonNull(request.getRoleId());
             RoleEntity newRole = roleRepository.findById(roleId)
                     .orElseThrow(() -> new ResourceNotFoundException(Translator.tolocale(ERROR_ROLE_NOT_FOUND_STRING)));
+
+            if (isRootAdmin(username)) {
+                if (!SYSTEM_ROLE_ADMIN_STRING.equalsIgnoreCase(newRole.getName())) {
+                    throw new AccessForbiddenException(Translator.tolocale(ERROR_ADMIN_CANNOT_CHANGE_ROOT_ROLE_STRING));
+                }
+            } else if (SYSTEM_ROLE_ADMIN_STRING.equalsIgnoreCase(newRole.getName())) {
+                throw new AccessForbiddenException(Translator.tolocale(ERROR_ADMIN_CANNOT_ASSIGN_ADMIN_ROLE_STRING));
+            }
+
             checkRoleAssignmentPrivilege(newRole);
             userEntity.setRole(newRole);
         }
@@ -354,25 +395,14 @@ public class AdminServiceImpl implements AdminService {
     @Transactional
     @CacheEvict(value = USER_DETAILS_STRING, key = "#targetUsername")
     public void adminDeleteUser(String targetUsername, String requesterUsername) {
-        UserEntity userEntity = userRepository.findByUsername(targetUsername)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        Translator.tolocale(ERROR_USER_NOT_FOUND_WITH_STRING, targetUsername)));
-        boolean hasChatHistory = messageRepository.existsBySenderOrRecipient(targetUsername);
-
-        if (hasChatHistory) {
-            userEntity.setUserStatus(UserStatus.INACTIVE);
-            userEntity.setOnline(false);
-            userEntity.setEmail(null);
-            userEntity.setPhone(null);
-            userEntity.setFirstName(Translator.tolocale(SYS_ACCOUNT_STRING));
-            userEntity.setLastName(Translator.tolocale(SYS_DELETED_STRING));
-            userEntity.setAvatar(null);
-            userRepository.save(userEntity);
-            log.info("Admin '{}' soft-deleted user '{}' (retaining chat history)", requesterUsername, targetUsername);
-        } else {
-            userRepository.delete(Objects.requireNonNull(userEntity));
-            log.info("Admin '{}' hard-deleted user '{}'", requesterUsername, targetUsername);
+        if (isRootAdmin(targetUsername)) {
+            throw new AccessForbiddenException(Translator.tolocale(ERROR_ADMIN_CANNOT_DELETE_ROOT_STRING));
         }
+        if (targetUsername != null && targetUsername.equalsIgnoreCase(requesterUsername)) {
+            throw new AccessForbiddenException(Translator.tolocale(ERROR_ADMIN_CANNOT_DELETE_SELF_STRING));
+        }
+        log.info("Admin '{}' requested deletion for user '{}'", requesterUsername, targetUsername);
+        userService.deleteUser(targetUsername);
     }
 
     @Override
@@ -403,6 +433,7 @@ public class AdminServiceImpl implements AdminService {
     @Transactional
     @CacheEvict(value = USER_DETAILS_STRING, key = "#targetUsername")
     public AddressResponse adminUpdateAddress(String targetUsername, Long addressId, AddressRequest request) {
+        checkRootAdminModificationPrivilege(targetUsername);
         AddressEntity addressToUpdate = addressRepository.findByIdAndUser_Username(addressId, targetUsername)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         Translator.tolocale(ERROR_ADMIN_ADDRESS_NOT_OWNED_STRING)));
@@ -418,6 +449,7 @@ public class AdminServiceImpl implements AdminService {
     @Transactional
     @CacheEvict(value = USER_DETAILS_STRING, key = "#targetUsername")
     public void adminDeleteAddress(String targetUsername, Long addressId) {
+        checkRootAdminModificationPrivilege(targetUsername);
         UserEntity user = userRepository.findByUsername(targetUsername)
                 .orElseThrow(
                         () -> new ResourceNotFoundException(
@@ -431,6 +463,19 @@ public class AdminServiceImpl implements AdminService {
         addressRepository.delete(addressToDelete);
 
         log.info("Admin deleted address id={} for user '{}'", addressId, targetUsername);
+    }
+
+    private boolean isRootAdmin(String username) {
+        return ROOT_ADMIN_USERNAME.equalsIgnoreCase(username);
+    }
+
+    private void checkRootAdminModificationPrivilege(String targetUsername) {
+        if (isRootAdmin(targetUsername)) {
+            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+            if (authentication != null && !isRootAdmin(authentication.getName())) {
+                throw new AccessForbiddenException(Translator.tolocale(ERROR_ADMIN_CANNOT_MODIFY_ROOT_STRING));
+            }
+        }
     }
 
     private void checkRoleAssignmentPrivilege(RoleEntity roleToAssign) {

@@ -82,7 +82,11 @@ public class RoleServiceImpl implements RoleService {
     @Override
     @Transactional
     public RoleResponse createRole(RoleRequest request) {
-        if (roleRepository.findByName(request.getName()).isPresent()) {
+        if (isSystemRole(request.getName())) {
+            throw new AccessForbiddenException(Translator.tolocale(ERROR_ROLE_SYSTEM_MODIFICATION_STRING));
+        }
+
+        if (roleRepository.findByNameIgnoreCase(request.getName()).isPresent()) {
             throw new ResourceConflictException(Translator.tolocale(ERROR_ROLE_EXISTS_STRING, request.getName()));
         }
 
@@ -109,9 +113,15 @@ public class RoleServiceImpl implements RoleService {
         RoleEntity role = roleRepository.findById(roleId)
                 .orElseThrow(() -> new ResourceNotFoundException(Translator.tolocale(ERROR_ROLE_NOT_FOUND_STRING)));
 
-        if (SYSTEM_ROLE_ADMIN_STRING.equals(role.getName()) || SYSTEM_ROLE_USER_STRING.equals(role.getName())) {
+        if (isSystemRole(role.getName()) || isSystemRole(request.getName())) {
             throw new AccessForbiddenException(Translator.tolocale(ERROR_ROLE_SYSTEM_MODIFICATION_STRING));
         }
+
+        roleRepository.findByNameIgnoreCase(request.getName()).ifPresent(existingRole -> {
+            if (!existingRole.getId().equals(roleId)) {
+                throw new ResourceConflictException(Translator.tolocale(ERROR_ROLE_EXISTS_STRING, request.getName()));
+            }
+        });
 
         role.setName(request.getName());
         role.setDescription(request.getDescription());
@@ -135,7 +145,7 @@ public class RoleServiceImpl implements RoleService {
         RoleEntity role = roleRepository.findById(roleId)
                 .orElseThrow(() -> new ResourceNotFoundException(Translator.tolocale(ERROR_ROLE_NOT_FOUND_STRING)));
 
-        if (SYSTEM_ROLE_ADMIN_STRING.equals(role.getName()) || SYSTEM_ROLE_USER_STRING.equals(role.getName())) {
+        if (isSystemRole(role.getName())) {
             throw new AccessForbiddenException(Translator.tolocale(ERROR_ROLE_SYSTEM_MODIFICATION_STRING));
         }
 
@@ -144,6 +154,11 @@ public class RoleServiceImpl implements RoleService {
         }
         roleRepository.delete(Objects.requireNonNull(role));
         log.info("Deleted role id={} and evicted user details cache", roleId);
+    }
+
+    private boolean isSystemRole(String roleName) {
+        return SYSTEM_ROLE_ADMIN_STRING.equalsIgnoreCase(roleName)
+                || SYSTEM_ROLE_USER_STRING.equalsIgnoreCase(roleName);
     }
 
     private void checkPrivilegeEscalation(Set<PermissionEntity> requestedPermissions) {

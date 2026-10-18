@@ -77,6 +77,7 @@ public class UserServiceImpl implements UserService {
     private String friendTopic;
 
     private static final String EMAIL_FILTER_KEY = "filter:emails";
+    private static final String USERNAME_FILTER_KEY = "filter:usernames";
     private static final String USER_DETAILS_STRING = "user_details";
     private static final String USERNAME_STRING = "#username";
     private static final String USER_USERNAME_STRING = "#user.username";
@@ -109,6 +110,8 @@ public class UserServiceImpl implements UserService {
 
     private static final String SYS_ACCOUNT_STRING = "sys.account";
     private static final String SYS_DELETED_STRING = "sys.deleted";
+    private static final String ROOT_ADMIN_USERNAME = "admin";
+    private static final String ERROR_ADMIN_CANNOT_DELETE_ROOT_STRING = "error.admin.cannot_delete_root";
 
     @Override
     @Transactional(readOnly = true)
@@ -280,12 +283,16 @@ public class UserServiceImpl implements UserService {
     @Transactional
     @CacheEvict(value = USER_DETAILS_STRING, key = USERNAME_STRING)
     public void deleteUser(String username) {
+        if (ROOT_ADMIN_USERNAME.equalsIgnoreCase(username)) {
+            throw new AccessForbiddenException(Translator.tolocale(ERROR_ADMIN_CANNOT_DELETE_ROOT_STRING));
+        }
         UserEntity userEntity = userRepository.findByUsername(username)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         Translator.tolocale(ERROR_USER_NOT_FOUND_WITH_STRING, username)));
         boolean hasChatHistory = messageRepository.existsBySenderOrRecipient(username);
 
         if (hasChatHistory) {
+            String oldEmail = userEntity.getEmail();
             userEntity.setUserStatus(UserStatus.INACTIVE);
             userEntity.setOnline(false);
             userEntity.setEmail(null);
@@ -294,9 +301,24 @@ public class UserServiceImpl implements UserService {
             userEntity.setLastName(Translator.tolocale(SYS_DELETED_STRING));
             userEntity.setAvatar(null);
             userRepository.save(userEntity);
+            if (oldEmail != null) {
+                try {
+                    cuckooFilterService.delete(EMAIL_FILTER_KEY, oldEmail);
+                } catch (Exception ex) {
+                    log.warn("Failed to delete email '{}' from Cuckoo filter: {}", oldEmail, ex.getMessage());
+                }
+            }
             log.info("Soft-deleted user '{}' (retaining chat history)", username);
         } else {
             userRepository.delete(Objects.requireNonNull(userEntity));
+            try {
+                cuckooFilterService.delete(USERNAME_FILTER_KEY, username);
+                if (userEntity.getEmail() != null) {
+                    cuckooFilterService.delete(EMAIL_FILTER_KEY, userEntity.getEmail());
+                }
+            } catch (Exception ex) {
+                log.warn("Failed to delete user '{}' from Cuckoo filter: {}", username, ex.getMessage());
+            }
             log.info("Hard-deleted user '{}' (no chat history)", username);
         }
     }

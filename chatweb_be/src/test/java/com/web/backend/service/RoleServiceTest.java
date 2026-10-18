@@ -25,6 +25,7 @@ import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.request.RoleRequest;
 import com.web.backend.controller.response.PermissionResponse;
 import com.web.backend.controller.response.RoleResponse;
+import com.web.backend.exception.custom.AccessForbiddenException;
 import com.web.backend.exception.custom.ResourceConflictException;
 import com.web.backend.exception.custom.ResourceNotFoundException;
 import com.web.backend.mapper.UserMapper;
@@ -92,11 +93,11 @@ class RoleServiceTest {
     @Test
     void testCreateRole_Success() {
         RoleRequest req = new RoleRequest();
-        req.setName("ADMIN");
-        req.setDescription("Admin Role");
+        req.setName("MODERATOR");
+        req.setDescription("Moderator Role");
         req.setPermissionIds(java.util.List.of(1L, 2L));
 
-        when(roleRepository.findByName("ADMIN")).thenReturn(Optional.empty());
+        when(roleRepository.findByNameIgnoreCase("MODERATOR")).thenReturn(Optional.empty());
         PermissionEntity p1 = new PermissionEntity();
         p1.setId(1L);
         p1.setName("P1");
@@ -117,11 +118,11 @@ class RoleServiceTest {
     @Test
     void testCreateRole_WithoutPermissions() {
         RoleRequest req = new RoleRequest();
-        req.setName("USER");
-        req.setDescription("User Role");
+        req.setName("GUEST");
+        req.setDescription("Guest Role");
         req.setPermissionIds(null);
 
-        when(roleRepository.findByName("USER")).thenReturn(Optional.empty());
+        when(roleRepository.findByNameIgnoreCase("GUEST")).thenReturn(Optional.empty());
         when(roleRepository.save(any(RoleEntity.class))).thenReturn(new RoleEntity());
         RoleResponse mockRoleResponse = mock(RoleResponse.class);
         when(userMapper.toRoleResponse(any())).thenReturn(mockRoleResponse);
@@ -133,23 +134,140 @@ class RoleServiceTest {
     @Test
     void testCreateRole_Exists() {
         RoleRequest req = new RoleRequest();
-        req.setName("ADMIN");
-        when(roleRepository.findByName("ADMIN")).thenReturn(Optional.of(new RoleEntity()));
+        req.setName("MODERATOR");
+        when(roleRepository.findByNameIgnoreCase("MODERATOR")).thenReturn(Optional.of(new RoleEntity()));
 
         assertThrows(ResourceConflictException.class, () -> roleService.createRole(req));
     }
 
     @Test
+    void testCreateRole_SystemRoleAdmin_ThrowsAccessForbidden() {
+        RoleRequest req = new RoleRequest();
+        req.setName("admin");
+
+        assertThrows(AccessForbiddenException.class, () -> roleService.createRole(req));
+        verify(roleRepository, never()).save(any());
+    }
+
+    @Test
+    void testCreateRole_SystemRoleUser_ThrowsAccessForbidden() {
+        RoleRequest req = new RoleRequest();
+        req.setName("User");
+
+        assertThrows(AccessForbiddenException.class, () -> roleService.createRole(req));
+        verify(roleRepository, never()).save(any());
+    }
+
+    @Test
     void testUpdateRole_Success() {
         RoleRequest req = new RoleRequest();
-        req.setName("NEW_ADMIN");
+        req.setName("NEW_MODERATOR");
         req.setPermissionIds(java.util.List.of(1L));
 
         RoleEntity role = new RoleEntity();
+        role.setId(1L);
+        role.setName("OLD_MODERATOR");
         when(roleRepository.findById(1L)).thenReturn(Optional.of(role));
+        when(roleRepository.findByNameIgnoreCase("NEW_MODERATOR")).thenReturn(Optional.empty());
+
         PermissionEntity p1 = new PermissionEntity();
         p1.setName("P1");
         when(permissionRepository.findAllById(java.util.List.of(1L))).thenReturn(List.of(p1));
+        when(roleRepository.save(role)).thenReturn(role);
+        RoleResponse mockRoleResponse = mock(RoleResponse.class);
+        when(userMapper.toRoleResponse(role)).thenReturn(mockRoleResponse);
+
+        assertNotNull(roleService.updateRole(1L, req));
+    }
+
+    @Test
+    void testUpdateRole_SystemRoleAdmin_ThrowsAccessForbidden() {
+        RoleRequest req = new RoleRequest();
+        req.setName("CUSTOM_NAME");
+
+        RoleEntity role = new RoleEntity();
+        role.setId(1L);
+        role.setName("admin");
+        when(roleRepository.findById(1L)).thenReturn(Optional.of(role));
+
+        assertThrows(AccessForbiddenException.class, () -> roleService.updateRole(1L, req));
+        verify(roleRepository, never()).save(any());
+    }
+
+    @Test
+    void testUpdateRole_RenameToSystemRole_ThrowsAccessForbidden() {
+        RoleRequest req = new RoleRequest();
+        req.setName("Admin");
+
+        RoleEntity role = new RoleEntity();
+        role.setId(1L);
+        role.setName("MODERATOR");
+        when(roleRepository.findById(1L)).thenReturn(Optional.of(role));
+
+        assertThrows(AccessForbiddenException.class, () -> roleService.updateRole(1L, req));
+        verify(roleRepository, never()).save(any());
+    }
+
+    @Test
+    void testUpdateRole_DuplicateName_ThrowsResourceConflict() {
+        RoleRequest req = new RoleRequest();
+        req.setName("SUPPORT");
+
+        RoleEntity role = new RoleEntity();
+        role.setId(1L);
+        role.setName("MODERATOR");
+
+        RoleEntity existing = new RoleEntity();
+        existing.setId(2L);
+        existing.setName("support");
+
+        when(roleRepository.findById(1L)).thenReturn(Optional.of(role));
+        when(roleRepository.findByNameIgnoreCase("SUPPORT")).thenReturn(Optional.of(existing));
+
+        assertThrows(ResourceConflictException.class, () -> roleService.updateRole(1L, req));
+        verify(roleRepository, never()).save(any());
+    }
+
+    @Test
+    void testUpdateRole_SystemRoleUser_ThrowsAccessForbidden() {
+        RoleRequest req = new RoleRequest();
+        req.setName("CUSTOM_NAME");
+
+        RoleEntity role = new RoleEntity();
+        role.setId(2L);
+        role.setName("User");
+        when(roleRepository.findById(2L)).thenReturn(Optional.of(role));
+
+        assertThrows(AccessForbiddenException.class, () -> roleService.updateRole(2L, req));
+        verify(roleRepository, never()).save(any());
+    }
+
+    @Test
+    void testUpdateRole_RenameToSystemRoleUser_ThrowsAccessForbidden() {
+        RoleRequest req = new RoleRequest();
+        req.setName("user");
+
+        RoleEntity role = new RoleEntity();
+        role.setId(1L);
+        role.setName("MODERATOR");
+        when(roleRepository.findById(1L)).thenReturn(Optional.of(role));
+
+        assertThrows(AccessForbiddenException.class, () -> roleService.updateRole(1L, req));
+        verify(roleRepository, never()).save(any());
+    }
+
+    @Test
+    void testUpdateRole_SameName_Success() {
+        RoleRequest req = new RoleRequest();
+        req.setName("MODERATOR");
+        req.setPermissionIds(null);
+
+        RoleEntity role = new RoleEntity();
+        role.setId(1L);
+        role.setName("MODERATOR");
+
+        when(roleRepository.findById(1L)).thenReturn(Optional.of(role));
+        when(roleRepository.findByNameIgnoreCase("MODERATOR")).thenReturn(Optional.of(role));
         when(roleRepository.save(role)).thenReturn(role);
         RoleResponse mockRoleResponse = mock(RoleResponse.class);
         when(userMapper.toRoleResponse(role)).thenReturn(mockRoleResponse);
@@ -168,10 +286,14 @@ class RoleServiceTest {
     @Test
     void testUpdateRole_WithoutPermissions() {
         RoleRequest req = new RoleRequest();
+        req.setName("NEW_MODERATOR");
         req.setPermissionIds(null);
         RoleEntity role = new RoleEntity();
+        role.setId(1L);
+        role.setName("MODERATOR");
 
         when(roleRepository.findById(1L)).thenReturn(Optional.of(role));
+        when(roleRepository.findByNameIgnoreCase("NEW_MODERATOR")).thenReturn(Optional.empty());
         when(roleRepository.save(role)).thenReturn(role);
         RoleResponse mockRoleResponse = mock(RoleResponse.class);
         when(userMapper.toRoleResponse(role)).thenReturn(mockRoleResponse);
@@ -183,12 +305,36 @@ class RoleServiceTest {
     @Test
     void testDeleteRole_Success() {
         RoleEntity role = new RoleEntity();
+        role.setId(1L);
+        role.setName("MODERATOR");
         when(roleRepository.findById(1L)).thenReturn(Optional.of(role));
         when(userRepository.existsByRole(role)).thenReturn(false);
 
         roleService.deleteRole(1L);
 
         verify(roleRepository).delete(role);
+    }
+
+    @Test
+    void testDeleteRole_SystemRoleAdmin_ThrowsAccessForbidden() {
+        RoleEntity role = new RoleEntity();
+        role.setId(1L);
+        role.setName("admin");
+        when(roleRepository.findById(1L)).thenReturn(Optional.of(role));
+
+        assertThrows(AccessForbiddenException.class, () -> roleService.deleteRole(1L));
+        verify(roleRepository, never()).delete(any());
+    }
+
+    @Test
+    void testDeleteRole_SystemRoleUser_ThrowsAccessForbidden() {
+        RoleEntity role = new RoleEntity();
+        role.setId(2L);
+        role.setName("User");
+        when(roleRepository.findById(2L)).thenReturn(Optional.of(role));
+
+        assertThrows(AccessForbiddenException.class, () -> roleService.deleteRole(2L));
+        verify(roleRepository, never()).delete(any());
     }
 
     @Test
@@ -200,6 +346,8 @@ class RoleServiceTest {
     @Test
     void testDeleteRole_InUse() {
         RoleEntity role = new RoleEntity();
+        role.setId(1L);
+        role.setName("MODERATOR");
         when(roleRepository.findById(1L)).thenReturn(Optional.of(role));
         when(userRepository.existsByRole(role)).thenReturn(true);
 

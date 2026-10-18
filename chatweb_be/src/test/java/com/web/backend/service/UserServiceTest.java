@@ -188,6 +188,7 @@ class UserServiceTest {
         assertNull(activeUser.getPhone());
         verify(userRepository).save(activeUser);
         verify(userRepository, never()).delete(activeUser);
+        verify(cuckooFilterService).delete("filter:emails", "test@example.com");
     }
 
     @Test
@@ -198,6 +199,45 @@ class UserServiceTest {
         userService.deleteUser("testuser");
 
         verify(userRepository).delete(activeUser);
+        verify(cuckooFilterService).delete("filter:usernames", "testuser");
+        verify(cuckooFilterService).delete("filter:emails", "test@example.com");
+    }
+
+    @Test
+    void testDeleteUser_SoftDelete_WhenEmailNull() {
+        activeUser.setEmail(null);
+        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(activeUser));
+        when(messageRepository.existsBySenderOrRecipient("testuser")).thenReturn(true);
+
+        userService.deleteUser("testuser");
+
+        assertEquals(UserStatus.INACTIVE, activeUser.getUserStatus());
+        verify(userRepository).save(activeUser);
+        verify(cuckooFilterService, never()).delete(eq("filter:emails"), anyString());
+    }
+
+    @Test
+    void testDeleteUser_HardDelete_WhenEmailNull() {
+        activeUser.setEmail(null);
+        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(activeUser));
+        when(messageRepository.existsBySenderOrRecipient("testuser")).thenReturn(false);
+
+        userService.deleteUser("testuser");
+
+        verify(userRepository).delete(activeUser);
+        verify(cuckooFilterService).delete("filter:usernames", "testuser");
+        verify(cuckooFilterService, never()).delete(eq("filter:emails"), anyString());
+    }
+
+    @Test
+    void testDeleteUser_CuckooFilterException_DoesNotFailDelete() {
+        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(activeUser));
+        when(messageRepository.existsBySenderOrRecipient("testuser")).thenReturn(true);
+        doThrow(new RuntimeException("Redis connection error")).when(cuckooFilterService).delete(anyString(), anyString());
+
+        assertDoesNotThrow(() -> userService.deleteUser("testuser"));
+        assertEquals(UserStatus.INACTIVE, activeUser.getUserStatus());
+        verify(userRepository).save(activeUser);
     }
 
     @Test
@@ -506,4 +546,11 @@ class UserServiceTest {
         assertThrows(ResourceNotFoundException.class, () -> userService.updateLanguage("unknown", "en"));
         verify(userRepository, never()).save(any());
     }
+
+    @Test
+    void testDeleteUser_CannotDeleteRootAdmin() {
+        assertThrows(AccessForbiddenException.class, () -> userService.deleteUser("admin"));
+        verify(userRepository, never()).findByUsername("admin");
+    }
 }
+
