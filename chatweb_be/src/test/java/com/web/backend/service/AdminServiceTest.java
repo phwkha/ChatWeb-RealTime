@@ -79,6 +79,8 @@ class AdminServiceTest {
     private RedisTemplate<String, Object> redisTemplate;
     @Mock
     private ZSetOperations<String, Object> zSetOperations;
+    @Mock
+    private CuckooFilterService cuckooFilterService;
 
     @InjectMocks
     private AdminServiceImpl adminService;
@@ -132,7 +134,8 @@ class AdminServiceTest {
                 .build();
         UserResponse response = UserResponse.builder().username("testuser").build();
         Page<UserEntity> page = new PageImpl<>(List.of(activeUser));
-        when(userRepository.findAll(ArgumentMatchers.<Specification<UserEntity>>any(), any(Pageable.class))).thenReturn(page);
+        when(userRepository.findAll(ArgumentMatchers.<Specification<UserEntity>>any(), any(Pageable.class)))
+                .thenReturn(page);
         when(userMapper.toUserResponse(activeUser)).thenReturn(response);
 
         PageResponse<UserResponse> res = adminService.searchUsersForAdmin(
@@ -147,7 +150,8 @@ class AdminServiceTest {
     void testSearchUsersForAdmin_WithoutFilters_Success() {
         UserResponse response = UserResponse.builder().username("testuser").build();
         Page<UserEntity> page = new PageImpl<>(List.of(activeUser));
-        when(userRepository.findAll(ArgumentMatchers.<Specification<UserEntity>>any(), any(Pageable.class))).thenReturn(page);
+        when(userRepository.findAll(ArgumentMatchers.<Specification<UserEntity>>any(), any(Pageable.class)))
+                .thenReturn(page);
         when(userMapper.toUserResponse(activeUser)).thenReturn(response);
 
         PageResponse<UserResponse> res = adminService.searchUsersForAdmin(
@@ -169,7 +173,8 @@ class AdminServiceTest {
     void testGetUserByUsername_Inactive() {
         activeUser.setUserStatus(UserStatus.INACTIVE);
         when(userRepository.findWithAuthoritiesByUsername("testuser")).thenReturn(Optional.of(activeUser));
-        assertThatThrownBy(() -> adminService.getUserByUsername("testuser")).isInstanceOf(ResourceNotFoundException.class);
+        assertThatThrownBy(() -> adminService.getUserByUsername("testuser"))
+                .isInstanceOf(ResourceNotFoundException.class);
     }
 
     @Test
@@ -180,15 +185,23 @@ class AdminServiceTest {
         req.setPassword("pass");
         req.setRoleId(1L);
 
+        UserEntity mappedUser = new UserEntity();
+        mappedUser.setUsername("newuser");
+        mappedUser.setEmail("new@example.com");
+
         when(userRepository.existsByUsername("newuser")).thenReturn(false);
         when(userRepository.existsByEmail("new@example.com")).thenReturn(false);
-        when(userMapper.toEntity(req)).thenReturn(new UserEntity());
+        when(userMapper.toEntity(req)).thenReturn(mappedUser);
         when(passwordEncoder.encode("pass")).thenReturn("encoded");
         when(roleRepository.findById(1L)).thenReturn(Optional.of(new RoleEntity()));
-        when(userRepository.save(any(UserEntity.class))).thenReturn(new UserEntity());
+        when(userRepository.save(any(UserEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(userMapper.toUserResponse(any())).thenReturn(new UserResponse());
 
         assertThat(adminService.adminCreateUser(req)).isNotNull();
+        verify(cuckooFilterService).add("filter:usernames", "newuser");
+        verify(cuckooFilterService).add("filter:emails", "new@example.com");
+        verify(userRepository).save(ArgumentMatchers.argThat(
+                user -> user.getAuthProvider() == AuthProvider.LOCAL && user.getUserStatus() == UserStatus.ACTIVE));
     }
 
     @Test
@@ -202,9 +215,13 @@ class AdminServiceTest {
         RoleEntity defaultRole = new RoleEntity();
         defaultRole.setName("USER");
 
+        UserEntity mappedUser = new UserEntity();
+        mappedUser.setUsername("defaultuser");
+        mappedUser.setEmail("default@example.com");
+
         when(userRepository.existsByUsername("defaultuser")).thenReturn(false);
         when(userRepository.existsByEmail("default@example.com")).thenReturn(false);
-        when(userMapper.toEntity(req)).thenReturn(new UserEntity());
+        when(userMapper.toEntity(req)).thenReturn(mappedUser);
         when(passwordEncoder.encode("pass")).thenReturn("encoded");
         when(roleRepository.findByName("USER")).thenReturn(Optional.of(defaultRole));
         when(userRepository.save(any(UserEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -214,6 +231,10 @@ class AdminServiceTest {
         assertThat(response).isNotNull();
         verify(roleRepository).findByName("USER");
         verify(roleRepository, never()).findById(any());
+        verify(cuckooFilterService).add("filter:usernames", "defaultuser");
+        verify(cuckooFilterService).add("filter:emails", "default@example.com");
+        verify(userRepository).save(ArgumentMatchers.argThat(
+                user -> user.getAuthProvider() == AuthProvider.LOCAL && user.getUserStatus() == UserStatus.ACTIVE));
     }
 
     @Test
@@ -339,7 +360,8 @@ class AdminServiceTest {
         when(userRepository.findWithAuthoritiesByUsername("testuser")).thenReturn(Optional.of(activeUser));
         when(userRepository.existsByEmail("new@example.com")).thenReturn(true);
 
-        assertThatThrownBy(() -> adminService.adminUpdateUser("testuser", req)).isInstanceOf(ResourceConflictException.class);
+        assertThatThrownBy(() -> adminService.adminUpdateUser("testuser", req))
+                .isInstanceOf(ResourceConflictException.class);
     }
 
     @Test
@@ -362,6 +384,7 @@ class AdminServiceTest {
         adminService.adminDeleteUser("testuser", "admin");
 
         verify(userRepository).delete(activeUser);
+        verify(cuckooFilterService).delete("filter:usernames", "testuser");
     }
 
     @Test
@@ -376,7 +399,8 @@ class AdminServiceTest {
     @Test
     void testAdminGetAddressById() {
         when(userRepository.existsByUsername("testuser")).thenReturn(true);
-        when(addressRepository.findAddressResponseByIdAndUsername(1L, "testuser")).thenReturn(Optional.of(new AddressResponse()));
+        when(addressRepository.findAddressResponseByIdAndUsername(1L, "testuser"))
+                .thenReturn(Optional.of(new AddressResponse()));
 
         assertThat(adminService.adminGetAddressById("testuser", 1L)).isNotNull();
     }
@@ -385,7 +409,8 @@ class AdminServiceTest {
     void testAdminGetAddressById_NotOwned() {
         when(userRepository.existsByUsername("testuser")).thenReturn(true);
         when(addressRepository.findAddressResponseByIdAndUsername(1L, "testuser")).thenReturn(Optional.empty());
-        assertThatThrownBy(() -> adminService.adminGetAddressById("testuser", 1L)).isInstanceOf(AccessForbiddenException.class);
+        assertThatThrownBy(() -> adminService.adminGetAddressById("testuser", 1L))
+                .isInstanceOf(AccessForbiddenException.class);
     }
 
     @Test
@@ -405,7 +430,8 @@ class AdminServiceTest {
     void testAdminUpdateAddress_NotOwned() {
         when(addressRepository.findByIdAndUser_Username(1L, "testuser")).thenReturn(Optional.empty());
         AddressRequest req = new AddressRequest();
-        assertThatThrownBy(() -> adminService.adminUpdateAddress("testuser", 1L, req)).isInstanceOf(ResourceNotFoundException.class);
+        assertThatThrownBy(() -> adminService.adminUpdateAddress("testuser", 1L, req))
+                .isInstanceOf(ResourceNotFoundException.class);
     }
 
     @Test
@@ -422,7 +448,8 @@ class AdminServiceTest {
     @Test
     void testGetUserByUsername_NotFound() {
         when(userRepository.findWithAuthoritiesByUsername("testuser")).thenReturn(Optional.empty());
-        assertThatThrownBy(() -> adminService.getUserByUsername("testuser")).isInstanceOf(ResourceNotFoundException.class);
+        assertThatThrownBy(() -> adminService.getUserByUsername("testuser"))
+                .isInstanceOf(ResourceNotFoundException.class);
     }
 
     @Test

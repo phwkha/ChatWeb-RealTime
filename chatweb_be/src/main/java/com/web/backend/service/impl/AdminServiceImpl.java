@@ -24,6 +24,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.web.backend.common.AuthProvider;
 import com.web.backend.common.UserStatus;
 import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.controller.request.AddressRequest;
@@ -50,6 +51,7 @@ import com.web.backend.repository.UserRepository;
 import com.web.backend.repository.projection.UserAvatarProjection;
 import com.web.backend.repository.specification.UserSearchSpecifications;
 import com.web.backend.service.AdminService;
+import com.web.backend.service.CuckooFilterService;
 import com.web.backend.service.StorageService;
 import org.springframework.data.jpa.domain.Specification;
 
@@ -76,6 +78,11 @@ public class AdminServiceImpl implements AdminService {
     private final StorageService storageService;
 
     private final RedisTemplate<String, Object> redisTemplate;
+
+    private final CuckooFilterService cuckooFilterService;
+
+    private static final String USERNAME_FILTER_KEY = "filter:usernames";
+    private static final String EMAIL_FILTER_KEY = "filter:emails";
 
     private static final String DELIMITE_STRING = ":";
 
@@ -238,6 +245,7 @@ public class AdminServiceImpl implements AdminService {
         UserEntity user = userMapper.toEntity(request);
 
         user.setPassword(passwordEncoder.encode(request.getPassword()));
+        user.setAuthProvider(AuthProvider.LOCAL);
 
         if (user.getUserStatus() == null) {
             user.setUserStatus(UserStatus.ACTIVE);
@@ -257,6 +265,14 @@ public class AdminServiceImpl implements AdminService {
         checkRoleAssignmentPrivilege(role);
         user.setRole(role);
         UserEntity savedUser = userRepository.save(user);
+
+        try {
+            cuckooFilterService.add(USERNAME_FILTER_KEY, savedUser.getUsername());
+            cuckooFilterService.add(EMAIL_FILTER_KEY, savedUser.getEmail());
+        } catch (Exception ex) {
+            log.warn("Failed to add user '{}' to Cuckoo filter: {}", savedUser.getUsername(), ex.getMessage());
+        }
+
         log.info("Admin created new user '{}'", savedUser.getUsername());
 
         return userMapper.toUserResponse(savedUser);
@@ -371,6 +387,14 @@ public class AdminServiceImpl implements AdminService {
             log.info("Admin '{}' soft-deleted user '{}' (retaining chat history)", requesterUsername, targetUsername);
         } else {
             userRepository.delete(Objects.requireNonNull(userEntity));
+            try {
+                cuckooFilterService.delete(USERNAME_FILTER_KEY, targetUsername);
+                if (userEntity.getEmail() != null) {
+                    cuckooFilterService.delete(EMAIL_FILTER_KEY, userEntity.getEmail());
+                }
+            } catch (Exception ex) {
+                log.warn("Failed to delete user '{}' from Cuckoo filter: {}", targetUsername, ex.getMessage());
+            }
             log.info("Admin '{}' hard-deleted user '{}'", requesterUsername, targetUsername);
         }
     }
