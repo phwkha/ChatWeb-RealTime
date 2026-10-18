@@ -148,5 +148,6 @@ export function useChatSocket({ enabled, language, subscribeToWorld, onMessage, 
     connectionState,
     sendPrivateMessage: useCallback((message) => publish('/app/chat/sendPrivateMessage', message), [publish]),
     sendWorldMessage: useCallback((message) => publish('/app/chat/sendMessageSystem', message), [publish]),
+    sendWorldChat: useCallback((message) => publish('/app/chat/sendWorldChat', message), [publish]),
   }
 }

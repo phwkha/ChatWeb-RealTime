@@ -53,7 +53,11 @@ function ChatPage() {
   const lastSelectedUsernameRef = useRef(null)
   const conversationMenuRef = useRef(null)
   const isAdmin = isAdminUser(currentUser)
-  const canBroadcastWorld = Boolean(can ? can(PERMISSIONS.ADMIN_SEND_MESSAGE) : isAdmin)
+  const canSendWorldChat = Boolean(
+    can
+      ? (can(PERMISSIONS.USER_SEND_WORLD_CHAT) || can(PERMISSIONS.ADMIN_SEND_MESSAGE))
+      : (currentUser?.permissions?.includes?.('USER_SEND_WORLD_CHAT') || isAdmin)
+  )
   const currentUsernameKey = String(currentUser?.username || '').trim().toLocaleLowerCase('en-US')
 
   const showToast = useCallback((message, tone = 'success') => {
@@ -184,7 +188,7 @@ function ChatPage() {
   })
 
   const {
-    connectionState, sendPrivateMessage, sendWorldMessage, unreadCounts, unreadCountsRef,
+    connectionState, sendPrivateMessage, sendWorldMessage, sendWorldChat, unreadCounts, unreadCountsRef,
     typingUsers, worldMessages, worldCursor, worldHasMore, worldNotifications,
     loadWorldHistory, sendTypingStatus, markAsRead,
   } = realtime
@@ -449,14 +453,15 @@ function ChatPage() {
       <WorldChatDrawer
         isOpen={worldOpen} worldMessages={worldMessages} worldHasMore={worldHasMore}
         worldCursor={worldCursor} worldDraft={worldDraft} isAdmin={isAdmin}
-        canBroadcast={canBroadcastWorld}
+        canBroadcast={canSendWorldChat}
         language={language} t={t} onClose={() => setWorldOpen(false)}
         onLoadOlder={loadWorldHistory} onChangeDraft={setWorldDraft}
         onSubmitBroadcast={(e) => {
           e.preventDefault()
           const c = worldDraft.trim()
-          if (!c || !canBroadcastWorld) return
-          if (sendWorldMessage({ content: c, survivalTime: null })) setWorldDraft('')
+          if (!c || !canSendWorldChat) return
+          const sent = sendWorldChat ? sendWorldChat({ content: c }) : sendWorldMessage({ content: c, survivalTime: null })
+          if (sent) setWorldDraft('')
           else showToast(t('socketError'), 'error')
         }}
       />

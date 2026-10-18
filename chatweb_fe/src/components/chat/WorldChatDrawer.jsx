@@ -65,7 +65,7 @@ export const WorldChatDrawer = React.memo(function WorldChatDrawer({
               <div>
                 <strong>
                   {message.sender || t('admin')}
-                  <em>{t('admin')}</em>
+                  <em>{message.type === 'WORLD_CHAT' ? (t('worldShort') || 'Thế giới') : t('admin')}</em>
                 </strong>
                 <p>{message.content}</p>
                 <time>{formatTime(message.timestamp, language)}</time>

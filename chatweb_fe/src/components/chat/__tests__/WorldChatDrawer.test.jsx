@@ -60,4 +60,22 @@ describe('WorldChatDrawer permission and broadcast controls', () => {
     const publishButton = screen.getByRole('button', { name: /publish/i })
     expect(publishButton).toBeDisabled()
   })
+
+  it('renders badge worldShort when message.type is WORLD_CHAT', () => {
+    const messages = [
+      { sender: 'vip_user', content: 'Xin chào thế giới!', timestamp: '2026-10-19T00:00:00Z', type: 'WORLD_CHAT' },
+    ]
+    render(<WorldChatDrawer {...defaultProps} worldMessages={messages} />)
+    expect(screen.getByText('vip_user')).toBeInTheDocument()
+    expect(screen.getByText('worldShort')).toBeInTheDocument()
+  })
+
+  it('renders badge admin when message.type is ANNOUNCEMENT or missing', () => {
+    const messages = [
+      { sender: 'system_admin', content: 'Bảo trì hệ thống!', timestamp: '2026-10-19T00:00:00Z', type: 'ANNOUNCEMENT' },
+    ]
+    render(<WorldChatDrawer {...defaultProps} worldMessages={messages} />)
+    expect(screen.getByText('system_admin')).toBeInTheDocument()
+    expect(screen.getByText('admin')).toBeInTheDocument()
+  })
 })
