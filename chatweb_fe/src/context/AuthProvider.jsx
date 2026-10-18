@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { apiRequest, setAccessToken, setSessionExpiredHandler } from '../services/apiClient.js'
-import { isAdminUser, isSuperAdmin } from '../services/authorization.js'
+import {
+  getUserPermissionSet,
+  hasAllPermissions,
+  hasAnyPermission,
+  hasPermission,
+  isAdminUser,
+  isSuperAdmin,
+} from '../services/authorization.js'
 import { AuthContext } from './auth-context.js'
 
 function AuthProvider({ children }) {
@@ -119,8 +126,8 @@ function AuthProvider({ children }) {
   }, [])
 
   const permissionSet = useMemo(
-    () => new Set(Array.isArray(user?.permissions) ? user.permissions : []),
-    [user?.permissions]
+    () => getUserPermissionSet(user),
+    [user]
   )
 
   const superAdmin = useMemo(() => isSuperAdmin(user), [user])
@@ -130,27 +137,27 @@ function AuthProvider({ children }) {
     (permission) => {
       if (!permission) return true
       if (!user) return false
-      return superAdmin || permissionSet.has(permission)
+      return hasPermission(user, permission)
     },
-    [permissionSet, superAdmin, user]
+    [user]
   )
 
   const canAny = useCallback(
     (permissions = []) => {
       if (!Array.isArray(permissions) || permissions.length === 0) return true
       if (!user) return false
-      return superAdmin || permissions.some((p) => permissionSet.has(p))
+      return hasAnyPermission(user, permissions)
     },
-    [permissionSet, superAdmin, user]
+    [user]
   )
 
   const canAll = useCallback(
     (permissions = []) => {
       if (!Array.isArray(permissions) || permissions.length === 0) return true
       if (!user) return false
-      return superAdmin || permissions.every((p) => permissionSet.has(p))
+      return hasAllPermissions(user, permissions)
     },
-    [permissionSet, superAdmin, user]
+    [user]
   )
 
   const value = useMemo(() => ({

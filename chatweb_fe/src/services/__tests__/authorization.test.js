@@ -24,10 +24,15 @@ describe('authorization service', () => {
     expect(isAdminUser(null)).toBe(false)
   })
 
-  it('identifies admin user by permissions', () => {
+  it('identifies admin user strictly by permissions starting with ADMIN_', () => {
     expect(isAdminUser({ permissions: ['ADMIN_VIEW_USERS'] })).toBe(true)
-    expect(isAdminUser({ permissions: ['ROLE_MODERATOR'] })).toBe(true)
-    expect(isAdminUser({ permissions: ['SEND_EMAIL'] })).toBe(true)
+    expect(isAdminUser({ permissions: ['ADMIN_ROLE_VIEW_ALL'] })).toBe(true)
+    expect(isAdminUser({ permissions: ['ADMIN_SEND_EMAIL'] })).toBe(true)
+    expect(isAdminUser({ permissions: ['ADMIN_SEND-MESSAGE'] })).toBe(true)
+    expect(isAdminUser({ permissions: [{ name: 'ADMIN_CREATE' }] })).toBe(true)
+    expect(isAdminUser({ permissions: ['USER_SEND_WORLD_CHAT'] })).toBe(false)
+    expect(isAdminUser({ permissions: ['ROLE_MODERATOR'] })).toBe(false)
+    expect(isAdminUser({ permissions: ['SEND_EMAIL'] })).toBe(false)
     expect(isAdminUser({ permissions: ['READ_MESSAGE'] })).toBe(false)
   })
 
@@ -56,21 +61,22 @@ describe('authorization service', () => {
 
   // New test suites for Milestone 1
   describe('PERMISSIONS constants', () => {
-    it('defines exactly 22 permissions and is frozen', () => {
-      const keys = Object.keys(PERMISSIONS)
-      expect(keys).toHaveLength(22)
+    it('defines frozen permission objects and ADMIN_CONSOLE_PERMISSIONS with all 22 ADMIN_ permissions', () => {
       expect(Object.isFrozen(PERMISSIONS)).toBe(true)
       expect(Object.isFrozen(SYSTEM_ROLES)).toBe(true)
       expect(Object.isFrozen(ADMIN_CONSOLE_PERMISSIONS)).toBe(true)
       expect(ADMIN_CONSOLE_PERMISSIONS).toHaveLength(22)
+      ADMIN_CONSOLE_PERMISSIONS.forEach((perm) => {
+        expect(perm.startsWith('ADMIN_')).toBe(true)
+      })
     })
 
     it('contains specific hyphenated ADMIN_SEND-MESSAGE', () => {
       expect(PERMISSIONS.ADMIN_SEND_MESSAGE).toBe('ADMIN_SEND-MESSAGE')
     })
 
-    it('contains all required permissions', () => {
-      const expected = [
+    it('contains all required permissions with ADMIN_ prefix and aliases', () => {
+      const expectedAdminPerms = [
         'ADMIN_VIEW_USERS',
         'ADMIN_VIEW_ONLINE_USERS',
         'ADMIN_VIEW_USER_DETAIL',
@@ -83,20 +89,23 @@ describe('authorization service', () => {
         'ADMIN_LOCK',
         'ADMIN_UNLOCK',
         'ADMIN_DELETE_AVATAR',
-        'ROLE_VIEW_ALL',
-        'ROLE_VIEW_ALL_PERMISSION',
-        'ROLE_ADD',
-        'ROLE_UPDATE',
-        'ROLE_DELETE',
-        'SEND_EMAIL',
+        'ADMIN_ROLE_VIEW_ALL',
+        'ADMIN_ROLE_VIEW_ALL_PERMISSION',
+        'ADMIN_ROLE_ADD',
+        'ADMIN_ROLE_UPDATE',
+        'ADMIN_ROLE_DELETE',
+        'ADMIN_SEND_EMAIL',
         'ADMIN_SEND-MESSAGE',
         'ADMIN_VIEW_REPORTS',
         'ADMIN_RESOLVE_REPORTS',
         'ADMIN_DELETE_REPORTS',
       ]
-      expected.forEach((perm) => {
+      expectedAdminPerms.forEach((perm) => {
         expect(Object.values(PERMISSIONS)).toContain(perm)
       })
+      expect(PERMISSIONS.USER_SEND_WORLD_CHAT).toBe('USER_SEND_WORLD_CHAT')
+      expect(PERMISSIONS.ROLE_VIEW_ALL).toBe('ADMIN_ROLE_VIEW_ALL')
+      expect(PERMISSIONS.SEND_EMAIL).toBe('ADMIN_SEND_EMAIL')
     })
   })
 

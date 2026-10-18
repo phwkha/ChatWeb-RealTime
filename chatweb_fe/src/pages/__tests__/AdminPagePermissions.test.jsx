@@ -74,6 +74,22 @@ describe('AdminPage Permission-Based UI Rendering', () => {
     expect(screen.queryByText('CONTROL CENTER')).toBeNull()
   })
 
+  it('renders "Không có quyền truy cập" when user only has user-level permissions like USER_SEND_WORLD_CHAT', () => {
+    vi.mocked(authContext.useAuth).mockReturnValue({
+      user: { username: 'vip_user', role: 'VIP', permissions: ['USER_SEND_WORLD_CHAT'] },
+      logout: vi.fn(),
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/admin']}>
+        <AdminPage />
+      </MemoryRouter>
+    )
+
+    expect(screen.getByText('Không có quyền truy cập')).toBeInTheDocument()
+    expect(screen.queryByText('CONTROL CENTER')).toBeNull()
+  })
+
   it('renders navigation tabs strictly corresponding to granted permissions for a Moderator', async () => {
     vi.mocked(authContext.useAuth).mockReturnValue({
       user: {

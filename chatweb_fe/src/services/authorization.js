@@ -14,20 +14,31 @@ export const PERMISSIONS = Object.freeze({
   ADMIN_DELETE_AVATAR: 'ADMIN_DELETE_AVATAR',
 
   // Role & Permission Management
-  ROLE_VIEW_ALL: 'ROLE_VIEW_ALL',
-  ROLE_VIEW_ALL_PERMISSION: 'ROLE_VIEW_ALL_PERMISSION',
-  ROLE_ADD: 'ROLE_ADD',
-  ROLE_UPDATE: 'ROLE_UPDATE',
-  ROLE_DELETE: 'ROLE_DELETE',
+  ADMIN_ROLE_VIEW_ALL: 'ADMIN_ROLE_VIEW_ALL',
+  ADMIN_ROLE_VIEW_ALL_PERMISSION: 'ADMIN_ROLE_VIEW_ALL_PERMISSION',
+  ADMIN_ROLE_ADD: 'ADMIN_ROLE_ADD',
+  ADMIN_ROLE_UPDATE: 'ADMIN_ROLE_UPDATE',
+  ADMIN_ROLE_DELETE: 'ADMIN_ROLE_DELETE',
+
+  // Backward-compatibility aliases for Role & Permission Management
+  ROLE_VIEW_ALL: 'ADMIN_ROLE_VIEW_ALL',
+  ROLE_VIEW_ALL_PERMISSION: 'ADMIN_ROLE_VIEW_ALL_PERMISSION',
+  ROLE_ADD: 'ADMIN_ROLE_ADD',
+  ROLE_UPDATE: 'ADMIN_ROLE_UPDATE',
+  ROLE_DELETE: 'ADMIN_ROLE_DELETE',
 
   // System Communication
-  SEND_EMAIL: 'SEND_EMAIL',
+  ADMIN_SEND_EMAIL: 'ADMIN_SEND_EMAIL',
+  SEND_EMAIL: 'ADMIN_SEND_EMAIL',
   ADMIN_SEND_MESSAGE: 'ADMIN_SEND-MESSAGE',
 
   // Report Moderation
   ADMIN_VIEW_REPORTS: 'ADMIN_VIEW_REPORTS',
   ADMIN_RESOLVE_REPORTS: 'ADMIN_RESOLVE_REPORTS',
   ADMIN_DELETE_REPORTS: 'ADMIN_DELETE_REPORTS',
+
+  // User Permissions
+  USER_SEND_WORLD_CHAT: 'USER_SEND_WORLD_CHAT',
 })
 
 export const SYSTEM_ROLES = Object.freeze({
@@ -35,9 +46,15 @@ export const SYSTEM_ROLES = Object.freeze({
   USER: 'USER',
 })
 
-export const ADMIN_CONSOLE_PERMISSIONS = Object.freeze(Object.values(PERMISSIONS))
+export const ADMIN_CONSOLE_PERMISSIONS = Object.freeze(
+  Array.from(
+    new Set(
+      Object.values(PERMISSIONS).filter((p) => typeof p === 'string' && p.startsWith('ADMIN_'))
+    )
+  )
+)
 
-const ADMIN_PERMISSION_PATTERN = /^(ADMIN[_-]|ROLE_|SEND_EMAIL)/
+const ADMIN_PERMISSION_PATTERN = /^ADMIN_/
 
 export function normalizeRoleName(role) {
   if (!role) return ''
@@ -68,33 +85,40 @@ export function getUserPermissionSet(user) {
   if (user.permissions instanceof Set) {
     return user.permissions
   }
-  if (Array.isArray(user.permissions)) {
-    return new Set(user.permissions)
+  const raw = Array.isArray(user.permissions) ? user.permissions : []
+  const set = new Set()
+  for (const p of raw) {
+    if (typeof p === 'string') set.add(p)
+    else if (p && typeof p.name === 'string') set.add(p.name)
   }
-  return new Set()
+  return set
 }
 
 export function hasPermission(user, permission) {
   if (!user || !permission) return false
   if (isSuperAdmin(user)) return true
   const permissionSet = getUserPermissionSet(user)
-  return permissionSet.has(permission)
+  if (permissionSet.has(permission)) return true
+  const mapped = PERMISSIONS[permission]
+  if (mapped && permissionSet.has(mapped)) return true
+  for (const [key, val] of Object.entries(PERMISSIONS)) {
+    if (val === permission && permissionSet.has(key)) return true
+  }
+  return false
 }
 
 export function hasAnyPermission(user, permissions = []) {
   if (!user) return false
   if (!Array.isArray(permissions) || permissions.length === 0) return true
   if (isSuperAdmin(user)) return true
-  const permissionSet = getUserPermissionSet(user)
-  return permissions.some((permission) => permissionSet.has(permission))
+  return permissions.some((permission) => hasPermission(user, permission))
 }
 
 export function hasAllPermissions(user, permissions = []) {
   if (!user) return false
   if (!Array.isArray(permissions) || permissions.length === 0) return true
   if (isSuperAdmin(user)) return true
-  const permissionSet = getUserPermissionSet(user)
-  return permissions.every((permission) => permissionSet.has(permission))
+  return permissions.every((permission) => hasPermission(user, permission))
 }
 
 export function isAdminUser(user) {
@@ -105,7 +129,10 @@ export function isAdminUser(user) {
     : user.permissions instanceof Set
       ? Array.from(user.permissions)
       : []
-  return perms.some((permission) => ADMIN_PERMISSION_PATTERN.test(permission))
+  return perms.some((permission) => {
+    const permName = typeof permission === 'string' ? permission : permission?.name
+    return typeof permName === 'string' && ADMIN_PERMISSION_PATTERN.test(permName)
+  })
 }
 
 export function isAdminAccount(person) {
