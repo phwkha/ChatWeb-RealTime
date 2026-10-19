@@ -46,6 +46,22 @@ export const SYSTEM_ROLES = Object.freeze({
   USER: 'USER',
 })
 
+export const ROOT_ADMIN_USERNAME = 'admin'
+
+export function isRootAdmin(userOrUsername) {
+  if (!userOrUsername) return false
+  const username = typeof userOrUsername === 'string'
+    ? userOrUsername
+    : userOrUsername.username
+  return typeof username === 'string' && username.trim().toLowerCase() === ROOT_ADMIN_USERNAME
+}
+
+function hasExplicitPermissions(user) {
+  if (!user || user.permissions === undefined || user.permissions === null) return false
+  if (user.permissions instanceof Set) return user.permissions.size > 0
+  return Array.isArray(user.permissions) && user.permissions.length > 0
+}
+
 export const ADMIN_CONSOLE_PERMISSIONS = Object.freeze(
   Array.from(
     new Set(
@@ -96,7 +112,6 @@ export function getUserPermissionSet(user) {
 
 export function hasPermission(user, permission) {
   if (!user || !permission) return false
-  if (isSuperAdmin(user)) return true
   const permissionSet = getUserPermissionSet(user)
   if (permissionSet.has(permission)) return true
   const mapped = PERMISSIONS[permission]
@@ -104,20 +119,19 @@ export function hasPermission(user, permission) {
   for (const [key, val] of Object.entries(PERMISSIONS)) {
     if (val === permission && permissionSet.has(key)) return true
   }
+  if (!hasExplicitPermissions(user) && isSuperAdmin(user)) return true
   return false
 }
 
 export function hasAnyPermission(user, permissions = []) {
   if (!user) return false
   if (!Array.isArray(permissions) || permissions.length === 0) return true
-  if (isSuperAdmin(user)) return true
   return permissions.some((permission) => hasPermission(user, permission))
 }
 
 export function hasAllPermissions(user, permissions = []) {
   if (!user) return false
   if (!Array.isArray(permissions) || permissions.length === 0) return true
-  if (isSuperAdmin(user)) return true
   return permissions.every((permission) => hasPermission(user, permission))
 }
 
@@ -146,7 +160,6 @@ export function isAdminAccount(person) {
 
 export function canAssignRole(user, targetRole) {
   if (!user || !targetRole) return false
-  if (isSuperAdmin(user)) return true
   const rawPermissions = Array.isArray(targetRole.permissions)
     ? targetRole.permissions
     : targetRole.permissions instanceof Set

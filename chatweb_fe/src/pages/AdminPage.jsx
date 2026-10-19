@@ -12,6 +12,7 @@ import {
   canAssignRole,
   hasPermission,
   isAdminUser,
+  isRootAdmin as checkIsRootAdmin,
   isSystemRole,
   normalizeRoleName,
   PERMISSIONS,
@@ -980,9 +981,9 @@ function UserDrawer({ currentUser, selectedUser, addresses, editingAddress, setE
   const isEditing = Boolean(selectedUser)
   const canUpdate = can(PERMISSIONS.ADMIN_UPDATE_USER)
   const canCreate = can(PERMISSIONS.ADMIN_CREATE)
-  const isSelf = Boolean(selectedUser && currentUser && selectedUser.username === currentUser.username)
-  const isRootAdmin = Boolean(selectedUser && selectedUser.username === 'admin')
-  const isTargetProtected = isRootAdmin && !isSelf
+  const isSelf = Boolean(selectedUser && currentUser && (selectedUser.username === currentUser.username || (checkIsRootAdmin(selectedUser) && checkIsRootAdmin(currentUser))))
+  const isRootAdmin = checkIsRootAdmin(selectedUser)
+  const isTargetProtected = isRootAdmin && !checkIsRootAdmin(currentUser)
   const canSubmitForm = isEditing ? (canUpdate && !isTargetProtected) : canCreate
 
   return (

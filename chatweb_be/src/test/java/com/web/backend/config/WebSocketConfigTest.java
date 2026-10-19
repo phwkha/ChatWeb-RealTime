@@ -3,9 +3,12 @@ package com.web.backend.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.web.backend.config.localresolverconfig.Translator;
 import com.web.backend.jwt.JwtHandshakeInterceptor;
+import com.web.backend.model.postgres.PermissionEntity;
+import com.web.backend.model.postgres.RoleEntity;
 import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.service.JwtService;
 import com.web.backend.service.UserServiceDetail;
+import java.util.Set;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.JwtException;
 import org.junit.jupiter.api.BeforeEach;
@@ -26,6 +29,7 @@ import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.ExecutorChannelInterceptor;
 import org.springframework.messaging.support.MessageBuilder;
+import org.springframework.security.authentication.LockedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -475,5 +479,69 @@ class WebSocketConfigTest {
         ExecutorChannelInterceptor interceptor = createChannelInterceptor();
         assertDoesNotThrow(
                 () -> interceptor.afterSendCompletion(mock(Message.class), mock(MessageChannel.class), true, null));
+    }
+
+    @Test
+    void testBeforeHandle_OnSendCommand_RefreshesAuthoritiesFromUserServiceDetail() {
+        ExecutorChannelInterceptor interceptor = createChannelInterceptor();
+        StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SEND);
+        Authentication auth = mock(Authentication.class);
+        when(auth.getName()).thenReturn("testuser");
+        accessor.setUser(auth);
+        Message<String> message = MessageBuilder.createMessage("test", accessor.getMessageHeaders());
+
+        UserEntity user = new UserEntity();
+        user.setUsername("testuser");
+        RoleEntity role = new RoleEntity();
+        PermissionEntity perm = new PermissionEntity();
+        perm.setName("USER_SEND_WORLD_CHAT");
+        role.setPermissions(Set.of(perm));
+        user.setRole(role);
+        when(userServiceDetail.loadUserByUsername("testuser")).thenReturn(user);
+
+        Message<?> result = interceptor.beforeHandle(message, mock(MessageChannel.class), mock(MessageHandler.class));
+        assertSame(message, result);
+        assertNotNull(SecurityContextHolder.getContext().getAuthentication());
+        assertEquals("testuser", SecurityContextHolder.getContext().getAuthentication().getName());
+        assertEquals(1, SecurityContextHolder.getContext().getAuthentication().getAuthorities().size());
+        assertTrue(SecurityContextHolder.getContext().getAuthentication().getAuthorities().stream()
+                .anyMatch(a -> "USER_SEND_WORLD_CHAT".equals(a.getAuthority())));
+        SecurityContextHolder.clearContext();
+    }
+
+    @Test
+    void testBeforeHandle_OnSendCommand_WhenUserLocked_ThrowsLockedException() {
+        ExecutorChannelInterceptor interceptor = createChannelInterceptor();
+        StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SEND);
+        Authentication auth = mock(Authentication.class);
+        when(auth.getName()).thenReturn("lockeduser");
+        accessor.setUser(auth);
+        Message<String> message = MessageBuilder.createMessage("test", accessor.getMessageHeaders());
+
+        when(userServiceDetail.loadUserByUsername("lockeduser")).thenThrow(new LockedException("Account locked"));
+
+        assertThrows(LockedException.class,
+                () -> interceptor.beforeHandle(message, mock(MessageChannel.class), mock(MessageHandler.class)));
+        SecurityContextHolder.clearContext();
+    }
+
+    @Test
+    void testBeforeHandle_OnSendCommand_WhenTokenVersionChanged_ThrowsMessagingException() {
+        ExecutorChannelInterceptor interceptor = createChannelInterceptor();
+        StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SEND);
+        Authentication auth = mock(Authentication.class);
+        when(auth.getName()).thenReturn("testuser");
+        accessor.setUser(auth);
+        accessor.setSessionAttributes(new HashMap<>(Map.of("WS_TOKEN_VERSION", 1)));
+        Message<String> message = MessageBuilder.createMessage("test", accessor.getMessageHeaders());
+
+        UserEntity user = new UserEntity();
+        user.setUsername("testuser");
+        user.setTokenVersion(2);
+        when(userServiceDetail.loadUserByUsername("testuser")).thenReturn(user);
+
+        assertThrows(MessagingException.class,
+                () -> interceptor.beforeHandle(message, mock(MessageChannel.class), mock(MessageHandler.class)));
+        SecurityContextHolder.clearContext();
     }
 }

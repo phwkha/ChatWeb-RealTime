@@ -16,7 +16,9 @@ import com.web.backend.exception.custom.InvalidDataException;
 import com.web.backend.exception.custom.ResourceConflictException;
 import com.web.backend.exception.custom.ResourceNotFoundException;
 import com.web.backend.mapper.ReportMapper;
+import com.web.backend.model.postgres.PermissionEntity;
 import com.web.backend.model.postgres.ReportEntity;
+import com.web.backend.model.postgres.RoleEntity;
 import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.repository.ReportRepository;
 import com.web.backend.repository.UserRepository;
@@ -35,6 +37,7 @@ import org.springframework.data.jpa.domain.Specification;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -370,6 +373,11 @@ class ReportServiceTest {
         UserEntity admin = new UserEntity();
         admin.setId(99L);
         admin.setUsername("admin");
+        RoleEntity adminRole = new RoleEntity();
+        PermissionEntity lockPerm = new PermissionEntity();
+        lockPerm.setName("ADMIN_LOCK");
+        adminRole.setPermissions(Set.of(lockPerm));
+        admin.setRole(adminRole);
 
         ReportEntity report = ReportEntity.builder()
                 .reporter(reporter)
@@ -402,6 +410,39 @@ class ReportServiceTest {
         assertThat(result.getStatus()).isEqualTo(ReportStatus.RESOLVED);
         verify(adminService).lockUser("reported");
         verify(reportRepository).save(report);
+    }
+
+    @Test
+    void resolveReport_withLockUser_withoutLockAuthority_throwsAccessForbiddenException() {
+        UserEntity moderator = new UserEntity();
+        moderator.setId(99L);
+        moderator.setUsername("moderator");
+        RoleEntity modRole = new RoleEntity();
+        PermissionEntity resolvePerm = new PermissionEntity();
+        resolvePerm.setName("ADMIN_RESOLVE_REPORTS");
+        modRole.setPermissions(Set.of(resolvePerm));
+        moderator.setRole(modRole);
+
+        ReportEntity report = ReportEntity.builder()
+                .reporter(reporter)
+                .reportedUser(reportedUser)
+                .status(ReportStatus.PENDING)
+                .build();
+        report.setId(10L);
+
+        when(reportRepository.findWithDetailsById(10L)).thenReturn(Optional.of(report));
+
+        ResolveReportRequest request = ResolveReportRequest.builder()
+                .status(ReportStatus.RESOLVED)
+                .resolutionNote("Violation confirmed")
+                .lockReportedUser(true)
+                .build();
+
+        assertThatThrownBy(() -> reportService.resolveReport(moderator, 10L, request))
+                .isInstanceOf(AccessForbiddenException.class);
+
+        verify(adminService, never()).lockUser(anyString());
+        verify(reportRepository, never()).save(any());
     }
 
     @Test

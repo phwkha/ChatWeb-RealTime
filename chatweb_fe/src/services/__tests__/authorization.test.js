@@ -3,6 +3,8 @@ import {
   PERMISSIONS,
   SYSTEM_ROLES,
   ADMIN_CONSOLE_PERMISSIONS,
+  ROOT_ADMIN_USERNAME,
+  isRootAdmin,
   normalizeRoleName,
   isSystemRole,
   isSuperAdmin,
@@ -253,6 +255,69 @@ describe('authorization service', () => {
         permissions: ['ADMIN_VIEW_USERS', 'ADMIN_DELETE_USER'],
       }
       expect(canAssignRole(manager, elevatedRole)).toBe(false)
+    })
+
+    it('enforces explicit permissions even if user has ADMIN role', () => {
+      const scopedAdmin = {
+        role: 'ADMIN',
+        permissions: ['ADMIN_VIEW_USERS'],
+      }
+      const roleNeedingDelete = {
+        name: 'DELETER',
+        permissions: ['ADMIN_DELETE_USER'],
+      }
+      expect(canAssignRole(scopedAdmin, roleNeedingDelete)).toBe(false)
+    })
+  })
+
+  describe('ROOT_ADMIN_USERNAME and isRootAdmin', () => {
+    it('defines ROOT_ADMIN_USERNAME as admin', () => {
+      expect(ROOT_ADMIN_USERNAME).toBe('admin')
+    })
+
+    it('correctly identifies root admin from username string or user object case-insensitively', () => {
+      expect(isRootAdmin('admin')).toBe(true)
+      expect(isRootAdmin('ADMIN')).toBe(true)
+      expect(isRootAdmin('  admin  ')).toBe(true)
+      expect(isRootAdmin({ username: 'admin' })).toBe(true)
+      expect(isRootAdmin({ username: 'ADMIN' })).toBe(true)
+      expect(isRootAdmin({ username: '  admin  ' })).toBe(true)
+    })
+
+    it('returns false for other usernames, null, or undefined', () => {
+      expect(isRootAdmin('superadmin')).toBe(false)
+      expect(isRootAdmin('root')).toBe(false)
+      expect(isRootAdmin({ username: 'moderator' })).toBe(false)
+      expect(isRootAdmin({ username: '' })).toBe(false)
+      expect(isRootAdmin(null)).toBe(false)
+      expect(isRootAdmin(undefined)).toBe(false)
+      expect(isRootAdmin({})).toBe(false)
+    })
+  })
+
+  describe('explicit permissions behavior vs superAdmin fallback', () => {
+    it('restricts user to explicit permissions even if user has ADMIN role', () => {
+      const scopedAdmin = {
+        role: 'ADMIN',
+        permissions: ['ADMIN_VIEW_USERS'],
+      }
+      expect(hasPermission(scopedAdmin, 'ADMIN_VIEW_USERS')).toBe(true)
+      expect(hasPermission(scopedAdmin, 'ADMIN_DELETE_USER')).toBe(false)
+      expect(hasAnyPermission(scopedAdmin, ['ADMIN_VIEW_USERS', 'ADMIN_DELETE_USER'])).toBe(true)
+      expect(hasAllPermissions(scopedAdmin, ['ADMIN_VIEW_USERS', 'ADMIN_DELETE_USER'])).toBe(false)
+    })
+
+    it('falls back to superAdmin bypass when user has no explicit permissions', () => {
+      const legacyAdmin1 = { role: 'ADMIN' }
+      const legacyAdmin2 = { role: 'ADMIN', permissions: [] }
+      const legacyAdmin3 = { role: 'ADMIN', permissions: null }
+
+      expect(hasPermission(legacyAdmin1, 'ADMIN_DELETE_USER')).toBe(true)
+      expect(hasPermission(legacyAdmin2, 'ADMIN_DELETE_USER')).toBe(true)
+      expect(hasPermission(legacyAdmin3, 'ADMIN_DELETE_USER')).toBe(true)
+
+      expect(hasAllPermissions(legacyAdmin1, ['ADMIN_DELETE_USER', 'ADMIN_VIEW_USERS'])).toBe(true)
+      expect(canAssignRole(legacyAdmin1, { permissions: ['ADMIN_DELETE_USER'] })).toBe(true)
     })
   })
 })

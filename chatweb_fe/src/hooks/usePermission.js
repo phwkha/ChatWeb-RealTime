@@ -1,8 +1,9 @@
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useAuth } from '../context/auth-context.js'
 import {
   PERMISSIONS,
   canAssignRole as checkCanAssignRole,
+  isRootAdmin as checkIsRootAdmin,
   isSystemRole,
 } from '../services/authorization.js'
 
@@ -16,6 +17,8 @@ export function usePermission() {
     isSuperAdmin,
     hasAdminAccess,
   } = useAuth()
+
+  const isRootAdmin = useMemo(() => checkIsRootAdmin(user), [user])
 
   const canAssignRole = useCallback(
     (role) => checkCanAssignRole(user, role),
@@ -40,6 +43,7 @@ export function usePermission() {
     canAll: canAll || (() => false),
     isSuperAdmin: Boolean(isSuperAdmin),
     hasAdminAccess: Boolean(hasAdminAccess),
+    isRootAdmin,
     canAssignRole,
     canEditRole,
     canDeleteRole,
