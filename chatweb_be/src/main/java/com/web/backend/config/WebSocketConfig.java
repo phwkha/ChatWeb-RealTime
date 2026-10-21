@@ -61,6 +61,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     private final ObjectMapper objectMapper;
 
     private static final String WS_LOCALE_ATTR = "WS_LOCALE";
+    private static final String WS_TOKEN_VERSION_ATTR = "WS_TOKEN_VERSION";
     private static final String ONLINE_USERS_KEY = "online_users";
 
     private static final String ERR_WS_BLACKLISTED = "error.ws.blacklisted";
@@ -187,8 +188,9 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                 if (accessor != null) {
                     Principal user = accessor.getUser();
                     if (user instanceof Authentication auth) {
+                        Authentication freshAuth = refreshAuthenticationIfSendCommand(accessor, auth);
                         SecurityContext context = SecurityContextHolder.createEmptyContext();
-                        context.setAuthentication(auth);
+                        context.setAuthentication(freshAuth);
                         SecurityContextHolder.setContext(context);
                     }
                 }
@@ -273,6 +275,11 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
             if (userDetails instanceof UserEntity userEntity) {
                 checkTokenVersion(token, userEntity, username);
+                if (accessor.getSessionAttributes() != null) {
+                    Integer tokenVersionInJwt = jwtService.extractClaim(token,
+                            claims -> claims.get("v", Integer.class));
+                    accessor.getSessionAttributes().put(WS_TOKEN_VERSION_ATTR, tokenVersionInJwt);
+                }
             }
 
             UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
@@ -280,6 +287,39 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
             accessor.setUser(auth);
             log.debug("WebSocket handshake authenticated user '{}'", username);
         }
+    }
+
+    private Authentication refreshAuthenticationIfSendCommand(StompHeaderAccessor accessor,
+            Authentication currentAuth) {
+        if (!StompCommand.SEND.equals(accessor.getCommand()) || currentAuth.getName() == null) {
+            return currentAuth;
+        }
+
+        String username = currentAuth.getName();
+        UserDetails latestUserDetails = userServiceDetail.loadUserByUsername(username);
+        if (latestUserDetails == null) {
+            return currentAuth;
+        }
+
+        if (latestUserDetails instanceof UserEntity latestUserEntity && accessor.getSessionAttributes() != null) {
+            Integer sessionTokenVersion = (Integer) accessor.getSessionAttributes().get(WS_TOKEN_VERSION_ATTR);
+            Integer currentVersion = latestUserEntity.getTokenVersion() != null
+                    ? latestUserEntity.getTokenVersion()
+                    : 0;
+            if (sessionTokenVersion != null && !sessionTokenVersion.equals(currentVersion)) {
+                log.warn("WebSocket active session tokenVersion mismatch on SEND for user '{}'", username);
+                throw new MessagingException(
+                        Objects.requireNonNull(Translator.tolocale(ERR_WS_INVALID_TOKEN_VERSION)),
+                        new JwtException("invalid_token_version"));
+            }
+        }
+
+        UsernamePasswordAuthenticationToken refreshedAuth = new UsernamePasswordAuthenticationToken(
+                latestUserDetails, null, latestUserDetails.getAuthorities());
+        if (accessor.isMutable()) {
+            accessor.setUser(refreshedAuth);
+        }
+        return refreshedAuth;
     }
 
     private void checkTokenVersion(String token, UserEntity userEntity, String username) {

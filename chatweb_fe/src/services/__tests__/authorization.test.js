@@ -3,6 +3,8 @@ import {
   PERMISSIONS,
   SYSTEM_ROLES,
   ADMIN_CONSOLE_PERMISSIONS,
+  ROOT_ADMIN_USERNAME,
+  isRootAdmin,
   normalizeRoleName,
   isSystemRole,
   isSuperAdmin,
@@ -13,6 +15,12 @@ import {
   hasAnyPermission,
   hasAllPermissions,
   canAssignRole,
+  USER_MANAGEMENT_PERMISSIONS,
+  USER_DRAWER_ACTION_PERMISSIONS,
+  REPORT_MODERATION_PERMISSIONS,
+  ROLE_MANAGEMENT_PERMISSIONS,
+  PERMISSION_PREREQUISITES,
+  resolvePermissionIdsWithPrerequisites,
 } from '../authorization.js'
 
 describe('authorization service', () => {
@@ -253,6 +261,170 @@ describe('authorization service', () => {
         permissions: ['ADMIN_VIEW_USERS', 'ADMIN_DELETE_USER'],
       }
       expect(canAssignRole(manager, elevatedRole)).toBe(false)
+    })
+
+    it('enforces explicit permissions even if user has ADMIN role', () => {
+      const scopedAdmin = {
+        role: 'ADMIN',
+        permissions: ['ADMIN_VIEW_USERS'],
+      }
+      const roleNeedingDelete = {
+        name: 'DELETER',
+        permissions: ['ADMIN_DELETE_USER'],
+      }
+      expect(canAssignRole(scopedAdmin, roleNeedingDelete)).toBe(false)
+    })
+  })
+
+  describe('ROOT_ADMIN_USERNAME and isRootAdmin', () => {
+    it('defines ROOT_ADMIN_USERNAME as admin', () => {
+      expect(ROOT_ADMIN_USERNAME).toBe('admin')
+    })
+
+    it('correctly identifies root admin from username string or user object case-insensitively', () => {
+      expect(isRootAdmin('admin')).toBe(true)
+      expect(isRootAdmin('ADMIN')).toBe(true)
+      expect(isRootAdmin('  admin  ')).toBe(true)
+      expect(isRootAdmin({ username: 'admin' })).toBe(true)
+      expect(isRootAdmin({ username: 'ADMIN' })).toBe(true)
+      expect(isRootAdmin({ username: '  admin  ' })).toBe(true)
+    })
+
+    it('returns false for other usernames, null, or undefined', () => {
+      expect(isRootAdmin('superadmin')).toBe(false)
+      expect(isRootAdmin('root')).toBe(false)
+      expect(isRootAdmin({ username: 'moderator' })).toBe(false)
+      expect(isRootAdmin({ username: '' })).toBe(false)
+      expect(isRootAdmin(null)).toBe(false)
+      expect(isRootAdmin(undefined)).toBe(false)
+      expect(isRootAdmin({})).toBe(false)
+    })
+  })
+
+  describe('explicit permissions behavior vs superAdmin fallback', () => {
+    it('restricts user to explicit permissions even if user has ADMIN role', () => {
+      const scopedAdmin = {
+        role: 'ADMIN',
+        permissions: ['ADMIN_VIEW_USERS'],
+      }
+      expect(hasPermission(scopedAdmin, 'ADMIN_VIEW_USERS')).toBe(true)
+      expect(hasPermission(scopedAdmin, 'ADMIN_DELETE_USER')).toBe(false)
+      expect(hasAnyPermission(scopedAdmin, ['ADMIN_VIEW_USERS', 'ADMIN_DELETE_USER'])).toBe(true)
+      expect(hasAllPermissions(scopedAdmin, ['ADMIN_VIEW_USERS', 'ADMIN_DELETE_USER'])).toBe(false)
+    })
+
+    it('falls back to superAdmin bypass when user has no explicit permissions', () => {
+      const legacyAdmin1 = { role: 'ADMIN' }
+      const legacyAdmin2 = { role: 'ADMIN', permissions: [] }
+      const legacyAdmin3 = { role: 'ADMIN', permissions: null }
+
+      expect(hasPermission(legacyAdmin1, 'ADMIN_DELETE_USER')).toBe(true)
+      expect(hasPermission(legacyAdmin2, 'ADMIN_DELETE_USER')).toBe(true)
+      expect(hasPermission(legacyAdmin3, 'ADMIN_DELETE_USER')).toBe(true)
+
+      expect(hasAllPermissions(legacyAdmin1, ['ADMIN_DELETE_USER', 'ADMIN_VIEW_USERS'])).toBe(true)
+      expect(canAssignRole(legacyAdmin1, { permissions: ['ADMIN_DELETE_USER'] })).toBe(true)
+    })
+  })
+
+  describe('permission groups and prerequisites', () => {
+    it('exports frozen permission groups with correct members', () => {
+      expect(Object.isFrozen(USER_MANAGEMENT_PERMISSIONS)).toBe(true)
+      expect(USER_MANAGEMENT_PERMISSIONS).toHaveLength(12)
+      expect(USER_MANAGEMENT_PERMISSIONS).toContain(PERMISSIONS.ADMIN_VIEW_USERS)
+      expect(USER_MANAGEMENT_PERMISSIONS).toContain(PERMISSIONS.ADMIN_LOCK)
+      expect(USER_MANAGEMENT_PERMISSIONS).toContain(PERMISSIONS.ADMIN_DELETE_AVATAR)
+
+      expect(Object.isFrozen(USER_DRAWER_ACTION_PERMISSIONS)).toBe(true)
+      expect(USER_DRAWER_ACTION_PERMISSIONS).toHaveLength(9)
+      expect(USER_DRAWER_ACTION_PERMISSIONS).toContain(PERMISSIONS.ADMIN_VIEW_USER_DETAIL)
+      expect(USER_DRAWER_ACTION_PERMISSIONS).toContain(PERMISSIONS.ADMIN_UNLOCK)
+
+      expect(Object.isFrozen(REPORT_MODERATION_PERMISSIONS)).toBe(true)
+      expect(REPORT_MODERATION_PERMISSIONS).toHaveLength(3)
+      expect(REPORT_MODERATION_PERMISSIONS).toEqual([
+        PERMISSIONS.ADMIN_VIEW_REPORTS,
+        PERMISSIONS.ADMIN_RESOLVE_REPORTS,
+        PERMISSIONS.ADMIN_DELETE_REPORTS,
+      ])
+
+      expect(Object.isFrozen(ROLE_MANAGEMENT_PERMISSIONS)).toBe(true)
+      expect(ROLE_MANAGEMENT_PERMISSIONS).toHaveLength(5)
+      expect(ROLE_MANAGEMENT_PERMISSIONS).toContain(PERMISSIONS.ADMIN_ROLE_VIEW_ALL)
+      expect(ROLE_MANAGEMENT_PERMISSIONS).toContain(PERMISSIONS.ADMIN_ROLE_ADD)
+    })
+
+    it('exports PERMISSION_PREREQUISITES mapping properly', () => {
+      expect(Object.isFrozen(PERMISSION_PREREQUISITES)).toBe(true)
+      expect(PERMISSION_PREREQUISITES[PERMISSIONS.ADMIN_LOCK]).toEqual([
+        PERMISSIONS.ADMIN_VIEW_USERS,
+        PERMISSIONS.ADMIN_VIEW_USER_DETAIL,
+      ])
+      expect(PERMISSION_PREREQUISITES[PERMISSIONS.ADMIN_RESOLVE_REPORTS]).toEqual([
+        PERMISSIONS.ADMIN_VIEW_REPORTS,
+      ])
+    })
+
+    describe('resolvePermissionIdsWithPrerequisites', () => {
+      const mockAvailablePermissions = [
+        { id: 1, name: 'ADMIN_VIEW_USERS' },
+        { id: 2, name: 'ADMIN_VIEW_USER_DETAIL' },
+        { id: 3, name: 'ADMIN_LOCK' },
+        { id: 4, name: 'ADMIN_VIEW_USER_ADDRESSES' },
+        { id: 5, name: 'ADMIN_UPDATE_USER_ADDRESS' },
+        { id: 6, name: 'ADMIN_VIEW_REPORTS' },
+        { id: 7, name: 'ADMIN_RESOLVE_REPORTS' },
+        { id: 8, name: 'ADMIN_ROLE_VIEW_ALL' },
+        { id: 9, name: 'ADMIN_ROLE_VIEW_ALL_PERMISSION' },
+        { id: 10, name: 'ADMIN_ROLE_ADD' },
+      ]
+
+      it('adds ADMIN_VIEW_USERS and ADMIN_VIEW_USER_DETAIL when adding ADMIN_LOCK', () => {
+        const result = resolvePermissionIdsWithPrerequisites([], 3, mockAvailablePermissions)
+        expect(result).toContain(3)
+        expect(result).toContain(1)
+        expect(result).toContain(2)
+      })
+
+      it('transitively adds all prerequisites when adding ADMIN_UPDATE_USER_ADDRESS', () => {
+        const result = resolvePermissionIdsWithPrerequisites([], 5, mockAvailablePermissions)
+        expect(result).toContain(5)
+        expect(result).toContain(4)
+        expect(result).toContain(2)
+        expect(result).toContain(1)
+      })
+
+      it('adds ADMIN_VIEW_REPORTS when adding ADMIN_RESOLVE_REPORTS', () => {
+        const result = resolvePermissionIdsWithPrerequisites([99], 7, mockAvailablePermissions)
+        expect(result).toContain(99)
+        expect(result).toContain(7)
+        expect(result).toContain(6)
+      })
+
+      it('adds ADMIN_ROLE_VIEW_ALL and ADMIN_ROLE_VIEW_ALL_PERMISSION when adding ADMIN_ROLE_ADD', () => {
+        const result = resolvePermissionIdsWithPrerequisites([], 10, mockAvailablePermissions)
+        expect(result).toContain(10)
+        expect(result).toContain(8)
+        expect(result).toContain(9)
+      })
+
+      it('handles null or undefined addedPermissionId safely', () => {
+        expect(resolvePermissionIdsWithPrerequisites([1, 2], null, mockAvailablePermissions)).toEqual([1, 2])
+        expect(resolvePermissionIdsWithPrerequisites([1, 2], undefined, mockAvailablePermissions)).toEqual([1, 2])
+        expect(resolvePermissionIdsWithPrerequisites(undefined, 3, mockAvailablePermissions)).toContain(3)
+      })
+
+      it('resolves when permissions use backward-compatibility aliases', () => {
+        const aliasedPerms = [
+          { id: 101, name: 'ROLE_VIEW_ALL' },
+          { id: 102, name: 'ROLE_VIEW_ALL_PERMISSION' },
+          { id: 103, name: 'ROLE_ADD' },
+        ]
+        const result = resolvePermissionIdsWithPrerequisites([], 103, aliasedPerms)
+        expect(result).toContain(103)
+        expect(result).toContain(101)
+        expect(result).toContain(102)
+      })
     })
   })
 })

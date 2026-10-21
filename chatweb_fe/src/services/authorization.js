@@ -41,10 +41,141 @@ export const PERMISSIONS = Object.freeze({
   USER_SEND_WORLD_CHAT: 'USER_SEND_WORLD_CHAT',
 })
 
+export const USER_MANAGEMENT_PERMISSIONS = Object.freeze([
+  PERMISSIONS.ADMIN_VIEW_USERS,
+  PERMISSIONS.ADMIN_VIEW_ONLINE_USERS,
+  PERMISSIONS.ADMIN_VIEW_USER_DETAIL,
+  PERMISSIONS.ADMIN_VIEW_USER_ADDRESSES,
+  PERMISSIONS.ADMIN_CREATE,
+  PERMISSIONS.ADMIN_UPDATE_USER,
+  PERMISSIONS.ADMIN_UPDATE_USER_ADDRESS,
+  PERMISSIONS.ADMIN_DELETE_USER,
+  PERMISSIONS.ADMIN_DELETE_USER_ADDRESS,
+  PERMISSIONS.ADMIN_LOCK,
+  PERMISSIONS.ADMIN_UNLOCK,
+  PERMISSIONS.ADMIN_DELETE_AVATAR,
+])
+
+export const USER_DRAWER_ACTION_PERMISSIONS = Object.freeze([
+  PERMISSIONS.ADMIN_VIEW_USER_DETAIL,
+  PERMISSIONS.ADMIN_VIEW_USER_ADDRESSES,
+  PERMISSIONS.ADMIN_UPDATE_USER,
+  PERMISSIONS.ADMIN_UPDATE_USER_ADDRESS,
+  PERMISSIONS.ADMIN_DELETE_USER,
+  PERMISSIONS.ADMIN_DELETE_USER_ADDRESS,
+  PERMISSIONS.ADMIN_LOCK,
+  PERMISSIONS.ADMIN_UNLOCK,
+  PERMISSIONS.ADMIN_DELETE_AVATAR,
+])
+
+export const REPORT_MODERATION_PERMISSIONS = Object.freeze([
+  PERMISSIONS.ADMIN_VIEW_REPORTS,
+  PERMISSIONS.ADMIN_RESOLVE_REPORTS,
+  PERMISSIONS.ADMIN_DELETE_REPORTS,
+])
+
+export const ROLE_MANAGEMENT_PERMISSIONS = Object.freeze([
+  PERMISSIONS.ADMIN_ROLE_VIEW_ALL,
+  PERMISSIONS.ADMIN_ROLE_VIEW_ALL_PERMISSION,
+  PERMISSIONS.ADMIN_ROLE_ADD,
+  PERMISSIONS.ADMIN_ROLE_UPDATE,
+  PERMISSIONS.ADMIN_ROLE_DELETE,
+])
+
+export const PERMISSION_PREREQUISITES = Object.freeze({
+  [PERMISSIONS.ADMIN_VIEW_USER_DETAIL]: [PERMISSIONS.ADMIN_VIEW_USERS],
+  [PERMISSIONS.ADMIN_UPDATE_USER]: [PERMISSIONS.ADMIN_VIEW_USERS, PERMISSIONS.ADMIN_VIEW_USER_DETAIL],
+  [PERMISSIONS.ADMIN_LOCK]: [PERMISSIONS.ADMIN_VIEW_USERS, PERMISSIONS.ADMIN_VIEW_USER_DETAIL],
+  [PERMISSIONS.ADMIN_UNLOCK]: [PERMISSIONS.ADMIN_VIEW_USERS, PERMISSIONS.ADMIN_VIEW_USER_DETAIL],
+  [PERMISSIONS.ADMIN_DELETE_USER]: [PERMISSIONS.ADMIN_VIEW_USERS, PERMISSIONS.ADMIN_VIEW_USER_DETAIL],
+  [PERMISSIONS.ADMIN_DELETE_AVATAR]: [PERMISSIONS.ADMIN_VIEW_USERS, PERMISSIONS.ADMIN_VIEW_USER_DETAIL],
+  [PERMISSIONS.ADMIN_VIEW_USER_ADDRESSES]: [PERMISSIONS.ADMIN_VIEW_USERS, PERMISSIONS.ADMIN_VIEW_USER_DETAIL],
+  [PERMISSIONS.ADMIN_UPDATE_USER_ADDRESS]: [
+    PERMISSIONS.ADMIN_VIEW_USERS,
+    PERMISSIONS.ADMIN_VIEW_USER_DETAIL,
+    PERMISSIONS.ADMIN_VIEW_USER_ADDRESSES,
+  ],
+  [PERMISSIONS.ADMIN_DELETE_USER_ADDRESS]: [
+    PERMISSIONS.ADMIN_VIEW_USERS,
+    PERMISSIONS.ADMIN_VIEW_USER_DETAIL,
+    PERMISSIONS.ADMIN_VIEW_USER_ADDRESSES,
+  ],
+  [PERMISSIONS.ADMIN_ROLE_ADD]: [
+    PERMISSIONS.ADMIN_ROLE_VIEW_ALL,
+    PERMISSIONS.ADMIN_ROLE_VIEW_ALL_PERMISSION,
+  ],
+  [PERMISSIONS.ADMIN_ROLE_UPDATE]: [
+    PERMISSIONS.ADMIN_ROLE_VIEW_ALL,
+    PERMISSIONS.ADMIN_ROLE_VIEW_ALL_PERMISSION,
+  ],
+  [PERMISSIONS.ADMIN_ROLE_DELETE]: [PERMISSIONS.ADMIN_ROLE_VIEW_ALL],
+  [PERMISSIONS.ADMIN_RESOLVE_REPORTS]: [PERMISSIONS.ADMIN_VIEW_REPORTS],
+  [PERMISSIONS.ADMIN_DELETE_REPORTS]: [PERMISSIONS.ADMIN_VIEW_REPORTS],
+})
+
+export function resolvePermissionIdsWithPrerequisites(
+  currentPermissionIds = [],
+  addedPermissionId,
+  availablePermissions = []
+) {
+  const nextIds = new Set(Array.isArray(currentPermissionIds) ? currentPermissionIds : [])
+  if (addedPermissionId !== undefined && addedPermissionId !== null) {
+    nextIds.add(addedPermissionId)
+  }
+
+  const addedPerm = (availablePermissions || []).find(
+    (p) => p && (p.id === addedPermissionId || String(p.id) === String(addedPermissionId))
+  )
+  if (!addedPerm || !addedPerm.name) {
+    return Array.from(nextIds)
+  }
+
+  const queue = [addedPerm.name]
+  const visited = new Set([addedPerm.name])
+
+  while (queue.length > 0) {
+    const currentName = queue.shift()
+    const canonCurrent = PERMISSIONS[currentName] || currentName
+    const requiredNames = PERMISSION_PREREQUISITES[canonCurrent] || []
+
+    for (const reqName of requiredNames) {
+      const canonReq = PERMISSIONS[reqName] || reqName
+      const match = (availablePermissions || []).find(
+        (p) => p && (p.name === reqName || (PERMISSIONS[p.name] || p.name) === canonReq)
+      )
+      if (match && match.id !== undefined && match.id !== null) {
+        nextIds.add(match.id)
+      }
+      if (!visited.has(canonReq)) {
+        visited.add(canonReq)
+        queue.push(canonReq)
+      }
+    }
+  }
+
+  return Array.from(nextIds)
+}
+
 export const SYSTEM_ROLES = Object.freeze({
   ADMIN: 'ADMIN',
   USER: 'USER',
 })
+
+export const ROOT_ADMIN_USERNAME = 'admin'
+
+export function isRootAdmin(userOrUsername) {
+  if (!userOrUsername) return false
+  const username = typeof userOrUsername === 'string'
+    ? userOrUsername
+    : userOrUsername.username
+  return typeof username === 'string' && username.trim().toLowerCase() === ROOT_ADMIN_USERNAME
+}
+
+function hasExplicitPermissions(user) {
+  if (!user || user.permissions === undefined || user.permissions === null) return false
+  if (user.permissions instanceof Set) return user.permissions.size > 0
+  return Array.isArray(user.permissions) && user.permissions.length > 0
+}
 
 export const ADMIN_CONSOLE_PERMISSIONS = Object.freeze(
   Array.from(
@@ -96,7 +227,6 @@ export function getUserPermissionSet(user) {
 
 export function hasPermission(user, permission) {
   if (!user || !permission) return false
-  if (isSuperAdmin(user)) return true
   const permissionSet = getUserPermissionSet(user)
   if (permissionSet.has(permission)) return true
   const mapped = PERMISSIONS[permission]
@@ -104,20 +234,19 @@ export function hasPermission(user, permission) {
   for (const [key, val] of Object.entries(PERMISSIONS)) {
     if (val === permission && permissionSet.has(key)) return true
   }
+  if (!hasExplicitPermissions(user) && isSuperAdmin(user)) return true
   return false
 }
 
 export function hasAnyPermission(user, permissions = []) {
   if (!user) return false
   if (!Array.isArray(permissions) || permissions.length === 0) return true
-  if (isSuperAdmin(user)) return true
   return permissions.some((permission) => hasPermission(user, permission))
 }
 
 export function hasAllPermissions(user, permissions = []) {
   if (!user) return false
   if (!Array.isArray(permissions) || permissions.length === 0) return true
-  if (isSuperAdmin(user)) return true
   return permissions.every((permission) => hasPermission(user, permission))
 }
 
@@ -146,7 +275,6 @@ export function isAdminAccount(person) {
 
 export function canAssignRole(user, targetRole) {
   if (!user || !targetRole) return false
-  if (isSuperAdmin(user)) return true
   const rawPermissions = Array.isArray(targetRole.permissions)
     ? targetRole.permissions
     : targetRole.permissions instanceof Set

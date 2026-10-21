@@ -15,3 +15,5 @@ ssl/
 *.crt
 *.p12
 *.csr
+
+planai/

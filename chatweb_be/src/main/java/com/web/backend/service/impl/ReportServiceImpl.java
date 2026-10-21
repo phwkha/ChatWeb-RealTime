@@ -62,6 +62,8 @@ public class ReportServiceImpl implements ReportService {
     private static final String ERROR_REPORT_NOT_FOUND_STRING = "error.report.not_found";
     private static final String ERROR_REPORT_CANNOT_CANCEL_STRING = "error.report.cannot_cancel";
     private static final String VALID_REPORT_TARGET_REQUIRED_STRING = "valid.report_target_required";
+    private static final String PERMISSION_ADMIN_LOCK = "ADMIN_LOCK";
+    private static final String ERROR_AUTH_FORBIDDEN_STRING = "error.auth.forbidden";
 
     private static final Set<String> ALLOWED_SORT_FIELDS = Set.of(
             ID_STRING, CREATE_AT_STRING, STATUS_STRING, REASON_STRING);
@@ -161,6 +163,14 @@ public class ReportServiceImpl implements ReportService {
         ReportEntity report = reportRepository.findWithDetailsById(reportId)
                 .orElseThrow(() -> new ResourceNotFoundException(Translator.tolocale(ERROR_REPORT_NOT_FOUND_STRING)));
 
+        if (Boolean.TRUE.equals(request.getLockReportedUser()) && !hasAuthority(adminUser, PERMISSION_ADMIN_LOCK)) {
+            log.warn("Admin '{}' attempted to lock reported user '{}' without '{}' authority",
+                    adminUser != null ? adminUser.getUsername() : "unknown",
+                    report.getReportedUser().getUsername(),
+                    PERMISSION_ADMIN_LOCK);
+            throw new AccessForbiddenException(Translator.tolocale(ERROR_AUTH_FORBIDDEN_STRING));
+        }
+
         report.setStatus(request.getStatus());
         report.setResolutionNote(request.getResolutionNote());
         report.setResolvedBy(adminUser);
@@ -180,6 +190,14 @@ public class ReportServiceImpl implements ReportService {
 
         log.info("Admin '{}' resolved report id: {} with status: {}", adminUser.getUsername(), reportId, request.getStatus());
         return response;
+    }
+
+    private boolean hasAuthority(UserEntity user, String authority) {
+        if (user == null || user.getAuthorities() == null) {
+            return false;
+        }
+        return user.getAuthorities().stream()
+                .anyMatch(grantedAuthority -> authority.equals(grantedAuthority.getAuthority()));
     }
 
     @Override

@@ -460,9 +460,9 @@ class AdminServiceTest {
 
     @Test
     void testAdminUpdateUser_NotFound() {
+        AdminUpdateUserRequest req = new AdminUpdateUserRequest();
         when(userRepository.findWithAuthoritiesByUsername("testuser")).thenReturn(Optional.empty());
-        assertThatThrownBy(
-                () -> adminService.adminUpdateUser("testuser", new AdminUpdateUserRequest()))
+        assertThatThrownBy(() -> adminService.adminUpdateUser("testuser", req))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 

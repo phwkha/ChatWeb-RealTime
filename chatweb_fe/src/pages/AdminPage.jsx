@@ -12,10 +12,16 @@ import {
   canAssignRole,
   hasPermission,
   isAdminUser,
+  isRootAdmin as checkIsRootAdmin,
   isSystemRole,
   normalizeRoleName,
   PERMISSIONS,
   SYSTEM_ROLES,
+  USER_MANAGEMENT_PERMISSIONS,
+  USER_DRAWER_ACTION_PERMISSIONS,
+  REPORT_MODERATION_PERMISSIONS,
+  ROLE_MANAGEMENT_PERMISSIONS,
+  resolvePermissionIdsWithPrerequisites,
 } from '../services/authorization.js'
 import '../styles/admin.css'
 
@@ -35,14 +41,20 @@ const NAV_ITEMS = [
     id: 'users',
     label: 'Người dùng',
     icon: 'users',
-    permissions: [
-      PERMISSIONS.ADMIN_VIEW_USERS,
-      PERMISSIONS.ADMIN_VIEW_ONLINE_USERS,
-      PERMISSIONS.ADMIN_CREATE,
-    ],
+    permissions: USER_MANAGEMENT_PERMISSIONS,
   },
-  { id: 'reports', label: 'Báo cáo vi phạm', icon: 'flag', permissions: [PERMISSIONS.ADMIN_VIEW_REPORTS] },
-  { id: 'roles', label: 'Role & quyền', icon: 'settings', permissions: [PERMISSIONS.ROLE_VIEW_ALL, PERMISSIONS.ROLE_ADD] },
+  {
+    id: 'reports',
+    label: 'Báo cáo vi phạm',
+    icon: 'flag',
+    permissions: REPORT_MODERATION_PERMISSIONS,
+  },
+  {
+    id: 'roles',
+    label: 'Role & quyền',
+    icon: 'settings',
+    permissions: ROLE_MANAGEMENT_PERMISSIONS,
+  },
   { id: 'email', label: 'Email hệ thống', icon: 'send', permissions: [PERMISSIONS.SEND_EMAIL] },
   { id: 'broadcast', label: 'Thông báo hệ thống', icon: 'globe', permissions: [PERMISSIONS.ADMIN_SEND_MESSAGE] },
 ]
@@ -275,6 +287,7 @@ function AdminPage() {
   }, [announcements.length, loadAnnouncements, tab])
 
   const loadReports = useCallback(async (customFilters = reportFilters) => {
+    if (!can(PERMISSIONS.ADMIN_VIEW_REPORTS)) return
     setBusy('reports-load')
     try {
       const response = await adminApi.getReports(customFilters)
@@ -292,7 +305,7 @@ function AdminPage() {
     } finally {
       setBusy('')
     }
-  }, [notify, reportFilters])
+  }, [can, notify, reportFilters])
 
   useEffect(() => {
     if (tab === 'reports' && reports.length === 0) void loadReports()
@@ -314,12 +327,26 @@ function AdminPage() {
   const openReportDetail = async (reportId) => {
     setBusy('report-detail')
     try {
-      const response = await adminApi.getReport(reportId)
-      if (response?.data) {
-        setSelectedReport(response.data)
+      let reportData = null
+      if (can(PERMISSIONS.ADMIN_VIEW_REPORTS)) {
+        const response = await adminApi.getReport(reportId)
+        reportData = response?.data || null
+      } else if (can(PERMISSIONS.ADMIN_RESOLVE_REPORTS) || can(PERMISSIONS.ADMIN_DELETE_REPORTS)) {
+        reportData = {
+          id: Number(reportId),
+          status: 'PENDING',
+          reason: '—',
+          details: '',
+          reporter: { username: '—' },
+          reportedUser: { username: '—' },
+        }
+      }
+
+      if (reportData) {
+        setSelectedReport(reportData)
         setResolveForm({
-          status: response.data.status === 'PENDING' ? 'RESOLVED' : response.data.status,
-          resolutionNote: response.data.resolutionNote || '',
+          status: reportData.status === 'PENDING' ? 'RESOLVED' : reportData.status,
+          resolutionNote: reportData.resolutionNote || '',
           lockReportedUser: false,
         })
         setReportDrawerOpen(true)
@@ -342,8 +369,10 @@ function AdminPage() {
     if (response) {
       setReportDrawerOpen(false)
       setSelectedReport(null)
-      void loadReports()
-      void loadReportStats()
+      if (can(PERMISSIONS.ADMIN_VIEW_REPORTS)) {
+        void loadReports()
+        void loadReportStats()
+      }
     }
   }
 
@@ -360,8 +389,10 @@ function AdminPage() {
     if (response) {
       setReportDrawerOpen(false)
       setSelectedReport(null)
-      void loadReports()
-      void loadReportStats()
+      if (can(PERMISSIONS.ADMIN_VIEW_REPORTS)) {
+        void loadReports()
+        void loadReportStats()
+      }
     }
   }
 
@@ -380,23 +411,52 @@ function AdminPage() {
     setSelectedUser(null); setSelectedAddresses([]); setEditingAddress(null); setUserForm(EMPTY_USER); setUserEditorOpen(true)
   }
 
-  const openUser = async (username) => {
-    if (!can(PERMISSIONS.ADMIN_VIEW_USER_DETAIL)) return
+  const canOpenUserDrawer = useMemo(
+    () => USER_DRAWER_ACTION_PERMISSIONS.some((p) => can(p)),
+    [can]
+  )
+
+  const openUser = async (usernameOrSeed) => {
+    if (!canOpenUserDrawer) return
+    const targetUsername = typeof usernameOrSeed === 'string'
+      ? usernameOrSeed.trim().replace(/^@/, '')
+      : usernameOrSeed?.username
+    if (!targetUsername) return
+
     setBusy('user-detail'); setNotice(null)
     try {
-      const detail = await adminApi.getUser(username)
+      let userData = null
+      if (can(PERMISSIONS.ADMIN_VIEW_USER_DETAIL)) {
+        const detail = await adminApi.getUser(targetUsername)
+        userData = detail?.data || null
+      } else {
+        const fromList = users.find((u) => u.username === targetUsername)
+        userData = fromList || (typeof usernameOrSeed === 'object' ? usernameOrSeed : null) || {
+          username: targetUsername,
+          userStatus: 'ACTIVE',
+          role: '—',
+          authProvider: 'LOCAL',
+        }
+      }
+
+      if (!userData) return
+
       let addresses = []
-      if (can(PERMISSIONS.ADMIN_VIEW_USER_ADDRESSES)) addresses = (await adminApi.getAddresses(username))?.data || []
-      if (!detail?.data) return
-      setSelectedUser(detail.data); setSelectedAddresses(addresses || detail.data.addresses || []); setEditingAddress(null)
+      if (can(PERMISSIONS.ADMIN_VIEW_USER_ADDRESSES)) {
+        addresses = (await adminApi.getAddresses(targetUsername))?.data || []
+      }
+
+      setSelectedUser(userData)
+      setSelectedAddresses(addresses || userData.addresses || [])
+      setEditingAddress(null)
       setUserForm({
-        username: detail.data.username,
+        username: userData.username,
         password: '',
-        firstName: detail.data.firstName || '',
-        lastName: detail.data.lastName || '',
-        email: detail.data.email || '',
-        phone: detail.data.phone || '',
-        roleId: roles.find((role) => role.name === detail.data.role)?.id || '',
+        firstName: userData.firstName || '',
+        lastName: userData.lastName || '',
+        email: userData.email || '',
+        phone: userData.phone || '',
+        roleId: roles.find((role) => role.name === userData.role)?.id || '',
       })
       setUserEditorOpen(true)
     } catch (error) {
@@ -437,13 +497,38 @@ function AdminPage() {
     }
     const response = await run(`user-${action}`, operations[action], 'Thao tác thành công.')
     if (!response) return
-    if (action === 'delete') closeUserEditor(); else await openUser(username)
+    if (action === 'delete') {
+      closeUserEditor()
+    } else if (can(PERMISSIONS.ADMIN_VIEW_USER_DETAIL)) {
+      await openUser(username)
+    } else {
+      setSelectedUser((prev) => {
+        if (!prev) return prev
+        if (action === 'lock') return { ...prev, userStatus: 'LOCKED' }
+        if (action === 'unlock') return { ...prev, userStatus: 'ACTIVE' }
+        if (action === 'avatar') return { ...prev, avatar: null }
+        return prev
+      })
+    }
     if (can(PERMISSIONS.ADMIN_VIEW_USERS)) await loadUsers(filters, onlineOnly)
     else if (can(PERMISSIONS.ADMIN_VIEW_ONLINE_USERS)) await loadUsers(filters, true)
     await loadOnlineCount()
   }
 
-  const beginAddressEdit = async (id) => { if (!selectedUser) return; const response = await run('address-detail', () => adminApi.getAddress(selectedUser.username, id)); if (response?.data) setEditingAddress(response.data) }
+  const beginAddressEdit = async (id) => {
+    if (!selectedUser) return
+    const fromList = (selectedAddresses || []).find((a) => a.id === id)
+    if (fromList) {
+      setEditingAddress(fromList)
+      return
+    }
+    const response = await run('address-detail', () => adminApi.getAddress(selectedUser.username, id))
+    if (response?.data) {
+      setEditingAddress(response.data)
+    } else if (can(PERMISSIONS.ADMIN_UPDATE_USER_ADDRESS)) {
+      setEditingAddress({ id, houseNumber: '', street: '', ward: '', district: '', city: '', country: '', postalCode: '' })
+    }
+  }
   const saveAddress = async (event) => { event.preventDefault(); if (!selectedUser || !editingAddress) return; const response = await run('address-save', () => adminApi.updateAddress(selectedUser.username, editingAddress.id, addressPayload(editingAddress)), 'Đã cập nhật địa chỉ.'); if (response) await openUser(selectedUser.username) }
   const deleteAddress = async (id) => {
     if (!selectedUser) return
@@ -618,8 +703,10 @@ function Dashboard({ user, userPage, onlineCount, roles, permissions, connection
 }
 
 function UsersSection({ users, roles, filters, setFilters, onlineOnly, onToggleOnline, onFilter, onCreate, onOpen, can, busy, page, onPage, onLoad }) {
+  const [targetUsernameInput, setTargetUsernameInput] = useState('')
   const canViewAllUsers = can(PERMISSIONS.ADMIN_VIEW_USERS)
   const canViewOnline = can(PERMISSIONS.ADMIN_VIEW_ONLINE_USERS)
+  const canOpenUserDrawer = USER_DRAWER_ACTION_PERMISSIONS.some((p) => can(p))
 
   return (
     <section className="admin-section">
@@ -657,6 +744,24 @@ function UsersSection({ users, roles, filters, setFilters, onlineOnly, onToggleO
               <option value="updateAt:desc">Cập nhật gần nhất</option>
             </select>
             <button type="submit"><ChatIcon name="search" size={15} />Lọc</button>
+          </form>
+        ) : !canViewAllUsers && !canViewOnline && canOpenUserDrawer ? (
+          <form
+            className="admin-filter-form"
+            onSubmit={(event) => {
+              event.preventDefault()
+              if (targetUsernameInput.trim()) void onOpen(targetUsernameInput.trim())
+            }}
+          >
+            <label className="admin-search">
+              <ChatIcon name="users" size={17} />
+              <input
+                value={targetUsernameInput}
+                onChange={(event) => setTargetUsernameInput(event.target.value)}
+                placeholder="Nhập @username để mở bảng thao tác..."
+              />
+            </label>
+            <button type="submit">Mở thao tác</button>
           </form>
         ) : <div />}
         {can(PERMISSIONS.ADMIN_CREATE) && (
@@ -713,7 +818,7 @@ function UsersSection({ users, roles, filters, setFilters, onlineOnly, onToggleO
               <StatusBadge status={item.userStatus} />
               <button
                 type="button"
-                disabled={!can(PERMISSIONS.ADMIN_VIEW_USER_DETAIL)}
+                disabled={!canOpenUserDrawer}
                 onClick={() => void onOpen(item.username)}
               >
                 Chi tiết <span>→</span>
@@ -737,61 +842,114 @@ function UsersSection({ users, roles, filters, setFilters, onlineOnly, onToggleO
 }
 
 function RolesSection({ roles, permissions, form, setForm, editingId, busy, can, onEdit, onDelete, onSave, onCancel }) {
+  const [quickRoleId, setQuickRoleId] = useState('')
   const canViewRoles = can(PERMISSIONS.ROLE_VIEW_ALL)
   const canAddRole = can(PERMISSIONS.ROLE_ADD)
   const canUpdateRole = can(PERMISSIONS.ROLE_UPDATE)
   const canViewAllPermissions = can(PERMISSIONS.ROLE_VIEW_ALL_PERMISSION)
 
-  if (!canViewRoles) {
-    return (
-      <section className="admin-section admin-role-layout">
-        <EmptyState icon="shield">Bạn không có quyền xem danh sách vai trò.</EmptyState>
-      </section>
-    )
-  }
-
   return (
     <section className="admin-section admin-role-layout">
       <div className="admin-role-list">
-        {roles.map((role) => {
-          const isProtected = isSystemRole(role.name)
-          return (
-            <article className="admin-panel" key={role.id}>
-              <header>
-                <span><ChatIcon name="shield" size={18} /></span>
-                <div>
-                  <h3>{role.name}</h3>
-                  <small>{(role.permissions || []).length} quyền</small>
+        {canViewRoles ? (
+          roles.map((role) => {
+            const isProtected = isSystemRole(role.name)
+            return (
+              <article className="admin-panel" key={role.id}>
+                <header>
+                  <span><ChatIcon name="shield" size={18} /></span>
+                  <div>
+                    <h3>{role.name}</h3>
+                    <small>{(role.permissions || []).length} quyền</small>
+                  </div>
+                </header>
+                <p>{role.description || 'Chưa có mô tả.'}</p>
+                <div className="admin-role-permissions">
+                  {(role.permissions || []).slice(0, 5).map((permission) => (
+                    <span key={permission.id}>{permission.name}</span>
+                  ))}
+                  {(role.permissions || []).length > 5 && <span>+{role.permissions.length - 5}</span>}
                 </div>
-              </header>
-              <p>{role.description || 'Chưa có mô tả.'}</p>
-              <div className="admin-role-permissions">
-                {(role.permissions || []).slice(0, 5).map((permission) => (
-                  <span key={permission.id}>{permission.name}</span>
-                ))}
-                {(role.permissions || []).length > 5 && <span>+{role.permissions.length - 5}</span>}
+                <footer>
+                  {isProtected ? (
+                    <small style={{ color: '#888', fontStyle: 'italic' }}>Role mặc định hệ thống</small>
+                  ) : (
+                    <>
+                      {canUpdateRole && (
+                        <button type="button" onClick={() => onEdit(role)}>
+                          <ChatIcon name="edit" size={14} />Sửa
+                        </button>
+                      )}
+                      {can(PERMISSIONS.ROLE_DELETE) && (
+                        <button className="is-danger" type="button" onClick={() => void onDelete(role.id)}>
+                          <ChatIcon name="trash" size={14} />Xóa
+                        </button>
+                      )}
+                    </>
+                  )}
+                </footer>
+              </article>
+            )
+          })
+        ) : (canUpdateRole || can(PERMISSIONS.ROLE_DELETE)) ? (
+          <div className="admin-panel">
+            <header>
+              <span><ChatIcon name="settings" size={18} /></span>
+              <div>
+                <h3>Thao tác Role theo ID</h3>
+                <small>Nhập Role ID để sửa hoặc xóa</small>
               </div>
-              <footer>
-                {isProtected ? (
-                  <small style={{ color: '#888', fontStyle: 'italic' }}>Role mặc định hệ thống</small>
-                ) : (
-                  <>
-                    {canUpdateRole && (
-                      <button type="button" onClick={() => onEdit(role)}>
-                        <ChatIcon name="edit" size={14} />Sửa
-                      </button>
-                    )}
-                    {can(PERMISSIONS.ROLE_DELETE) && (
-                      <button className="is-danger" type="button" onClick={() => void onDelete(role.id)}>
-                        <ChatIcon name="trash" size={14} />Xóa
-                      </button>
-                    )}
-                  </>
-                )}
-              </footer>
-            </article>
-          )
-        })}
+            </header>
+            <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+              <input
+                type="number"
+                placeholder="Nhập Role ID..."
+                value={quickRoleId}
+                onChange={(e) => setQuickRoleId(e.target.value)}
+              />
+              {canUpdateRole && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const id = Number(quickRoleId)
+                    if (id) onEdit({ id, name: '', description: '', permissionIds: [] })
+                  }}
+                >
+                  Sửa
+                </button>
+              )}
+              {can(PERMISSIONS.ROLE_DELETE) && (
+                <button
+                  className="is-danger"
+                  type="button"
+                  onClick={() => {
+                    const id = Number(quickRoleId)
+                    if (id) void onDelete(id)
+                  }}
+                >
+                  Xóa
+                </button>
+              )}
+            </div>
+          </div>
+        ) : canViewAllPermissions ? (
+          <div className="admin-panel">
+            <header>
+              <span><ChatIcon name="shield" size={18} /></span>
+              <div>
+                <h3>Danh mục Quyền hệ thống</h3>
+                <small>{permissions.length} quyền khả dụng</small>
+              </div>
+            </header>
+            <div className="admin-role-permissions" style={{ marginTop: '12px' }}>
+              {permissions.map((p) => (
+                <span key={p.id}>{p.name}</span>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <EmptyState icon="shield">Bạn không có quyền xem danh sách vai trò.</EmptyState>
+        )}
       </div>
 
       {(editingId ? canUpdateRole : canAddRole) && (
@@ -830,7 +988,7 @@ function RolesSection({ roles, permissions, form, setForm, editingId, busy, can,
                         setForm({
                           ...form,
                           permissionIds: event.target.checked
-                            ? [...form.permissionIds, permission.id]
+                            ? resolvePermissionIdsWithPrerequisites(form.permissionIds, permission.id, permissions)
                             : form.permissionIds.filter((id) => id !== permission.id),
                         })
                       }
@@ -977,12 +1135,13 @@ function BroadcastSection({ form, setForm, messages, connectionState, busy, hasM
 }
 
 function UserDrawer({ currentUser, selectedUser, addresses, editingAddress, setEditingAddress, form, setForm, roles, busy, can, onClose, onSave, onAction, onAddressEdit, onAddressSave, onAddressDelete }) {
+  const [quickAddressId, setQuickAddressId] = useState('')
   const isEditing = Boolean(selectedUser)
   const canUpdate = can(PERMISSIONS.ADMIN_UPDATE_USER)
   const canCreate = can(PERMISSIONS.ADMIN_CREATE)
-  const isSelf = Boolean(selectedUser && currentUser && selectedUser.username === currentUser.username)
-  const isRootAdmin = Boolean(selectedUser && selectedUser.username === 'admin')
-  const isTargetProtected = isRootAdmin && !isSelf
+  const isSelf = Boolean(selectedUser && currentUser && (selectedUser.username === currentUser.username || (checkIsRootAdmin(selectedUser) && checkIsRootAdmin(currentUser))))
+  const isRootAdmin = checkIsRootAdmin(selectedUser)
+  const isTargetProtected = isRootAdmin && !checkIsRootAdmin(currentUser)
   const canSubmitForm = isEditing ? (canUpdate && !isTargetProtected) : canCreate
 
   return (
@@ -1120,13 +1279,16 @@ function UserDrawer({ currentUser, selectedUser, addresses, editingAddress, setE
                   <h3>Thao tác tài khoản</h3>
                   <div>
                     {!isSelf && !isRootAdmin && (
-                      selectedUser.userStatus === 'LOCKED' ? (
-                        can(PERMISSIONS.ADMIN_UNLOCK) && <button type="button" onClick={() => void onAction('unlock')}>Mở khóa</button>
-                      ) : (
-                        can(PERMISSIONS.ADMIN_LOCK) && <button type="button" onClick={() => void onAction('lock')}>Khóa tài khoản</button>
-                      )
+                      <>
+                        {can(PERMISSIONS.ADMIN_LOCK) && (selectedUser.userStatus !== 'LOCKED' || !can(PERMISSIONS.ADMIN_VIEW_USER_DETAIL)) && (
+                          <button type="button" onClick={() => void onAction('lock')}>Khóa tài khoản</button>
+                        )}
+                        {can(PERMISSIONS.ADMIN_UNLOCK) && (selectedUser.userStatus === 'LOCKED' || !can(PERMISSIONS.ADMIN_VIEW_USER_DETAIL)) && (
+                          <button type="button" onClick={() => void onAction('unlock')}>Mở khóa</button>
+                        )}
+                      </>
                     )}
-                    {can(PERMISSIONS.ADMIN_DELETE_AVATAR) && Boolean(selectedUser.avatar) && !isTargetProtected && (
+                    {can(PERMISSIONS.ADMIN_DELETE_AVATAR) && (Boolean(selectedUser.avatar) || !can(PERMISSIONS.ADMIN_VIEW_USER_DETAIL)) && !isTargetProtected && (
                       <button type="button" onClick={() => void onAction('avatar')}>Xóa avatar</button>
                     )}
                     {!isSelf && !isRootAdmin && can(PERMISSIONS.ADMIN_DELETE_USER) && (
@@ -1136,29 +1298,48 @@ function UserDrawer({ currentUser, selectedUser, addresses, editingAddress, setE
                 </section>
               )}
 
-              {can(PERMISSIONS.ADMIN_VIEW_USER_ADDRESSES) && (
+              {(can(PERMISSIONS.ADMIN_VIEW_USER_ADDRESSES) || can(PERMISSIONS.ADMIN_UPDATE_USER_ADDRESS) || can(PERMISSIONS.ADMIN_DELETE_USER_ADDRESS)) && (
                 <section className="admin-address-section">
                   <header>
                     <h3>Địa chỉ người dùng</h3>
                     <span>{addresses.length}</span>
                   </header>
-                  {addresses.map((address) => (
-                    <article key={address.id}>
-                      <div>
-                        <strong>{address.houseNumber} {address.street}</strong>
-                        <p>{[address.ward, address.district, address.city, address.country].filter(Boolean).join(', ')}</p>
-                      </div>
-                      <span>
-                        {can(PERMISSIONS.ADMIN_UPDATE_USER_ADDRESS) && !isTargetProtected && (
-                          <button type="button" onClick={() => void onAddressEdit(address.id)}>Sửa</button>
-                        )}
-                        {can(PERMISSIONS.ADMIN_DELETE_USER_ADDRESS) && !isTargetProtected && (
-                          <button className="is-danger" type="button" onClick={() => void onAddressDelete(address.id)}>Xóa</button>
-                        )}
-                      </span>
-                    </article>
-                  ))}
-                  {!addresses.length && <EmptyState icon="globe">Người dùng chưa có địa chỉ.</EmptyState>}
+                  {can(PERMISSIONS.ADMIN_VIEW_USER_ADDRESSES) ? (
+                    <>
+                      {addresses.map((address) => (
+                        <article key={address.id}>
+                          <div>
+                            <strong>{address.houseNumber} {address.street}</strong>
+                            <p>{[address.ward, address.district, address.city, address.country].filter(Boolean).join(', ')}</p>
+                          </div>
+                          <span>
+                            {can(PERMISSIONS.ADMIN_UPDATE_USER_ADDRESS) && !isTargetProtected && (
+                              <button type="button" onClick={() => void onAddressEdit(address.id)}>Sửa</button>
+                            )}
+                            {can(PERMISSIONS.ADMIN_DELETE_USER_ADDRESS) && !isTargetProtected && (
+                              <button className="is-danger" type="button" onClick={() => void onAddressDelete(address.id)}>Xóa</button>
+                            )}
+                          </span>
+                        </article>
+                      ))}
+                      {!addresses.length && <EmptyState icon="globe">Người dùng chưa có địa chỉ.</EmptyState>}
+                    </>
+                  ) : (
+                    <div className="admin-quick-address-form" style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+                      <input
+                        type="number"
+                        placeholder="Nhập Address ID..."
+                        value={quickAddressId}
+                        onChange={(e) => setQuickAddressId(e.target.value)}
+                      />
+                      {can(PERMISSIONS.ADMIN_UPDATE_USER_ADDRESS) && !isTargetProtected && (
+                        <button type="button" onClick={() => quickAddressId && onAddressEdit(Number(quickAddressId))}>Sửa theo ID</button>
+                      )}
+                      {can(PERMISSIONS.ADMIN_DELETE_USER_ADDRESS) && !isTargetProtected && (
+                        <button className="is-danger" type="button" onClick={() => quickAddressId && onAddressDelete(Number(quickAddressId))}>Xóa theo ID</button>
+                      )}
+                    </div>
+                  )}
                   {editingAddress && (
                     <form className="admin-form admin-address-form" onSubmit={onAddressSave}>
                       <h3>Cập nhật địa chỉ</h3>
@@ -1190,34 +1371,59 @@ function UserDrawer({ currentUser, selectedUser, addresses, editingAddress, setE
 }
 
 function ReportsSection({ reports, filters, setFilters, onFilter, onOpen, can, busy, page, onPage, onLoad }) {
+  const [quickReportId, setQuickReportId] = useState('')
+  const canViewReports = can(PERMISSIONS.ADMIN_VIEW_REPORTS)
+  const canModerate = can(PERMISSIONS.ADMIN_RESOLVE_REPORTS) || can(PERMISSIONS.ADMIN_DELETE_REPORTS)
+
   return (
     <section className="admin-section">
       <div className="admin-section-toolbar">
-        <form className="admin-filter-form" onSubmit={onFilter}>
-          <label className="admin-search">
-            <ChatIcon name="search" size={17} />
-            <input
-              value={filters.keyword}
-              onChange={(event) => setFilters({ ...filters, keyword: event.target.value })}
-              placeholder="Username người gửi hoặc bị báo cáo..."
-            />
-          </label>
-          <select value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })}>
-            <option value="">Mọi trạng thái</option>
-            <option value="PENDING">Chờ xử lý (PENDING)</option>
-            <option value="RESOLVED">Đã giải quyết (RESOLVED)</option>
-            <option value="DISMISSED">Đã bác bỏ (DISMISSED)</option>
-          </select>
-          <select value={filters.reason} onChange={(event) => setFilters({ ...filters, reason: event.target.value })}>
-            <option value="">Mọi lý do</option>
-            <option value="SPAM">Spam / Lừa đảo</option>
-            <option value="HARASSMENT">Quấy rối</option>
-            <option value="INAPPROPRIATE">Nội dung không phù hợp</option>
-            <option value="IMPERSONATION">Mạo danh</option>
-            <option value="OTHER">Lý do khác</option>
-          </select>
-          <button type="submit"><ChatIcon name="search" size={15} />Lọc</button>
-        </form>
+        {!canViewReports && canModerate ? (
+          <form
+            className="admin-filter-form"
+            onSubmit={(event) => {
+              event.preventDefault()
+              if (quickReportId.trim()) void onOpen(quickReportId.trim())
+            }}
+          >
+            <label className="admin-search">
+              <ChatIcon name="flag" size={17} />
+              <input
+                type="number"
+                value={quickReportId}
+                onChange={(event) => setQuickReportId(event.target.value)}
+                placeholder="Nhập Mã báo cáo (#ID) để mở xử lý..."
+              />
+            </label>
+            <button type="submit">Mở báo cáo</button>
+          </form>
+        ) : (
+          <form className="admin-filter-form" onSubmit={onFilter}>
+            <label className="admin-search">
+              <ChatIcon name="search" size={17} />
+              <input
+                value={filters.keyword}
+                onChange={(event) => setFilters({ ...filters, keyword: event.target.value })}
+                placeholder="Username người gửi hoặc bị báo cáo..."
+              />
+            </label>
+            <select value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })}>
+              <option value="">Mọi trạng thái</option>
+              <option value="PENDING">Chờ xử lý (PENDING)</option>
+              <option value="RESOLVED">Đã giải quyết (RESOLVED)</option>
+              <option value="DISMISSED">Đã bác bỏ (DISMISSED)</option>
+            </select>
+            <select value={filters.reason} onChange={(event) => setFilters({ ...filters, reason: event.target.value })}>
+              <option value="">Mọi lý do</option>
+              <option value="SPAM">Spam / Lừa đảo</option>
+              <option value="HARASSMENT">Quấy rối</option>
+              <option value="INAPPROPRIATE">Nội dung không phù hợp</option>
+              <option value="IMPERSONATION">Mạo danh</option>
+              <option value="OTHER">Lý do khác</option>
+            </select>
+            <button type="submit"><ChatIcon name="search" size={15} />Lọc</button>
+          </form>
+        )}
       </div>
       <div className="admin-table-card">
         <div className="admin-table-summary">
@@ -1259,7 +1465,7 @@ function ReportsSection({ reports, filters, setFilters, onFilter, onOpen, can, b
               <StatusBadge status={item.status} />
               <button
                 type="button"
-                disabled={!can(PERMISSIONS.ADMIN_VIEW_REPORTS)}
+                disabled={!canViewReports && !canModerate}
                 onClick={() => void onOpen(item.id)}
               >
                 Chi tiết <span>→</span>
@@ -1268,7 +1474,11 @@ function ReportsSection({ reports, filters, setFilters, onFilter, onOpen, can, b
           ))}
           {!reports.length && (
             <EmptyState icon="flag">
-              {busy === 'reports-load' ? 'Đang tải danh sách báo cáo...' : 'Không có báo cáo vi phạm nào.'}
+              {busy === 'reports-load'
+                ? 'Đang tải danh sách báo cáo...'
+                : (!canViewReports
+                  ? 'Bạn không có quyền xem danh sách báo cáo.'
+                  : 'Không có báo cáo vi phạm nào.')}
             </EmptyState>
           )}
         </div>

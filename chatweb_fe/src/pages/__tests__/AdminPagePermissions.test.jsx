@@ -48,6 +48,12 @@ vi.mock('../../services/adminApi.js', () => ({
     createRole: vi.fn().mockResolvedValue({ data: {} }),
     updateRole: vi.fn().mockResolvedValue({ data: {} }),
     deleteRole: vi.fn().mockResolvedValue({ data: {} }),
+    lockUser: vi.fn().mockResolvedValue({ message: 'User locked' }),
+    unlockUser: vi.fn().mockResolvedValue({ message: 'User unlocked' }),
+    resolveReport: vi.fn().mockResolvedValue({ message: 'Report resolved' }),
+    deleteReport: vi.fn().mockResolvedValue({ message: 'Report deleted' }),
+    deleteUser: vi.fn().mockResolvedValue({ message: 'User deleted' }),
+    deleteAvatar: vi.fn().mockResolvedValue({ message: 'Avatar deleted' }),
   },
 }))
 
@@ -455,6 +461,247 @@ describe('AdminPage Permission-Based UI Rendering', () => {
 
     // "Lưu thay đổi" button MUST be present
     expect(within(dialog).getByRole('button', { name: 'Lưu thay đổi' })).toBeInTheDocument()
+  })
+
+  describe('Standalone action-permission unblocking', () => {
+    it('allows standalone ADMIN_LOCK to access Users tab, lookup username, and lock account', async () => {
+      vi.mocked(authContext.useAuth).mockReturnValue({
+        user: {
+          id: 10,
+          username: 'operator',
+          role: 'OPERATOR',
+          permissions: ['ADMIN_LOCK'],
+        },
+      })
+
+      render(
+        <MemoryRouter initialEntries={['/admin']}>
+          <AdminPage />
+        </MemoryRouter>
+      )
+
+      const nav = screen.getByRole('navigation')
+      await waitFor(() => {
+        expect(within(nav).getByText('Người dùng')).toBeInTheDocument()
+      })
+      fireEvent.click(within(nav).getByText('Người dùng'))
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText(/Nhập @username để mở bảng thao tác/i)).toBeInTheDocument()
+      })
+
+      const input = screen.getByPlaceholderText(/Nhập @username để mở bảng thao tác/i)
+      fireEvent.change(input, { target: { value: '@john_doe' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Mở thao tác' }))
+
+      await waitFor(() => {
+        expect(screen.getByRole('dialog')).toBeInTheDocument()
+      })
+
+      const dialog = screen.getByRole('dialog')
+      const lockBtn = within(dialog).getByRole('button', { name: 'Khóa tài khoản' })
+      expect(lockBtn).toBeInTheDocument()
+
+      fireEvent.click(lockBtn)
+      await waitFor(() => {
+        expect(adminApi.lockUser).toHaveBeenCalledWith('john_doe')
+      })
+    })
+
+    it('allows ADMIN_VIEW_USERS + ADMIN_LOCK to click Chi tiết on a row and lock user without calling getUser', async () => {
+      vi.mocked(authContext.useAuth).mockReturnValue({
+        user: {
+          id: 11,
+          username: 'auditor',
+          role: 'AUDITOR',
+          permissions: ['ADMIN_VIEW_USERS', 'ADMIN_LOCK'],
+        },
+      })
+
+      vi.mocked(adminApi.getUsers).mockResolvedValue({
+        data: {
+          content: [
+            { id: 20, username: 'target_user', firstName: 'Target', lastName: 'User', userStatus: 'ACTIVE', role: 'USER' },
+          ],
+          totalElements: 1,
+          totalPages: 1,
+        },
+      })
+
+      render(
+        <MemoryRouter initialEntries={['/admin']}>
+          <AdminPage />
+        </MemoryRouter>
+      )
+
+      const nav = screen.getByRole('navigation')
+      await waitFor(() => {
+        expect(within(nav).getByText('Người dùng')).toBeInTheDocument()
+      })
+      fireEvent.click(within(nav).getByText('Người dùng'))
+
+      await waitFor(() => {
+        expect(screen.getByText('@target_user')).toBeInTheDocument()
+      })
+
+      const detailBtn = screen.getByRole('button', { name: /Chi tiết/i })
+      expect(detailBtn).not.toBeDisabled()
+      fireEvent.click(detailBtn)
+
+      await waitFor(() => {
+        expect(screen.getByRole('dialog')).toBeInTheDocument()
+      })
+
+      // Must not call adminApi.getUser because user lacks ADMIN_VIEW_USER_DETAIL
+      expect(adminApi.getUser).not.toHaveBeenCalled()
+
+      const dialog = screen.getByRole('dialog')
+      const lockBtn = within(dialog).getByRole('button', { name: 'Khóa tài khoản' })
+      expect(lockBtn).toBeInTheDocument()
+      fireEvent.click(lockBtn)
+
+      await waitFor(() => {
+        expect(adminApi.lockUser).toHaveBeenCalledWith('target_user')
+      })
+    })
+
+    it('allows standalone ADMIN_ROLE_ADD to access Roles tab and submit Create Role form', async () => {
+      vi.mocked(authContext.useAuth).mockReturnValue({
+        user: {
+          id: 12,
+          username: 'role_creator',
+          role: 'CREATOR',
+          permissions: ['ADMIN_ROLE_ADD'],
+        },
+      })
+
+      render(
+        <MemoryRouter initialEntries={['/admin']}>
+          <AdminPage />
+        </MemoryRouter>
+      )
+
+      const nav = screen.getByRole('navigation')
+      await waitFor(() => {
+        expect(within(nav).getByText('Role & quyền')).toBeInTheDocument()
+      })
+      fireEvent.click(within(nav).getByText('Role & quyền'))
+
+      await waitFor(() => {
+        expect(screen.getByText('Tạo role mới')).toBeInTheDocument()
+      })
+
+      const nameInput = screen.getByPlaceholderText('VD: MODERATOR')
+      fireEvent.change(nameInput, { target: { value: 'CONTENT_MODERATOR' } })
+
+      const submitBtn = screen.getByRole('button', { name: 'Tạo role' })
+      fireEvent.click(submitBtn)
+
+      await waitFor(() => {
+        expect(adminApi.createRole).toHaveBeenCalledWith(
+          expect.objectContaining({ name: 'CONTENT_MODERATOR' })
+        )
+      })
+    })
+
+    it('allows standalone ADMIN_RESOLVE_REPORTS to access Reports tab and resolve report by ID', async () => {
+      vi.mocked(authContext.useAuth).mockReturnValue({
+        user: {
+          id: 13,
+          username: 'moderator_user',
+          role: 'MODERATOR',
+          permissions: ['ADMIN_RESOLVE_REPORTS'],
+        },
+      })
+
+      render(
+        <MemoryRouter initialEntries={['/admin']}>
+          <AdminPage />
+        </MemoryRouter>
+      )
+
+      const nav = screen.getByRole('navigation')
+      await waitFor(() => {
+        expect(within(nav).getByText('Báo cáo vi phạm')).toBeInTheDocument()
+      })
+      fireEvent.click(within(nav).getByText('Báo cáo vi phạm'))
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText(/Nhập Mã báo cáo \(#ID\)/i)).toBeInTheDocument()
+      })
+
+      // Unconditional loadReports should NOT have been called without ADMIN_VIEW_REPORTS
+      expect(adminApi.getReports).not.toHaveBeenCalled()
+
+      const input = screen.getByPlaceholderText(/Nhập Mã báo cáo \(#ID\)/i)
+      fireEvent.change(input, { target: { value: '42' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Mở báo cáo' }))
+
+      await waitFor(() => {
+        expect(screen.getByRole('dialog')).toBeInTheDocument()
+      })
+
+      const dialog = screen.getByRole('dialog')
+      expect(within(dialog).getByText('Báo cáo #42')).toBeInTheDocument()
+
+      const saveBtn = within(dialog).getByRole('button', { name: 'Lưu kết quả' })
+      fireEvent.click(saveBtn)
+
+      await waitFor(() => {
+        expect(adminApi.resolveReport).toHaveBeenCalledWith(42, expect.objectContaining({ status: 'RESOLVED' }))
+      })
+    })
+
+    it('auto-selects prerequisite permissions when selecting an action permission in RolesSection', async () => {
+      vi.mocked(authContext.useAuth).mockReturnValue({
+        user: {
+          id: 1,
+          username: 'admin',
+          role: 'ADMIN',
+          permissions: ['ADMIN_ROLE_VIEW_ALL', 'ADMIN_ROLE_VIEW_ALL_PERMISSION', 'ADMIN_ROLE_ADD'],
+        },
+      })
+
+      vi.mocked(adminApi.getPermissions).mockResolvedValue({
+        data: [
+          { id: 101, name: 'ADMIN_VIEW_USERS', description: 'Xem danh sách user' },
+          { id: 102, name: 'ADMIN_VIEW_USER_DETAIL', description: 'Xem chi tiết user' },
+          { id: 103, name: 'ADMIN_LOCK', description: 'Khóa tài khoản' },
+        ],
+      })
+
+      render(
+        <MemoryRouter initialEntries={['/admin']}>
+          <AdminPage />
+        </MemoryRouter>
+      )
+
+      const nav = screen.getByRole('navigation')
+      await waitFor(() => {
+        expect(within(nav).getByText('Role & quyền')).toBeInTheDocument()
+      })
+      fireEvent.click(within(nav).getByText('Role & quyền'))
+
+      await waitFor(() => {
+        expect(screen.getByText('ADMIN_LOCK')).toBeInTheDocument()
+      })
+
+      const lockCheckbox = screen.getByLabelText(/ADMIN_LOCK/i)
+      const viewUsersCheckbox = screen.getByLabelText(/ADMIN_VIEW_USERS/i)
+      const viewDetailCheckbox = screen.getByLabelText(/ADMIN_VIEW_USER_DETAIL/i)
+
+      expect(lockCheckbox).not.toBeChecked()
+      expect(viewUsersCheckbox).not.toBeChecked()
+      expect(viewDetailCheckbox).not.toBeChecked()
+
+      fireEvent.click(lockCheckbox)
+
+      await waitFor(() => {
+        expect(lockCheckbox).toBeChecked()
+        expect(viewUsersCheckbox).toBeChecked()
+        expect(viewDetailCheckbox).toBeChecked()
+      })
+    })
   })
 })
 
