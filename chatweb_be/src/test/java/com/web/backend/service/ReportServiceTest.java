@@ -516,4 +516,162 @@ class ReportServiceTest {
         assertThat(stats.getResolvedReports()).isEqualTo(8L);
         assertThat(stats.getDismissedReports()).isEqualTo(2L);
     }
+
+    @Test
+    void resolveReport_withLockUser_adminUserNull_throwsAccessForbiddenException() {
+        ReportEntity report = ReportEntity.builder()
+                .reporter(reporter)
+                .reportedUser(reportedUser)
+                .status(ReportStatus.PENDING)
+                .build();
+        report.setId(10L);
+
+        when(reportRepository.findWithDetailsById(10L)).thenReturn(Optional.of(report));
+
+        ResolveReportRequest request = ResolveReportRequest.builder()
+                .status(ReportStatus.RESOLVED)
+                .resolutionNote("Violation confirmed")
+                .lockReportedUser(true)
+                .build();
+
+        assertThatThrownBy(() -> reportService.resolveReport(null, 10L, request))
+                .isInstanceOf(AccessForbiddenException.class);
+
+        verify(adminService, never()).lockUser(anyString());
+        verify(reportRepository, never()).save(any());
+    }
+
+    @Test
+    void resolveReport_withLockUser_adminAuthoritiesNull_throwsAccessForbiddenException() {
+        UserEntity adminNoRole = new UserEntity();
+        adminNoRole.setId(98L);
+        adminNoRole.setUsername("no_role_admin");
+        adminNoRole.setRole(null);
+
+        ReportEntity report = ReportEntity.builder()
+                .reporter(reporter)
+                .reportedUser(reportedUser)
+                .status(ReportStatus.PENDING)
+                .build();
+        report.setId(10L);
+
+        when(reportRepository.findWithDetailsById(10L)).thenReturn(Optional.of(report));
+
+        ResolveReportRequest request = ResolveReportRequest.builder()
+                .status(ReportStatus.RESOLVED)
+                .resolutionNote("Violation confirmed")
+                .lockReportedUser(true)
+                .build();
+
+        assertThatThrownBy(() -> reportService.resolveReport(adminNoRole, 10L, request))
+                .isInstanceOf(AccessForbiddenException.class);
+
+        verify(adminService, never()).lockUser(anyString());
+        verify(reportRepository, never()).save(any());
+    }
+
+    @Test
+    void resolveReport_withLockUser_adminMockNullAuthorities_throwsAccessForbiddenException() {
+        UserEntity mockAdmin = mock(UserEntity.class);
+        when(mockAdmin.getUsername()).thenReturn("mock_admin");
+        when(mockAdmin.getAuthorities()).thenReturn(null);
+
+        ReportEntity report = ReportEntity.builder()
+                .reporter(reporter)
+                .reportedUser(reportedUser)
+                .status(ReportStatus.PENDING)
+                .build();
+        report.setId(10L);
+
+        when(reportRepository.findWithDetailsById(10L)).thenReturn(Optional.of(report));
+
+        ResolveReportRequest request = ResolveReportRequest.builder()
+                .status(ReportStatus.RESOLVED)
+                .resolutionNote("Violation confirmed")
+                .lockReportedUser(true)
+                .build();
+
+        assertThatThrownBy(() -> reportService.resolveReport(mockAdmin, 10L, request))
+                .isInstanceOf(AccessForbiddenException.class);
+
+        verify(adminService, never()).lockUser(anyString());
+        verify(reportRepository, never()).save(any());
+    }
+
+    @Test
+    void resolveReport_nullLockReportedUser_success() {
+        UserEntity admin = new UserEntity();
+        admin.setId(99L);
+        admin.setUsername("admin");
+
+        ReportEntity report = ReportEntity.builder()
+                .reporter(reporter)
+                .reportedUser(reportedUser)
+                .status(ReportStatus.PENDING)
+                .build();
+        report.setId(10L);
+
+        when(reportRepository.findWithDetailsById(10L)).thenReturn(Optional.of(report));
+        when(reportRepository.save(any(ReportEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(reportRepository.countByReportedUserId(2L)).thenReturn(1L);
+
+        ReportDetailResponse detailResponse = ReportDetailResponse.builder()
+                .id(10L)
+                .status(ReportStatus.RESOLVED)
+                .reportedUserTotalReports(1L)
+                .build();
+        when(reportMapper.toReportDetailResponse(any(ReportEntity.class))).thenReturn(detailResponse);
+
+        ResolveReportRequest request = ResolveReportRequest.builder()
+                .status(ReportStatus.RESOLVED)
+                .resolutionNote("No lock flag provided")
+                .lockReportedUser(null)
+                .build();
+
+        ReportDetailResponse result = reportService.resolveReport(admin, 10L, request);
+
+        assertThat(result).isNotNull();
+        verify(adminService, never()).lockUser(anyString());
+        verify(reportRepository).save(report);
+    }
+
+    @Test
+    void resolveReport_reportNotFound_throwsResourceNotFoundException() {
+        when(reportRepository.findWithDetailsById(999L)).thenReturn(Optional.empty());
+
+        ResolveReportRequest request = ResolveReportRequest.builder()
+                .status(ReportStatus.RESOLVED)
+                .build();
+
+        assertThatThrownBy(() -> reportService.resolveReport(mock(UserEntity.class), 999L, request))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void createReport_byReportedUserId_notFound_throwsResourceNotFoundException() {
+        CreateReportRequest request = CreateReportRequest.builder()
+                .reportedUserId(999L)
+                .reason(ReportReason.OTHER)
+                .build();
+
+        when(userRepository.findById(999L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> reportService.createReport(reporter, request))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verify(reportRepository, never()).save(any());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getReportsForAdmin_withEmptySortsAndNullSort_defaultsToIdDesc() {
+        AdminReportSearchRequest request = AdminReportSearchRequest.builder().build();
+        Page<ReportEntity> page = new PageImpl<>(List.of());
+        when(reportRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(page);
+
+        PageResponse<ReportResponse> result = reportService.getReportsForAdmin(
+                request, 0, 10, (String) null, "invalidField:asc");
+
+        assertThat(result).isNotNull();
+    }
 }
