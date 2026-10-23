@@ -1,7 +1,9 @@
 package com.web.backend.config;
 
 import com.web.backend.kafka.avro.ChatMessageAvro;
+import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.errors.RecordTooLargeException;
 import org.apache.kafka.common.errors.SerializationException;
@@ -15,6 +17,7 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
 import org.springframework.kafka.listener.ContainerProperties;
 import org.springframework.kafka.listener.DefaultErrorHandler;
+import org.springframework.kafka.listener.MessageListenerContainer;
 import org.springframework.kafka.support.serializer.ErrorHandlingDeserializer;
 import org.springframework.kafka.support.serializer.JsonDeserializer;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -72,6 +75,63 @@ class KafkaConfigTest {
         assertNotNull(backOff);
         assertEquals(5000L, backOff.getInterval());
         assertEquals(5L, backOff.getMaxAttempts());
+    }
+
+    @Test
+    void testCommonKafkaErrorHandler_NonRetryableException_ImmediatelyRecovers() {
+        DefaultErrorHandler errorHandler = kafkaConfig.commonKafkaErrorHandler();
+        ConsumerRecord<String, String> record = new ConsumerRecord<>("test-topic", 0, 100L, "key", "val");
+        Consumer<?, ?> consumer = mock(Consumer.class);
+        MessageListenerContainer container = mock(MessageListenerContainer.class);
+
+        // For non-retryable exception like SerializationException, handleOne should recover immediately (returns true)
+        boolean handled = errorHandler.handleOne(
+                new SerializationException("Bad payload"),
+                record,
+                consumer,
+                container
+        );
+        assertTrue(handled, "Non-retryable exception should be handled/recovered immediately without retry");
+    }
+
+    @Test
+    void testCommonKafkaErrorHandler_RetryableException_RetriesBeforeExhaustion() {
+        DefaultErrorHandler errorHandler = kafkaConfig.commonKafkaErrorHandler();
+        ConsumerRecord<String, String> record = new ConsumerRecord<>("test-topic", 0, 101L, "key", "val");
+        Consumer<?, ?> consumer = mock(Consumer.class);
+        MessageListenerContainer container = mock(MessageListenerContainer.class);
+
+        RuntimeException retryableException = new RuntimeException("DB connection timeout");
+
+        // Attempt 1, 2, 3: should not be recovered yet (returns false to seek back and retry)
+        for (int i = 1; i <= 3; i++) {
+            boolean handled = errorHandler.handleOne(retryableException, record, consumer, container);
+            assertFalse(handled, "Attempt " + i + " of retryable exception should return false (seek back to retry)");
+        }
+
+        // Attempt 4: Backoff exhausted after 3 retries, should recover and return true
+        boolean attempt4 = errorHandler.handleOne(retryableException, record, consumer, container);
+        assertTrue(attempt4, "Attempt 4 after 3 retries should be exhausted and recovered (returns true)");
+    }
+
+    @Test
+    void testDltErrorHandler_RetryableException_ExhaustsAfter5Attempts() {
+        DefaultErrorHandler errorHandler = kafkaConfig.dltErrorHandler();
+        ConsumerRecord<String, String> record = new ConsumerRecord<>("chat-messages-save-dlt", 0, 200L, "key", "val");
+        Consumer<?, ?> consumer = mock(Consumer.class);
+        MessageListenerContainer container = mock(MessageListenerContainer.class);
+
+        RuntimeException mongoEx = new RuntimeException("Mongo write failure");
+
+        // Attempts 1 to 5: retry attempts
+        for (int i = 1; i <= 5; i++) {
+            boolean handled = errorHandler.handleOne(mongoEx, record, consumer, container);
+            assertFalse(handled, "Attempt " + i + " should not be exhausted yet");
+        }
+
+        // Attempt 6 should exhaust (after 5 retries) and recover
+        boolean attempt6 = errorHandler.handleOne(mongoEx, record, consumer, container);
+        assertTrue(attempt6, "Attempt 6 should exhaust retries and return true");
     }
 
     @Test
