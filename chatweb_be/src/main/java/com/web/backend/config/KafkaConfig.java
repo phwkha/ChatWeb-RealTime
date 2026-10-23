@@ -117,10 +117,23 @@ public class KafkaConfig {
     }
 
     @Bean
-    public ConcurrentKafkaListenerContainerFactory<String, ChatMessageAvro> chatAvroListenerContainerFactory() {
+    public DefaultErrorHandler commonKafkaErrorHandler() {
+        FixedBackOff backOff = new FixedBackOff(1000L, 3L);
+        DefaultErrorHandler errorHandler = new DefaultErrorHandler(backOff);
+        errorHandler.addNotRetryableExceptions(
+                SerializationException.class,
+                RecordTooLargeException.class,
+                IllegalArgumentException.class);
+        return errorHandler;
+    }
+
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<String, ChatMessageAvro> chatAvroListenerContainerFactory(
+            DefaultErrorHandler commonKafkaErrorHandler) {
         ConcurrentKafkaListenerContainerFactory<String, ChatMessageAvro> factory = new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(realtimeChatConsumerFactory());
         factory.setConcurrency(4);
+        factory.setCommonErrorHandler(commonKafkaErrorHandler);
         return factory;
     }
 
@@ -146,7 +159,7 @@ public class KafkaConfig {
 
     @Bean
     public DefaultErrorHandler dltErrorHandler() {
-        FixedBackOff backOff = new FixedBackOff(5000L, FixedBackOff.UNLIMITED_ATTEMPTS);
+        FixedBackOff backOff = new FixedBackOff(5000L, 5L);
         return new DefaultErrorHandler(backOff);
     }
 
@@ -185,10 +198,12 @@ public class KafkaConfig {
     }
 
     @Bean
-    public ConcurrentKafkaListenerContainerFactory<String, Object> jsonKafkaListenerContainerFactory() {
+    public ConcurrentKafkaListenerContainerFactory<String, Object> jsonKafkaListenerContainerFactory(
+            DefaultErrorHandler commonKafkaErrorHandler) {
         ConcurrentKafkaListenerContainerFactory<String, Object> factory = new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(jsonConsumerFactory());
         factory.setConcurrency(2);
+        factory.setCommonErrorHandler(commonKafkaErrorHandler);
         return factory;
     }
 
@@ -201,10 +216,12 @@ public class KafkaConfig {
     }
 
     @Bean
-    public ConcurrentKafkaListenerContainerFactory<String, Object> emailKafkaListenerContainerFactory() {
+    public ConcurrentKafkaListenerContainerFactory<String, Object> emailKafkaListenerContainerFactory(
+            DefaultErrorHandler commonKafkaErrorHandler) {
         ConcurrentKafkaListenerContainerFactory<String, Object> factory = new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(emailConsumerFactory());
         factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.MANUAL_IMMEDIATE);
+        factory.setCommonErrorHandler(commonKafkaErrorHandler);
         return factory;
     }
 }

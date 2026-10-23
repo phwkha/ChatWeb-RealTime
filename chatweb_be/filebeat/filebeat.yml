@@ -4,6 +4,9 @@ filebeat.inputs:
   enabled: true
   paths:
     - /usr/share/filebeat/logs/*.log
+  ignore_older: 48h
+  clean_inactive: 72h
+  close_inactive: 5m
   parsers:
     - ndjson:
         keys_under_root: true
