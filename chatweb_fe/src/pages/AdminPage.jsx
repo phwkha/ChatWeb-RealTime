@@ -22,11 +22,12 @@ import {
   REPORT_MODERATION_PERMISSIONS,
   ROLE_MANAGEMENT_PERMISSIONS,
   resolvePermissionIdsWithPrerequisites,
+  isUserRoleCategory,
 } from '../services/authorization.js'
 import '../styles/admin.css'
 
 const EMPTY_USER = { username: '', password: '', firstName: '', lastName: '', email: '', phone: '', roleId: '' }
-const EMPTY_ROLE = { name: '', description: '', permissionIds: [] }
+const EMPTY_ROLE = { name: '', description: '', userRole: true, permissionIds: [] }
 const EMPTY_EMAIL = { to: '', subject: '', text: '' }
 const EMPTY_ANNOUNCEMENT = { content: '', survivalTime: '' }
 const DEFAULT_FILTERS = { keyword: '', role: '', status: '', gender: '', authProvider: '', sorts: 'id:desc', page: 0, size: 20 }
@@ -551,11 +552,24 @@ function AdminPage() {
       notify('Không thể tạo hoặc sửa đổi vai trò hệ thống (ADMIN, USER).', 'error')
       return
     }
-    const body = { ...roleForm, permissionIds: roleForm.permissionIds.map(Number) }
+    const body = {
+      name: roleForm.name,
+      description: roleForm.description,
+      userRole: roleForm.userRole !== undefined ? roleForm.userRole : true,
+      permissionIds: roleForm.permissionIds.map(Number),
+    }
     const response = editingRoleId ? await run('role-save', () => adminApi.updateRole(editingRoleId, body), 'Đã cập nhật role.') : await run('role-save', () => adminApi.createRole(body), 'Đã tạo role.')
     if (response) { setRoleForm(EMPTY_ROLE); setEditingRoleId(null); await loadRoles() }
   }
-  const editRole = (role) => { setEditingRoleId(role.id); setRoleForm({ name: role.name, description: role.description || '', permissionIds: (role.permissions || []).map((permission) => permission.id) }) }
+  const editRole = (role) => {
+    setEditingRoleId(role.id)
+    setRoleForm({
+      name: role.name,
+      description: role.description || '',
+      userRole: role.userRole !== undefined ? role.userRole : isUserRoleCategory(role),
+      permissionIds: (role.permissions || []).map((permission) => permission.id),
+    })
+  }
   const deleteRole = async (id) => {
     const ok = await confirm({
       title: 'Xóa vai trò',
@@ -720,7 +734,20 @@ function UsersSection({ users, roles, filters, setFilters, onlineOnly, onToggleO
             {can(PERMISSIONS.ROLE_VIEW_ALL) && roles.length > 0 && (
               <select value={filters.role} onChange={(event) => setFilters({ ...filters, role: event.target.value })}>
                 <option value="">Mọi role</option>
-                {roles.map((role) => <option key={role.id} value={role.name}>{role.name}</option>)}
+                {roles.some((r) => isUserRoleCategory(r)) && (
+                  <optgroup label="Vai trò Người dùng (User / VIP / Pro)">
+                    {roles.filter((r) => isUserRoleCategory(r)).map((role) => (
+                      <option key={role.id} value={role.name}>{role.name}</option>
+                    ))}
+                  </optgroup>
+                )}
+                {roles.some((r) => !isUserRoleCategory(r)) && (
+                  <optgroup label="Vai trò Quản trị & Hệ thống">
+                    {roles.filter((r) => !isUserRoleCategory(r)).map((role) => (
+                      <option key={role.id} value={role.name}>{role.name}</option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
             )}
             <select value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })}>
@@ -814,7 +841,17 @@ function UsersSection({ users, roles, filters, setFilters, onlineOnly, onToggleO
                 <strong>{item.email || '—'}</strong>
                 <small>{item.phone || item.authProvider || 'Chưa có thông tin'}</small>
               </div>
-              <span className="admin-role-badge">{item.role || '—'}</span>
+              <span
+                className={`admin-role-badge ${
+                  item.role?.toUpperCase().includes('ADMIN') || item.role?.toUpperCase().includes('MANAGER')
+                    ? 'admin-role-badge--admin'
+                    : item.role?.toUpperCase().includes('VIP') || item.role?.toUpperCase().includes('PRO')
+                      ? 'admin-role-badge--vip'
+                      : ''
+                }`}
+              >
+                {item.role || '—'}
+              </span>
               <StatusBadge status={item.userStatus} />
               <button
                 type="button"
@@ -848,19 +885,33 @@ function RolesSection({ roles, permissions, form, setForm, editingId, busy, can,
   const canUpdateRole = can(PERMISSIONS.ROLE_UPDATE)
   const canViewAllPermissions = can(PERMISSIONS.ROLE_VIEW_ALL_PERMISSION)
 
+  const selectedAdminPermission = permissions
+    .filter((p) => form.permissionIds.includes(p.id))
+    .find((p) => p.name?.toUpperCase().startsWith('ADMIN_'))
+  const hasAdminPermission = Boolean(selectedAdminPermission)
+  const effectiveUserRole = hasAdminPermission ? false : form.userRole !== false
+
   return (
     <section className="admin-section admin-role-layout">
       <div className="admin-role-list">
         {canViewRoles ? (
           roles.map((role) => {
             const isProtected = isSystemRole(role.name)
+            const isUserType = isUserRoleCategory(role)
             return (
               <article className="admin-panel" key={role.id}>
                 <header>
                   <span><ChatIcon name="shield" size={18} /></span>
-                  <div>
-                    <h3>{role.name}</h3>
-                    <small>{(role.permissions || []).length} quyền</small>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <h3 style={{ margin: 0 }}>{role.name}</h3>
+                      <span className={`admin-role-type-tag ${isUserType ? 'is-user-type' : 'is-admin-type'}`}>
+                        {isUserType ? 'Vai trò Người dùng (User/VIP)' : 'Vai trò Quản trị (Admin/Staff)'}
+                      </span>
+                    </div>
+                    <small>
+                      {(role.permissions || []).length} quyền • {isUserType ? 'Hiển thị tìm kiếm & nhận kết bạn' : 'Ẩn tìm kiếm & chặn kết bạn'}
+                    </small>
                   </div>
                 </header>
                 <p>{role.description || 'Chưa có mô tả.'}</p>
@@ -912,7 +963,7 @@ function RolesSection({ roles, permissions, form, setForm, editingId, busy, can,
                   type="button"
                   onClick={() => {
                     const id = Number(quickRoleId)
-                    if (id) onEdit({ id, name: '', description: '', permissionIds: [] })
+                    if (id) onEdit({ id, name: '', description: '', userRole: true, permissionIds: [] })
                   }}
                 >
                   Sửa
@@ -975,6 +1026,47 @@ function RolesSection({ roles, permissions, form, setForm, editingId, busy, can,
               onChange={(event) => setForm({ ...form, description: event.target.value })}
             />
           </label>
+
+          <fieldset className="admin-role-type-fieldset">
+            <legend>Phân loại vai trò</legend>
+            <div className="admin-role-type-selector">
+              <label className={`admin-role-type-option ${effectiveUserRole ? 'is-active' : ''} ${hasAdminPermission ? 'is-disabled' : ''}`}>
+                <input
+                  type="radio"
+                  name="roleCategory"
+                  checked={effectiveUserRole}
+                  disabled={hasAdminPermission}
+                  onChange={() => setForm({ ...form, userRole: true })}
+                />
+                <div>
+                  <strong>Vai trò Người dùng (VIP / PRO / Thành viên)</strong>
+                  <small>Được hiển thị trong danh sách tìm kiếm và nhận lời mời kết bạn từ người khác.</small>
+                </div>
+              </label>
+
+              <label className={`admin-role-type-option ${!effectiveUserRole ? 'is-active' : ''}`}>
+                <input
+                  type="radio"
+                  name="roleCategory"
+                  checked={!effectiveUserRole}
+                  onChange={() => setForm({ ...form, userRole: false })}
+                />
+                <div>
+                  <strong>Vai trò Quản trị & Nhân viên (Admin / Manager / Moderator)</strong>
+                  <small>Bảo vệ tài khoản: Ẩn hoàn toàn khỏi tìm kiếm người dùng và chặn tất cả lời mời kết bạn.</small>
+                </div>
+              </label>
+            </div>
+            {hasAdminPermission && (
+              <div className="admin-role-type-hint">
+                <ChatIcon name="shield" size={14} />
+                <span>
+                  Role chứa quyền quản trị (<strong>{selectedAdminPermission.name}</strong>). Hệ thống sẽ tự động gán là <strong>Vai trò Quản trị</strong> để bảo vệ tài khoản.
+                </span>
+              </div>
+            )}
+          </fieldset>
+
           <fieldset>
             <legend>Danh sách permissions</legend>
             {canViewAllPermissions ? (
@@ -984,14 +1076,19 @@ function RolesSection({ roles, permissions, form, setForm, editingId, busy, can,
                     <input
                       type="checkbox"
                       checked={form.permissionIds.includes(permission.id)}
-                      onChange={(event) =>
+                      onChange={(event) => {
+                        const nextIds = event.target.checked
+                          ? resolvePermissionIdsWithPrerequisites(form.permissionIds, permission.id, permissions)
+                          : form.permissionIds.filter((id) => id !== permission.id)
+                        const adminPerm = permissions
+                          .filter((p) => nextIds.includes(p.id))
+                          .some((p) => p.name?.toUpperCase().startsWith('ADMIN_'))
                         setForm({
                           ...form,
-                          permissionIds: event.target.checked
-                            ? resolvePermissionIdsWithPrerequisites(form.permissionIds, permission.id, permissions)
-                            : form.permissionIds.filter((id) => id !== permission.id),
+                          permissionIds: nextIds,
+                          userRole: adminPerm ? false : form.userRole,
                         })
-                      }
+                      }}
                     />
                     <span>
                       <strong>{permission.name}</strong>
@@ -1167,7 +1264,17 @@ function UserDrawer({ currentUser, selectedUser, addresses, editingAddress, setE
           {selectedUser && (
             <div className="admin-user-overview">
               <StatusBadge status={selectedUser.userStatus} />
-              <span className="admin-role-badge">{selectedUser.role}</span>
+              <span
+                className={`admin-role-badge ${
+                  selectedUser.role?.toUpperCase().includes('ADMIN') || selectedUser.role?.toUpperCase().includes('MANAGER')
+                    ? 'admin-role-badge--admin'
+                    : selectedUser.role?.toUpperCase().includes('VIP') || selectedUser.role?.toUpperCase().includes('PRO')
+                      ? 'admin-role-badge--vip'
+                      : ''
+                }`}
+              >
+                {selectedUser.role}
+              </span>
               <ProviderBadge provider={selectedUser.authProvider} />
             </div>
           )}
@@ -1239,17 +1346,36 @@ function UserDrawer({ currentUser, selectedUser, addresses, editingAddress, setE
                   onChange={(event) => setForm({ ...form, roleId: event.target.value })}
                 >
                   <option value="">Role mặc định</option>
-                  {roles.map((role) => {
-                    const isRoleAdmin = normalizeRoleName(role.name).replace(/^ROLE_/, '') === SYSTEM_ROLES.ADMIN
-                    const isReservedAdmin = isRoleAdmin && !isRootAdmin
-                    const assignable = !isReservedAdmin && canAssignRole(currentUser, role)
-                    return (
-                      <option key={role.id} value={role.id} disabled={!assignable}>
-                        {role.name}
-                        {isReservedAdmin ? ' (Dành riêng cho root admin)' : !assignable ? ' (Vượt quá quyền)' : ''}
-                      </option>
-                    )
-                  })}
+                  {roles.some((r) => isUserRoleCategory(r)) && (
+                    <optgroup label="Vai trò Người dùng (User / VIP / Pro)">
+                      {roles.filter((r) => isUserRoleCategory(r)).map((role) => {
+                        const isRoleAdmin = normalizeRoleName(role.name).replace(/^ROLE_/, '') === SYSTEM_ROLES.ADMIN
+                        const isReservedAdmin = isRoleAdmin && !isRootAdmin
+                        const assignable = !isReservedAdmin && canAssignRole(currentUser, role)
+                        return (
+                          <option key={role.id} value={role.id} disabled={!assignable}>
+                            {role.name}
+                            {isReservedAdmin ? ' (Dành riêng cho root admin)' : !assignable ? ' (Vượt quá quyền)' : ''}
+                          </option>
+                        )
+                      })}
+                    </optgroup>
+                  )}
+                  {roles.some((r) => !isUserRoleCategory(r)) && (
+                    <optgroup label="Vai trò Quản trị & Nhân viên (Admin / Manager)">
+                      {roles.filter((r) => !isUserRoleCategory(r)).map((role) => {
+                        const isRoleAdmin = normalizeRoleName(role.name).replace(/^ROLE_/, '') === SYSTEM_ROLES.ADMIN
+                        const isReservedAdmin = isRoleAdmin && !isRootAdmin
+                        const assignable = !isReservedAdmin && canAssignRole(currentUser, role)
+                        return (
+                          <option key={role.id} value={role.id} disabled={!assignable}>
+                            {role.name}
+                            {isReservedAdmin ? ' (Dành riêng cho root admin)' : !assignable ? ' (Vượt quá quyền)' : ''}
+                          </option>
+                        )
+                      })}
+                    </optgroup>
+                  )}
                 </select>
                 {isSelf && (
                   <small style={{ color: '#888', fontStyle: 'italic', display: 'block', marginTop: '4px' }}>

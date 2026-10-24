@@ -200,7 +200,8 @@ export function isSystemRole(roleOrName) {
 
 export function isSuperAdmin(user) {
   if (!user) return false
-  const primaryRole = normalizeRoleName(user.role || user.userRole).replace(/^ROLE_/, '')
+  const roleVal = typeof user.role === 'string' ? user.role : (typeof user.userRole === 'string' ? user.userRole : '')
+  const primaryRole = normalizeRoleName(roleVal).replace(/^ROLE_/, '')
   if (primaryRole === SYSTEM_ROLES.ADMIN) return true
 
   const roles = user.roles || user.authorities || []
@@ -266,11 +267,29 @@ export function isAdminUser(user) {
 
 export function isAdminAccount(person) {
   if (!person) return false
+  if (person.userRole === true) return false
+  if (person.userRole === false) return true
   if (isAdminUser(person)) return true
-  const role = normalizeRoleName(person.role || person.userRole).replace(/^ROLE_/, '')
+  const roleVal = typeof person.role === 'string' ? person.role : (typeof person.userRole === 'string' ? person.userRole : '')
+  const role = normalizeRoleName(roleVal).replace(/^ROLE_/, '')
   if (role === SYSTEM_ROLES.ADMIN) return true
   const roles = person.roles || person.authorities || []
   return Array.isArray(roles) && roles.some((r) => normalizeRoleName(r).replace(/^ROLE_/, '') === SYSTEM_ROLES.ADMIN)
+}
+
+export function isUserRoleCategory(role) {
+  if (!role) return true
+  if (typeof role === 'object' && role.userRole !== undefined) {
+    return Boolean(role.userRole)
+  }
+  const roleName = normalizeRoleName(typeof role === 'object' ? role.name : role).replace(/^ROLE_/, '')
+  if (roleName === SYSTEM_ROLES.ADMIN) return false
+  if (roleName === SYSTEM_ROLES.USER) return true
+  const perms = Array.isArray(role?.permissions) ? role.permissions : []
+  return !perms.some((p) => {
+    const name = typeof p === 'string' ? p : p?.name
+    return typeof name === 'string' && name.toUpperCase().startsWith('ADMIN_')
+  })
 }
 
 export function canAssignRole(user, targetRole) {

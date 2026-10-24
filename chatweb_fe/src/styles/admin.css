@@ -127,6 +127,8 @@ body:has(.admin-shell), body:has(.admin-denied) { margin: 0; background: var(--a
 .admin-user-cell strong { font-size: 10px; }
 .admin-user-cell small { margin-top: 3px; color: #8190a4; font-size: 8px; }
 .admin-role-badge { width: fit-content; padding: 5px 7px; border-radius: 6px; background: #eee9ff; color: #6945b8; font-size: 7px; font-weight: 850; }
+.admin-role-badge--vip { background: #fef3c7 !important; color: #92400e !important; border: 1px solid #fde68a; }
+.admin-role-badge--admin { background: #fee2e2 !important; color: #991b1b !important; border: 1px solid #fecaca; }
 .admin-status { display: inline-flex; width: fit-content; padding: 5px 7px; align-items: center; gap: 6px; border-radius: 99px; background: #eef2f6; color: #68778b; font-size: 7px; font-weight: 800; }
 .admin-status i { width: 6px; height: 6px; border-radius: 50%; background: #98a4b3; }
 .admin-status--active { background: #eaf8f4; color: #208779; }
@@ -159,6 +161,22 @@ body:has(.admin-shell), body:has(.admin-denied) { margin: 0; background: var(--a
 .admin-role-list article > footer { display: flex; margin-top: 15px; padding-top: 12px; gap: 7px; border-top: 1px solid #edf1f5; }
 .admin-role-list footer button, .admin-form-actions > button:not(.admin-primary-button), .admin-danger-actions button, .admin-address-section article button { display: inline-flex; min-height: 31px; padding: 0 9px; align-items: center; gap: 5px; border: 1px solid var(--admin-line); border-radius: 7px; background: white; color: #617086; cursor: pointer; font-size: 7px; font-weight: 800; }
 .admin-role-list footer button.is-danger, .admin-danger-actions button.is-danger, .admin-address-section article button.is-danger { border-color: #f0cbd0; color: var(--admin-danger); }
+
+.admin-role-type-tag { display: inline-flex; align-items: center; padding: 2px 7px; border-radius: 99px; font-size: 7.5px; font-weight: 750; }
+.admin-role-type-tag.is-user-type { background: #eaf8f4; color: #1e7e6f; border: 1px solid #c0eade; }
+.admin-role-type-tag.is-admin-type { background: #f3edff; color: #6b3bb8; border: 1px solid #decbfb; }
+
+.admin-role-type-fieldset { border: 1px solid var(--admin-line); border-radius: 10px; padding: 12px 14px; margin: 4px 0; }
+.admin-role-type-fieldset legend { font-size: 8px; font-weight: 800; color: #52637a; padding: 0 6px; }
+.admin-role-type-selector { display: grid; gap: 8px; }
+.admin-role-type-option { display: flex; align-items: flex-start; gap: 10px; padding: 9px 12px; border: 1px solid var(--admin-line); border-radius: 8px; cursor: pointer; transition: all .15s ease; background: #fff; }
+.admin-role-type-option.is-active { border-color: var(--admin-accent); background: #f5f2ff; }
+.admin-role-type-option.is-disabled { opacity: .55; cursor: not-allowed; }
+.admin-role-type-option input { margin-top: 3px; cursor: pointer; }
+.admin-role-type-option div strong { display: block; font-size: 9.5px; color: #1f2d3d; }
+.admin-role-type-option div small { display: block; font-size: 8px; color: #708096; margin-top: 2px; line-height: 1.4; }
+.admin-role-type-hint { display: flex; align-items: center; gap: 6px; margin: 8px 0 0; padding: 7px 10px; border-radius: 6px; background: #fff8e6; color: #92580a; font-size: 7.5px; font-weight: 600; border: 1px solid #f9df9e; }
+.admin-role-type-hint strong { font-weight: 800; }
 
 .admin-form { display: grid; padding: 25px; gap: 15px; }
 .admin-form header { margin-bottom: 4px; }

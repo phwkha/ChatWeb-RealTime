@@ -354,4 +354,94 @@ class RoleServiceTest {
         assertThrows(ResourceConflictException.class, () -> roleService.deleteRole(1L));
         verify(roleRepository, never()).delete(any());
     }
+
+    @Test
+    void testCreateRole_VipRole_DefaultsToUserRoleTrue() {
+        RoleRequest req = new RoleRequest();
+        req.setName("VIP");
+        req.setDescription("VIP Member");
+
+        when(roleRepository.findByNameIgnoreCase("VIP")).thenReturn(Optional.empty());
+        when(roleRepository.save(any(RoleEntity.class))).thenAnswer(invocation -> {
+            RoleEntity r = invocation.getArgument(0);
+            assertTrue(r.isUserRole());
+            return r;
+        });
+        when(userMapper.toRoleResponse(any())).thenReturn(RoleResponse.builder().name("VIP").userRole(true).build());
+
+        RoleResponse res = roleService.createRole(req);
+        assertNotNull(res);
+        assertTrue(res.isUserRole());
+    }
+
+    @Test
+    void testCreateRole_ManagerWithAdminPermission_ForcesUserRoleFalse() {
+        RoleRequest req = new RoleRequest();
+        req.setName("MANAGER");
+        req.setDescription("Manager role");
+        req.setPermissionIds(List.of(1L));
+        req.setUserRole(true);
+
+        Authentication authentication = mock(Authentication.class);
+        SecurityContext securityContext = mock(SecurityContext.class);
+        when(securityContext.getAuthentication()).thenReturn(authentication);
+        SecurityContextHolder.setContext(securityContext);
+        GrantedAuthority auth = new SimpleGrantedAuthority("ADMIN_VIEW_USERS");
+        doReturn(List.of(auth)).when(authentication).getAuthorities();
+
+        PermissionEntity pAdmin = new PermissionEntity();
+        pAdmin.setId(1L);
+        pAdmin.setName("ADMIN_VIEW_USERS");
+
+        when(roleRepository.findByNameIgnoreCase("MANAGER")).thenReturn(Optional.empty());
+        when(permissionRepository.findAllById(List.of(1L))).thenReturn(List.of(pAdmin));
+        when(roleRepository.save(any(RoleEntity.class))).thenAnswer(invocation -> {
+            RoleEntity r = invocation.getArgument(0);
+            assertFalse(r.isUserRole());
+            return r;
+        });
+        when(userMapper.toRoleResponse(any())).thenReturn(RoleResponse.builder().name("MANAGER").userRole(false).build());
+
+        RoleResponse res = roleService.createRole(req);
+        assertNotNull(res);
+        assertFalse(res.isUserRole());
+    }
+
+    @Test
+    void testUpdateRole_AddAdminPermission_ForcesUserRoleFalse() {
+        RoleEntity existing = new RoleEntity();
+        existing.setId(10L);
+        existing.setName("CUSTOM");
+        existing.setUserRole(true);
+
+        RoleRequest req = new RoleRequest();
+        req.setName("CUSTOM");
+        req.setPermissionIds(List.of(2L));
+        req.setUserRole(true);
+
+        Authentication authentication = mock(Authentication.class);
+        SecurityContext securityContext = mock(SecurityContext.class);
+        when(securityContext.getAuthentication()).thenReturn(authentication);
+        SecurityContextHolder.setContext(securityContext);
+        GrantedAuthority auth = new SimpleGrantedAuthority("ADMIN_VIEW_REPORTS");
+        doReturn(List.of(auth)).when(authentication).getAuthorities();
+
+        PermissionEntity pAdmin = new PermissionEntity();
+        pAdmin.setId(2L);
+        pAdmin.setName("ADMIN_VIEW_REPORTS");
+
+        when(roleRepository.findById(10L)).thenReturn(Optional.of(existing));
+        when(roleRepository.findByNameIgnoreCase("CUSTOM")).thenReturn(Optional.of(existing));
+        when(permissionRepository.findAllById(List.of(2L))).thenReturn(List.of(pAdmin));
+        when(roleRepository.save(any(RoleEntity.class))).thenAnswer(invocation -> {
+            RoleEntity r = invocation.getArgument(0);
+            assertFalse(r.isUserRole());
+            return r;
+        });
+        when(userMapper.toRoleResponse(any())).thenReturn(RoleResponse.builder().name("CUSTOM").userRole(false).build());
+
+        RoleResponse res = roleService.updateRole(10L, req);
+        assertNotNull(res);
+        assertFalse(res.isUserRole());
+    }
 }

@@ -55,6 +55,7 @@ public class RoleServiceImpl implements RoleService {
 
     private static final String SYSTEM_ROLE_ADMIN_STRING = "ADMIN";
     private static final String SYSTEM_ROLE_USER_STRING = "USER";
+    private static final String ADMIN_PERMISSION_PREFIX = "ADMIN_";
 
     @Override
     @Transactional(readOnly = true)
@@ -101,6 +102,8 @@ public class RoleServiceImpl implements RoleService {
             role.setPermissions(permissions);
         }
 
+        role.setUserRole(resolveIsUserRole(role.getName(), role.getPermissions(), request.getUserRole()));
+
         RoleEntity savedRole = roleRepository.save(role);
         log.info("Created new role '{}'", savedRole.getName());
         return userMapper.toRoleResponse(savedRole);
@@ -133,6 +136,8 @@ public class RoleServiceImpl implements RoleService {
             role.setPermissions(permissions);
         }
 
+        role.setUserRole(resolveIsUserRole(role.getName(), role.getPermissions(), request.getUserRole()));
+
         RoleEntity savedRole = roleRepository.save(role);
         log.info("Updated role '{}' (id={}) and evicted user details cache", savedRole.getName(), roleId);
         return userMapper.toRoleResponse(savedRole);
@@ -154,6 +159,21 @@ public class RoleServiceImpl implements RoleService {
         }
         roleRepository.delete(Objects.requireNonNull(role));
         log.info("Deleted role id={} and evicted user details cache", roleId);
+    }
+
+    private boolean resolveIsUserRole(String roleName, Set<PermissionEntity> permissions, Boolean requestedUserRole) {
+        if (SYSTEM_ROLE_ADMIN_STRING.equalsIgnoreCase(roleName)) {
+            return false;
+        }
+        if (SYSTEM_ROLE_USER_STRING.equalsIgnoreCase(roleName)) {
+            return true;
+        }
+        boolean hasAdminPermission = permissions != null && permissions.stream()
+                .anyMatch(p -> p.getName() != null && p.getName().toUpperCase().startsWith(ADMIN_PERMISSION_PREFIX));
+        if (hasAdminPermission) {
+            return false;
+        }
+        return requestedUserRole != null ? requestedUserRole : true;
     }
 
     private boolean isSystemRole(String roleName) {

@@ -91,6 +91,10 @@ public class FriendServiceImpl implements FriendService {
 
                 UserEntity addressee = getUser(addresseeUsername);
 
+                if (addressee.getRole() != null && !addressee.getRole().isUserRole()) {
+                        throw new ResourceNotFoundException(Translator.tolocale(ERROR_USER_NOT_FOUND_STRING));
+                }
+
                 if (addressee.getUserStatus() == UserStatus.INACTIVE) {
                         throw new AccessForbiddenException(Translator.tolocale(ERROR_FRIEND_SEND_DELETED_STRING));
                 }

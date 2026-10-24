@@ -34,6 +34,7 @@ import com.web.backend.exception.custom.ResourceNotFoundException;
 import com.web.backend.kafka.payload.FriendPayload;
 import com.web.backend.mapper.UserMapper;
 import com.web.backend.model.postgres.FriendshipEntity;
+import com.web.backend.model.postgres.RoleEntity;
 import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.repository.FriendshipRepository;
 import com.web.backend.repository.UserRepository;
@@ -88,6 +89,19 @@ class FriendServiceTest {
     @Test
     void testSendFriendRequest_SelfAdd() {
         assertThrows(InvalidDataException.class, () -> friendService.sendFriendRequest(userA, "userA"));
+    }
+
+    @Test
+    void testSendFriendRequest_AddresseeNotUserRole_ThrowsResourceNotFound() {
+        RoleEntity adminRole = new RoleEntity();
+        adminRole.setName("ADMIN");
+        adminRole.setUserRole(false);
+        userB.setRole(adminRole);
+
+        when(userRepository.findByUsername("userB")).thenReturn(Optional.of(userB));
+
+        assertThrows(ResourceNotFoundException.class, () -> friendService.sendFriendRequest(userA, "userB"));
+        verify(friendshipRepository, never()).save(any());
     }
 
     @Test

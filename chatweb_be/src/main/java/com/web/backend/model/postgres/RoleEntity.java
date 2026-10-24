@@ -11,7 +11,8 @@ import java.util.Set;
 @Entity
 @Table(name = "roles",
         indexes = {
-                @Index(name = "idx_role_name", columnList = "name")
+                @Index(name = "idx_role_name", columnList = "name"),
+                @Index(name = "idx_role_is_user_role", columnList = "is_user_role")
         })
 @Getter
 @Setter
@@ -25,6 +26,9 @@ public class RoleEntity extends AbstractEntity<Long> {
 
     @Column(name = "description")
     private String description;
+
+    @Column(name = "is_user_role", nullable = false, columnDefinition = "boolean default true")
+    private boolean userRole = true;
 
     @ManyToMany(fetch = FetchType.LAZY)
     @BatchSize(size = 20)
