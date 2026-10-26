@@ -34,6 +34,7 @@ import com.web.backend.exception.custom.ResourceNotFoundException;
 import com.web.backend.kafka.payload.FriendPayload;
 import com.web.backend.mapper.UserMapper;
 import com.web.backend.model.postgres.FriendshipEntity;
+import com.web.backend.model.postgres.RoleEntity;
 import com.web.backend.model.postgres.UserEntity;
 import com.web.backend.repository.FriendshipRepository;
 import com.web.backend.repository.UserRepository;
@@ -88,6 +89,45 @@ class FriendServiceTest {
     @Test
     void testSendFriendRequest_SelfAdd() {
         assertThrows(InvalidDataException.class, () -> friendService.sendFriendRequest(userA, "userA"));
+    }
+
+    @Test
+    void testSendFriendRequest_AddresseeNotUserRole_ThrowsResourceNotFound() {
+        RoleEntity adminRole = new RoleEntity();
+        adminRole.setName("ADMIN");
+        adminRole.setUserRole(false);
+        userB.setRole(adminRole);
+
+        when(userRepository.findByUsername("userB")).thenReturn(Optional.of(userB));
+
+        assertThrows(ResourceNotFoundException.class, () -> friendService.sendFriendRequest(userA, "userB"));
+        verify(friendshipRepository, never()).save(any());
+    }
+
+    @Test
+    void testSendFriendRequest_AddresseeHasUserRole_Success() {
+        RoleEntity role = new RoleEntity();
+        role.setName("USER");
+        role.setUserRole(true);
+        userB.setRole(role);
+
+        when(userRepository.findByUsername("userB")).thenReturn(Optional.of(userB));
+        when(friendshipRepository.findByUsers(userA, userB)).thenReturn(Optional.empty());
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+
+        NotificationEntity mockNotif = new NotificationEntity();
+        mockNotif.setId(102L);
+        when(notificationService.createNotification(
+                eq("userA"),
+                eq("userB"),
+                eq(NotificationsType.FRIEND_REQUEST),
+                eq(NotificationTargetType.USER),
+                eq("userA"),
+                anyString())).thenReturn(mockNotif);
+
+        friendService.sendFriendRequest(userA, "userB");
+
+        verify(friendshipRepository).save(any(FriendshipEntity.class));
     }
 
     @Test

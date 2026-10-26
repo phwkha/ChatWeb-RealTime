@@ -11,5 +11,7 @@ public class RoleRequest {
 
     private String description;
 
+    private Boolean userRole;
+
     private List<Long> permissionIds;
 }

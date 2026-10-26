@@ -91,8 +91,8 @@ public class DataSeeder implements CommandLineRunner {
         PermissionEntity pAdminResolveReports = createPermissionIfNotFound("ADMIN_RESOLVE_REPORTS", "Xử lý báo cáo vi phạm");
         PermissionEntity pAdminDeleteReports = createPermissionIfNotFound("ADMIN_DELETE_REPORTS", "Xóa báo cáo vi phạm");
 
-        RoleEntity roleAdmin = createRoleIfNotFound("ADMIN", "Quản trị viên hệ thống");
-        createRoleIfNotFound("USER", "Người dùng cơ bản");
+        RoleEntity roleAdmin = createRoleIfNotFound("ADMIN", "Quản trị viên hệ thống", false);
+        createRoleIfNotFound("USER", "Người dùng cơ bản", true);
 
         assignPermissionToRole(roleAdmin,
                 pAdminViewUsers, pAdminViewOnlineUsers, pAdminViewUserDetail, pAdminViewUserAddresses,
@@ -141,12 +141,20 @@ public class DataSeeder implements CommandLineRunner {
                 });
     }
 
-    private RoleEntity createRoleIfNotFound(String name, String desc) {
+    private RoleEntity createRoleIfNotFound(String name, String desc, boolean isUserRole) {
         return roleRepository.findByName(name)
+                .map(existingRole -> {
+                    if (existingRole.isUserRole() != isUserRole) {
+                        existingRole.setUserRole(isUserRole);
+                        roleRepository.save(existingRole);
+                    }
+                    return existingRole;
+                })
                 .orElseGet(() -> {
                     RoleEntity r = new RoleEntity();
                     r.setName(name);
                     r.setDescription(desc);
+                    r.setUserRole(isUserRole);
                     return roleRepository.save(r);
                 });
     }

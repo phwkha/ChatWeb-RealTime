@@ -21,6 +21,7 @@ import {
   ROLE_MANAGEMENT_PERMISSIONS,
   PERMISSION_PREREQUISITES,
   resolvePermissionIdsWithPrerequisites,
+  isUserRoleCategory,
 } from '../authorization.js'
 
 describe('authorization service', () => {
@@ -50,6 +51,22 @@ describe('authorization service', () => {
     expect(isAdminAccount({ roles: ['ADMIN'] })).toBe(true)
     expect(isAdminAccount({ username: 'user1', role: 'USER' })).toBe(false)
     expect(isAdminAccount(null)).toBe(false)
+  })
+
+  it('identifies admin account properly with userRole classification', () => {
+    expect(isAdminAccount({ userRole: true })).toBe(false)
+    expect(isAdminAccount({ userRole: false })).toBe(true)
+    expect(isAdminAccount({ role: 'VIP', userRole: true })).toBe(false)
+    expect(isAdminAccount({ role: 'MANAGER', userRole: false })).toBe(true)
+  })
+
+  it('categorizes roles into user role category correctly', () => {
+    expect(isUserRoleCategory({ userRole: true })).toBe(true)
+    expect(isUserRoleCategory({ userRole: false })).toBe(false)
+    expect(isUserRoleCategory({ name: 'USER' })).toBe(true)
+    expect(isUserRoleCategory({ name: 'ADMIN' })).toBe(false)
+    expect(isUserRoleCategory({ name: 'VIP', permissions: [{ name: 'USER_SEND_WORLD_CHAT' }] })).toBe(true)
+    expect(isUserRoleCategory({ name: 'MANAGER', permissions: [{ name: 'ADMIN_VIEW_USERS' }] })).toBe(false)
   })
 
   it('checks specific permissions correctly', () => {

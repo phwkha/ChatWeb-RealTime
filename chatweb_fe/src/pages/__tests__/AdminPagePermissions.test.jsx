@@ -702,6 +702,33 @@ describe('AdminPage Permission-Based UI Rendering', () => {
         expect(viewDetailCheckbox).toBeChecked()
       })
     })
+
+    it('displays role classification tags and supports userRole selection in RolesSection', async () => {
+      vi.mocked(authContext.useAuth).mockReturnValue({
+        user: { username: 'root_admin', role: 'ADMIN', permissions: ['ADMIN_ROLE_VIEW_ALL', 'ADMIN_ROLE_ADD'] },
+        logout: vi.fn(),
+      })
+
+      render(
+        <MemoryRouter initialEntries={['/admin']}>
+          <AdminPage />
+        </MemoryRouter>
+      )
+
+      const nav = screen.getByRole('navigation')
+      await waitFor(() => {
+        expect(within(nav).getByText('Role & quyền')).toBeInTheDocument()
+      })
+      fireEvent.click(within(nav).getByText('Role & quyền'))
+
+      await waitFor(() => {
+        expect(screen.getByText('Vai trò Người dùng (User/VIP)')).toBeInTheDocument()
+        expect(screen.getAllByText('Vai trò Quản trị (Admin/Staff)').length).toBeGreaterThanOrEqual(1)
+      })
+
+      expect(screen.getByText(/Vai trò Người dùng \(VIP \/ PRO \/ Thành viên\)/i)).toBeInTheDocument()
+      expect(screen.getByText(/Vai trò Quản trị & Nhân viên \(Admin \/ Manager \/ Moderator\)/i)).toBeInTheDocument()
+    })
   })
 })
 

@@ -35,7 +35,6 @@ public class SearchUserServiceImpl implements SearchUserService {
 
     private final UserMapper userMapper;
 
-    private static final String ROLE_USER_STRING = "USER";
     private static final String DESC_STRING = "desc";
     private static final String USERNAME_STRING = "username";
     private static final String EMPTY_STRING = "";
@@ -51,7 +50,7 @@ public class SearchUserServiceImpl implements SearchUserService {
         Pageable pageable = PageRequest.of(page, size, Sort.by(direction, USERNAME_STRING));
 
         Specification<UserEntity> spec = UserSearchSpecifications.isNotStatus(UserStatus.INACTIVE)
-                .and(UserSearchSpecifications.isRole(ROLE_USER_STRING))
+                .and(UserSearchSpecifications.isUserRole())
                 .and(UserSearchSpecifications.isNotCurrentUsername(currentUsername))
                 .and(UserSearchSpecifications.notBlockedWith(currentUsername))
                 .and(UserSearchSpecifications.containsKeyword(keyword));
@@ -75,7 +74,7 @@ public class SearchUserServiceImpl implements SearchUserService {
             String[] user,
             String[] address) {
 
-        Specification<UserEntity> finalSpec = UserSearchSpecifications.isRole(ROLE_USER_STRING)
+        Specification<UserEntity> finalSpec = UserSearchSpecifications.isUserRole()
                 .and(UserSearchSpecifications.isNotStatus(UserStatus.INACTIVE))
                 .and(UserSearchSpecifications.isNotCurrentUsername(currentUsername))
                 .and(UserSearchSpecifications.notBlockedWith(currentUsername));

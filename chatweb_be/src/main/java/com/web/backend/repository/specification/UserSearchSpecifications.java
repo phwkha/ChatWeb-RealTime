@@ -29,6 +29,7 @@ public class UserSearchSpecifications {
     private static final String LAST_NAME_STRING = "lastName";
     private static final String GENDER_STRING = "gender";
     private static final String AUTH_PROVIDER_STRING = "authProvider";
+    private static final String USER_ROLE_FIELD_STRING = "userRole";
     private static final String PERCENT_STRING = "%";
 
     private UserSearchSpecifications() {
@@ -68,6 +69,13 @@ public class UserSearchSpecifications {
             }
             Join<UserEntity, RoleEntity> roleJoin = root.join(ROLE_STRING, JoinType.INNER);
             return cb.equal(cb.upper(roleJoin.get(NAME_STRING)), roleName.toUpperCase());
+        };
+    }
+
+    public static Specification<UserEntity> isUserRole() {
+        return (root, query, cb) -> {
+            Join<UserEntity, RoleEntity> roleJoin = root.join(ROLE_STRING, JoinType.INNER);
+            return cb.isTrue(roleJoin.get(USER_ROLE_FIELD_STRING));
         };
     }
 
