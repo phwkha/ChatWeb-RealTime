@@ -444,4 +444,24 @@ class RoleServiceTest {
         assertNotNull(res);
         assertFalse(res.isUserRole());
     }
+
+    @Test
+    void testCreateRole_ExplicitUserRoleFalse_SetsUserRoleFalse() {
+        RoleRequest req = new RoleRequest();
+        req.setName("STAFF");
+        req.setDescription("Staff role");
+        req.setUserRole(false);
+
+        when(roleRepository.findByNameIgnoreCase("STAFF")).thenReturn(Optional.empty());
+        when(roleRepository.save(any(RoleEntity.class))).thenAnswer(invocation -> {
+            RoleEntity r = invocation.getArgument(0);
+            assertFalse(r.isUserRole());
+            return r;
+        });
+        when(userMapper.toRoleResponse(any())).thenReturn(RoleResponse.builder().name("STAFF").userRole(false).build());
+
+        RoleResponse res = roleService.createRole(req);
+        assertNotNull(res);
+        assertFalse(res.isUserRole());
+    }
 }

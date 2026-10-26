@@ -102,7 +102,7 @@ public class RoleServiceImpl implements RoleService {
             role.setPermissions(permissions);
         }
 
-        role.setUserRole(resolveIsUserRole(role.getName(), role.getPermissions(), request.getUserRole()));
+        role.setUserRole(resolveIsUserRole(role.getPermissions(), request.getUserRole()));
 
         RoleEntity savedRole = roleRepository.save(role);
         log.info("Created new role '{}'", savedRole.getName());
@@ -136,7 +136,7 @@ public class RoleServiceImpl implements RoleService {
             role.setPermissions(permissions);
         }
 
-        role.setUserRole(resolveIsUserRole(role.getName(), role.getPermissions(), request.getUserRole()));
+        role.setUserRole(resolveIsUserRole(role.getPermissions(), request.getUserRole()));
 
         RoleEntity savedRole = roleRepository.save(role);
         log.info("Updated role '{}' (id={}) and evicted user details cache", savedRole.getName(), roleId);
@@ -161,19 +161,13 @@ public class RoleServiceImpl implements RoleService {
         log.info("Deleted role id={} and evicted user details cache", roleId);
     }
 
-    private boolean resolveIsUserRole(String roleName, Set<PermissionEntity> permissions, Boolean requestedUserRole) {
-        if (SYSTEM_ROLE_ADMIN_STRING.equalsIgnoreCase(roleName)) {
-            return false;
-        }
-        if (SYSTEM_ROLE_USER_STRING.equalsIgnoreCase(roleName)) {
-            return true;
-        }
+    private boolean resolveIsUserRole(Set<PermissionEntity> permissions, Boolean requestedUserRole) {
         boolean hasAdminPermission = permissions != null && permissions.stream()
                 .anyMatch(p -> p.getName() != null && p.getName().toUpperCase().startsWith(ADMIN_PERMISSION_PREFIX));
         if (hasAdminPermission) {
             return false;
         }
-        return requestedUserRole != null ? requestedUserRole : true;
+        return requestedUserRole == null || requestedUserRole;
     }
 
     private boolean isSystemRole(String roleName) {
