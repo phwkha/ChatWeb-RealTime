@@ -143,13 +143,6 @@ public class DataSeeder implements CommandLineRunner {
 
     private RoleEntity createRoleIfNotFound(String name, String desc, boolean isUserRole) {
         return roleRepository.findByName(name)
-                .map(existingRole -> {
-                    if (existingRole.isUserRole() != isUserRole) {
-                        existingRole.setUserRole(isUserRole);
-                        roleRepository.save(existingRole);
-                    }
-                    return existingRole;
-                })
                 .orElseGet(() -> {
                     RoleEntity r = new RoleEntity();
                     r.setName(name);
