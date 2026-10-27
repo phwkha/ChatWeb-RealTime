@@ -1,13 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import Brand from '../components/Brand.jsx'
-import ChatIcon from '../components/chat/ChatIcon.jsx'
-import { useAuth } from '../context/auth-context.js'
-import { useLanguage } from '../context/language-context.js'
-import { useConfirm } from '../context/ConfirmDialogContext.jsx'
-import { useChatSocket } from '../hooks/useChatSocket.js'
-import { adminApi } from '../services/adminApi.js'
-import { getErrorMessage } from '../services/apiClient.js'
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import Brand from "../components/Brand.jsx";
+import ChatIcon from "../components/chat/ChatIcon.jsx";
+import { useAuth } from "../context/auth-context.js";
+import { useLanguage } from "../context/language-context.js";
+import { useConfirm } from "../context/ConfirmDialogContext.jsx";
+import { useChatSocket } from "../hooks/useChatSocket.js";
+import { adminApi } from "../services/adminApi.js";
+import { getErrorMessage } from "../services/apiClient.js";
 import {
   canAssignRole,
   hasPermission,
@@ -23,238 +23,411 @@ import {
   ROLE_MANAGEMENT_PERMISSIONS,
   resolvePermissionIdsWithPrerequisites,
   isUserRoleCategory,
-} from '../services/authorization.js'
-import '../styles/admin.css'
+} from "../services/authorization.js";
+import "../styles/admin.css";
 
-const EMPTY_USER = { username: '', password: '', firstName: '', lastName: '', email: '', phone: '', roleId: '' }
-const EMPTY_ROLE = { name: '', description: '', userRole: true, permissionIds: [] }
-const EMPTY_EMAIL = { to: '', subject: '', text: '' }
-const EMPTY_ANNOUNCEMENT = { content: '', survivalTime: '' }
-const DEFAULT_FILTERS = { keyword: '', role: '', status: '', gender: '', authProvider: '', sorts: 'id:desc', page: 0, size: 20 }
-const DEFAULT_REPORT_FILTERS = { keyword: '', status: '', reason: '', page: 0, size: 20 }
-const EMPTY_RESOLVE_FORM = { status: 'RESOLVED', resolutionNote: '', lockReportedUser: false }
-const EMPTY_PAGE = { pageNo: 0, pageSize: 20, totalElements: 0, totalPages: 0, last: true }
-const ADDRESS_FIELDS = ['houseNumber', 'street', 'ward', 'district', 'city', 'country', 'postalCode']
+const EMPTY_USER = {
+  username: "",
+  password: "",
+  firstName: "",
+  lastName: "",
+  email: "",
+  phone: "",
+  roleId: "",
+};
+const EMPTY_ROLE = {
+  name: "",
+  description: "",
+  userRole: true,
+  permissionIds: [],
+};
+const EMPTY_EMAIL = { to: "", subject: "", text: "" };
+const EMPTY_ANNOUNCEMENT = { content: "", survivalTime: "" };
+const DEFAULT_FILTERS = {
+  keyword: "",
+  role: "",
+  status: "",
+  gender: "",
+  authProvider: "",
+  sorts: "id:desc",
+  page: 0,
+  size: 20,
+};
+const DEFAULT_REPORT_FILTERS = {
+  keyword: "",
+  status: "",
+  reason: "",
+  page: 0,
+  size: 20,
+};
+const EMPTY_RESOLVE_FORM = {
+  status: "RESOLVED",
+  resolutionNote: "",
+  lockReportedUser: false,
+};
+const EMPTY_PAGE = {
+  pageNo: 0,
+  pageSize: 20,
+  totalElements: 0,
+  totalPages: 0,
+  last: true,
+};
+const ADDRESS_FIELDS = [
+  "houseNumber",
+  "street",
+  "ward",
+  "district",
+  "city",
+  "country",
+  "postalCode",
+];
 
 const NAV_ITEMS = [
-  { id: 'dashboard', label: 'Tổng quan', icon: 'shield' },
+  { id: "dashboard", label: "Tổng quan", icon: "shield" },
   {
-    id: 'users',
-    label: 'Người dùng',
-    icon: 'users',
+    id: "users",
+    label: "Người dùng",
+    icon: "users",
     permissions: USER_MANAGEMENT_PERMISSIONS,
   },
   {
-    id: 'reports',
-    label: 'Báo cáo vi phạm',
-    icon: 'flag',
+    id: "reports",
+    label: "Báo cáo vi phạm",
+    icon: "flag",
     permissions: REPORT_MODERATION_PERMISSIONS,
   },
   {
-    id: 'roles',
-    label: 'Role & quyền',
-    icon: 'settings',
+    id: "roles",
+    label: "Role & quyền",
+    icon: "settings",
     permissions: ROLE_MANAGEMENT_PERMISSIONS,
   },
-  { id: 'email', label: 'Email hệ thống', icon: 'send', permissions: [PERMISSIONS.SEND_EMAIL] },
-  { id: 'broadcast', label: 'Thông báo hệ thống', icon: 'globe', permissions: [PERMISSIONS.ADMIN_SEND_MESSAGE] },
-]
+  {
+    id: "email",
+    label: "Email hệ thống",
+    icon: "send",
+    permissions: [PERMISSIONS.SEND_EMAIL],
+  },
+  {
+    id: "broadcast",
+    label: "Thông báo hệ thống",
+    icon: "globe",
+    permissions: [PERMISSIONS.ADMIN_SEND_MESSAGE],
+  },
+];
 
 const SECTION_META = {
-  dashboard: ['Trung tâm điều hành', 'Theo dõi và truy cập nhanh toàn bộ công cụ quản trị ChatWeb.'],
-  users: ['Quản lý người dùng', 'Tìm kiếm, tạo mới, cập nhật, khóa và quản lý dữ liệu tài khoản.'],
-  reports: ['Báo cáo vi phạm', 'Kiểm duyệt và xử lý các báo cáo vi phạm từ người dùng.'],
-  roles: ['Role & phân quyền', 'Thiết kế vai trò và kiểm soát chính xác quyền truy cập hệ thống.'],
-  email: ['Email hệ thống', 'Gửi email văn bản trực tiếp từ hệ thống đến người dùng.'],
-  broadcast: ['Thông báo toàn hệ thống', 'Phát và theo dõi thông báo realtime trên kênh thế giới.'],
-}
+  dashboard: [
+    "Trung tâm điều hành",
+    "Theo dõi và truy cập nhanh toàn bộ công cụ quản trị ChatWeb.",
+  ],
+  users: [
+    "Quản lý người dùng",
+    "Tìm kiếm, tạo mới, cập nhật, khóa và quản lý dữ liệu tài khoản.",
+  ],
+  reports: [
+    "Báo cáo vi phạm",
+    "Kiểm duyệt và xử lý các báo cáo vi phạm từ người dùng.",
+  ],
+  roles: [
+    "Role & phân quyền",
+    "Thiết kế vai trò và kiểm soát chính xác quyền truy cập hệ thống.",
+  ],
+  email: [
+    "Email hệ thống",
+    "Gửi email văn bản trực tiếp từ hệ thống đến người dùng.",
+  ],
+  broadcast: [
+    "Thông báo toàn hệ thống",
+    "Phát và theo dõi thông báo realtime trên kênh thế giới.",
+  ],
+};
 
 function displayName(person) {
-  return [person?.firstName, person?.lastName].filter(Boolean).join(' ').trim() || person?.username || 'Người dùng'
+  return (
+    [person?.firstName, person?.lastName].filter(Boolean).join(" ").trim() ||
+    person?.username ||
+    "Người dùng"
+  );
 }
 
 function initials(person) {
-  return displayName(person).split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase()
+  return displayName(person)
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
 }
 
 function addressPayload(address) {
-  return Object.fromEntries(ADDRESS_FIELDS.map((key) => [key, address?.[key] || '']))
+  return Object.fromEntries(
+    ADDRESS_FIELDS.map((key) => [key, address?.[key] || ""]),
+  );
 }
 
-function AdminAvatar({ person, size = 'medium' }) {
-  return <span className={`admin-avatar admin-avatar--${size}`}>
-    {person?.avatar ? <img src={person.avatar} alt="" /> : initials(person)}
-    {person?.online || person?.isOnline ? <i /> : null}
-  </span>
+function AdminAvatar({ person, size = "medium" }) {
+  return (
+    <span className={`admin-avatar admin-avatar--${size}`}>
+      {person?.avatar ? <img src={person.avatar} alt="" /> : initials(person)}
+      {person?.online || person?.isOnline ? <i /> : null}
+    </span>
+  );
 }
 
 function StatusBadge({ status }) {
-  const normalized = String(status || 'UNKNOWN').toLowerCase()
-  return <span className={`admin-status admin-status--${normalized}`}><i />{status || 'Không rõ'}</span>
+  const normalized = String(status || "UNKNOWN").toLowerCase();
+  return (
+    <span className={`admin-status admin-status--${normalized}`}>
+      <i />
+      {status || "Không rõ"}
+    </span>
+  );
 }
 
 function ProviderBadge({ provider }) {
-  const value = provider || 'LOCAL'
-  const normalized = String(value).toLowerCase()
-  return <span className={`admin-provider-badge admin-provider-badge--${normalized}`}>{value}</span>
+  const value = provider || "LOCAL";
+  const normalized = String(value).toLowerCase();
+  return (
+    <span
+      className={`admin-provider-badge admin-provider-badge--${normalized}`}
+    >
+      {value}
+    </span>
+  );
 }
 
-function EmptyState({ icon = 'search', children }) {
-  return <div className="admin-empty"><ChatIcon name={icon} size={24} /><p>{children}</p></div>
+function EmptyState({ icon = "search", children }) {
+  return (
+    <div className="admin-empty">
+      <ChatIcon name={icon} size={24} />
+      <p>{children}</p>
+    </div>
+  );
 }
 
 function Pagination({ page, onChange }) {
-  if (!page.totalPages || page.totalPages <= 1) return null
-  return <div className="admin-pagination">
-    <button type="button" disabled={page.pageNo <= 0} onClick={() => onChange(page.pageNo - 1)}><ChatIcon name="arrowLeft" size={15} />Trước</button>
-    <span>Trang <strong>{page.pageNo + 1}</strong> / {page.totalPages}</span>
-    <button type="button" disabled={page.last} onClick={() => onChange(page.pageNo + 1)}>Sau <span aria-hidden="true">→</span></button>
-  </div>
+  if (!page.totalPages || page.totalPages <= 1) return null;
+  return (
+    <div className="admin-pagination">
+      <button
+        type="button"
+        disabled={page.pageNo <= 0}
+        onClick={() => onChange(page.pageNo - 1)}
+      >
+        <ChatIcon name="arrowLeft" size={15} />
+        Trước
+      </button>
+      <span>
+        Trang <strong>{page.pageNo + 1}</strong> / {page.totalPages}
+      </span>
+      <button
+        type="button"
+        disabled={page.last}
+        onClick={() => onChange(page.pageNo + 1)}
+      >
+        Sau <span aria-hidden="true">→</span>
+      </button>
+    </div>
+  );
 }
 
 function AdminPage() {
-  const { user, logout } = useAuth()
-  const { language } = useLanguage()
-  const confirm = useConfirm()
-  const navigate = useNavigate()
-  const [tab, setTab] = useState('dashboard')
-  const [mobileNavOpen, setMobileNavOpen] = useState(false)
-  const [users, setUsers] = useState([])
-  const [userPage, setUserPage] = useState(EMPTY_PAGE)
-  const [onlineCount, setOnlineCount] = useState(0)
-  const [roles, setRoles] = useState([])
-  const [permissions, setPermissions] = useState([])
-  const [reportStats, setReportStats] = useState(null)
-  const [selectedUser, setSelectedUser] = useState(null)
-  const [selectedAddresses, setSelectedAddresses] = useState([])
-  const [editingAddress, setEditingAddress] = useState(null)
-  const [userEditorOpen, setUserEditorOpen] = useState(false)
-  const [userForm, setUserForm] = useState(EMPTY_USER)
-  const [roleForm, setRoleForm] = useState(EMPTY_ROLE)
-  const [editingRoleId, setEditingRoleId] = useState(null)
-  const [filters, setFilters] = useState(DEFAULT_FILTERS)
-  const [onlineOnly, setOnlineOnly] = useState(false)
-  const [emailForm, setEmailForm] = useState(EMPTY_EMAIL)
-  const [announcements, setAnnouncements] = useState([])
-  const [announcementCursor, setAnnouncementCursor] = useState(null)
-  const [announcementHasMore, setAnnouncementHasMore] = useState(false)
-  const [announcementForm, setAnnouncementForm] = useState(EMPTY_ANNOUNCEMENT)
-  const [reports, setReports] = useState([])
-  const [reportPage, setReportPage] = useState(EMPTY_PAGE)
-  const [reportFilters, setReportFilters] = useState(DEFAULT_REPORT_FILTERS)
-  const [selectedReport, setSelectedReport] = useState(null)
-  const [resolveForm, setResolveForm] = useState(EMPTY_RESOLVE_FORM)
-  const [reportDrawerOpen, setReportDrawerOpen] = useState(false)
-  const [notice, setNotice] = useState(null)
-  const [busy, setBusy] = useState('')
-  const initializedRef = useRef(false)
+  const { user, logout } = useAuth();
+  const { language } = useLanguage();
+  const confirm = useConfirm();
+  const navigate = useNavigate();
+  const [tab, setTab] = useState("dashboard");
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [users, setUsers] = useState([]);
+  const [userPage, setUserPage] = useState(EMPTY_PAGE);
+  const [onlineCount, setOnlineCount] = useState(0);
+  const [roles, setRoles] = useState([]);
+  const [permissions, setPermissions] = useState([]);
+  const [reportStats, setReportStats] = useState(null);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [selectedAddresses, setSelectedAddresses] = useState([]);
+  const [editingAddress, setEditingAddress] = useState(null);
+  const [userEditorOpen, setUserEditorOpen] = useState(false);
+  const [userForm, setUserForm] = useState(EMPTY_USER);
+  const [roleForm, setRoleForm] = useState(EMPTY_ROLE);
+  const [editingRoleId, setEditingRoleId] = useState(null);
+  const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  const [onlineOnly, setOnlineOnly] = useState(false);
+  const [emailForm, setEmailForm] = useState(EMPTY_EMAIL);
+  const [announcements, setAnnouncements] = useState([]);
+  const [announcementCursor, setAnnouncementCursor] = useState(null);
+  const [announcementHasMore, setAnnouncementHasMore] = useState(false);
+  const [announcementForm, setAnnouncementForm] = useState(EMPTY_ANNOUNCEMENT);
+  const [reports, setReports] = useState([]);
+  const [reportPage, setReportPage] = useState(EMPTY_PAGE);
+  const [reportFilters, setReportFilters] = useState(DEFAULT_REPORT_FILTERS);
+  const [selectedReport, setSelectedReport] = useState(null);
+  const [resolveForm, setResolveForm] = useState(EMPTY_RESOLVE_FORM);
+  const [reportDrawerOpen, setReportDrawerOpen] = useState(false);
+  const [notice, setNotice] = useState(null);
+  const [busy, setBusy] = useState("");
+  const initializedRef = useRef(false);
 
-  const isAdmin = isAdminUser(user)
-  const can = useCallback((permission) => !permission || hasPermission(user, permission), [user])
+  const isAdmin = isAdminUser(user);
+  const can = useCallback(
+    (permission) => !permission || hasPermission(user, permission),
+    [user],
+  );
   const visibleNavItems = useMemo(
     () =>
       NAV_ITEMS.filter((item) => {
-        if (item.permissions) return item.permissions.some((p) => can(p))
-        return can(item.permission)
+        if (item.permissions) return item.permissions.some((p) => can(p));
+        return can(item.permission);
       }),
-    [can]
-  )
-  const [sectionTitle, sectionDescription] = SECTION_META[tab] || SECTION_META.dashboard
+    [can],
+  );
+  const [sectionTitle, sectionDescription] =
+    SECTION_META[tab] || SECTION_META.dashboard;
 
   useEffect(() => {
-    if (tab !== 'dashboard' && !visibleNavItems.some((item) => item.id === tab)) {
-      setTab('dashboard')
+    if (
+      tab !== "dashboard" &&
+      !visibleNavItems.some((item) => item.id === tab)
+    ) {
+      setTab("dashboard");
     }
-  }, [tab, visibleNavItems])
+  }, [tab, visibleNavItems]);
 
-  const notify = useCallback((message, tone = 'success') => setNotice({ message, tone }), [])
+  const notify = useCallback(
+    (message, tone = "success") => setNotice({ message, tone }),
+    [],
+  );
 
-  const run = async (name, action, successMessage = '') => {
-    setBusy(name)
-    setNotice(null)
+  const run = async (name, action, successMessage = "") => {
+    setBusy(name);
+    setNotice(null);
     try {
-      const response = await action()
-      if (successMessage || response?.message) notify(response?.message || successMessage)
-      return response
+      const response = await action();
+      if (successMessage || response?.message)
+        notify(response?.message || successMessage);
+      return response;
     } catch (error) {
-      notify(getErrorMessage(error, 'Thao tác quản trị không thành công.'), 'error')
-      return null
+      notify(
+        getErrorMessage(error, "Thao tác quản trị không thành công."),
+        "error",
+      );
+      return null;
     } finally {
-      setBusy('')
+      setBusy("");
     }
-  }
+  };
 
-  const loadUsers = useCallback(async (nextFilters = DEFAULT_FILTERS, onlyOnline = false) => {
-    setBusy('users-load')
-    try {
-      const response = onlyOnline
-        ? await adminApi.getOnlineUsers(nextFilters.page, nextFilters.size)
-        : await adminApi.getUsers(nextFilters)
-      const data = response?.data || EMPTY_PAGE
-      setUsers(data.content || [])
-      setUserPage({ ...EMPTY_PAGE, ...data })
-    } catch (error) {
-      notify(getErrorMessage(error, 'Không thể tải danh sách người dùng.'), 'error')
-    } finally {
-      setBusy('')
-    }
-  }, [notify])
+  const loadUsers = useCallback(
+    async (nextFilters = DEFAULT_FILTERS, onlyOnline = false) => {
+      setBusy("users-load");
+      try {
+        const response = onlyOnline
+          ? await adminApi.getOnlineUsers(nextFilters.page, nextFilters.size)
+          : await adminApi.getUsers(nextFilters);
+        const data = response?.data || EMPTY_PAGE;
+        setUsers(data.content || []);
+        setUserPage({ ...EMPTY_PAGE, ...data });
+      } catch (error) {
+        notify(
+          getErrorMessage(error, "Không thể tải danh sách người dùng."),
+          "error",
+        );
+      } finally {
+        setBusy("");
+      }
+    },
+    [notify],
+  );
 
   const loadRoles = useCallback(async () => {
-    const requests = []
-    if (can(PERMISSIONS.ROLE_VIEW_ALL)) requests.push(adminApi.getRoles().then((response) => setRoles(response?.data || [])))
-    if (can(PERMISSIONS.ROLE_VIEW_ALL_PERMISSION)) requests.push(adminApi.getPermissions().then((response) => setPermissions(response?.data || [])))
-    await Promise.allSettled(requests)
-  }, [can])
+    const requests = [];
+    if (can(PERMISSIONS.ROLE_VIEW_ALL))
+      requests.push(
+        adminApi.getRoles().then((response) => setRoles(response?.data || [])),
+      );
+    if (can(PERMISSIONS.ROLE_VIEW_ALL_PERMISSION))
+      requests.push(
+        adminApi
+          .getPermissions()
+          .then((response) => setPermissions(response?.data || [])),
+      );
+    await Promise.allSettled(requests);
+  }, [can]);
 
   const loadOnlineCount = useCallback(async () => {
-    if (!can(PERMISSIONS.ADMIN_VIEW_ONLINE_USERS)) return
+    if (!can(PERMISSIONS.ADMIN_VIEW_ONLINE_USERS)) return;
     try {
-      const response = await adminApi.getOnlineUsers(0, 1)
-      setOnlineCount(Number(response?.data?.totalElements || 0))
+      const response = await adminApi.getOnlineUsers(0, 1);
+      setOnlineCount(Number(response?.data?.totalElements || 0));
     } catch {
-      setOnlineCount(0)
+      setOnlineCount(0);
     }
-  }, [can])
+  }, [can]);
 
   const loadReportStats = useCallback(async () => {
-    if (!can(PERMISSIONS.ADMIN_VIEW_REPORTS)) return
+    if (!can(PERMISSIONS.ADMIN_VIEW_REPORTS)) return;
     try {
-      const response = await adminApi.getReportStatistics()
-      setReportStats(response?.data || null)
+      const response = await adminApi.getReportStatistics();
+      setReportStats(response?.data || null);
     } catch {
-      setReportStats(null)
+      setReportStats(null);
     }
-  }, [can])
+  }, [can]);
 
   useEffect(() => {
-    if (!isAdmin || initializedRef.current) return
-    initializedRef.current = true
+    if (!isAdmin || initializedRef.current) return;
+    initializedRef.current = true;
     if (can(PERMISSIONS.ADMIN_VIEW_USERS)) {
-      void loadUsers(DEFAULT_FILTERS, false)
+      void loadUsers(DEFAULT_FILTERS, false);
     } else if (can(PERMISSIONS.ADMIN_VIEW_ONLINE_USERS)) {
-      setOnlineOnly(true)
-      void loadUsers(DEFAULT_FILTERS, true)
+      setOnlineOnly(true);
+      void loadUsers(DEFAULT_FILTERS, true);
     }
-    void loadRoles()
-    void loadOnlineCount()
-    void loadReportStats()
-  }, [can, isAdmin, loadOnlineCount, loadReportStats, loadRoles, loadUsers])
+    void loadRoles();
+    void loadOnlineCount();
+    void loadReportStats();
+  }, [can, isAdmin, loadOnlineCount, loadReportStats, loadRoles, loadUsers]);
 
   const handleWorldMessage = useCallback((message) => {
-    if (!String(message?.content || '').trim()) return
-    setAnnouncements((current) => [...current, message]
-      .filter((item, index, all) => all.findIndex((candidate) => `${candidate.sender}-${candidate.timestamp}-${candidate.content}` === `${item.sender}-${item.timestamp}-${item.content}`) === index)
-      .sort((left, right) => new Date(right.timestamp) - new Date(left.timestamp)))
-  }, [])
+    if (!String(message?.content || "").trim()) return;
+    setAnnouncements((current) =>
+      [...current, message]
+        .filter(
+          (item, index, all) =>
+            all.findIndex(
+              (candidate) =>
+                `${candidate.sender}-${candidate.timestamp}-${candidate.content}` ===
+                `${item.sender}-${item.timestamp}-${item.content}`,
+            ) === index,
+        )
+        .sort(
+          (left, right) => new Date(right.timestamp) - new Date(left.timestamp),
+        ),
+    );
+  }, []);
 
-  const handleSocketError = useCallback((error) => {
-    const errorCode = String(error?.errorCode || error?.code || error?.status || '').toUpperCase()
-    if (errorCode === 'TOKEN_EXPIRED' || errorCode === 'TOKEN_INVALID' || errorCode === '401' || errorCode === '4011' || errorCode === '4012') {
-      return
-    }
-    notify(getErrorMessage(error, 'Kết nối thông báo realtime gặp sự cố.'), 'error')
-  }, [notify])
+  const handleSocketError = useCallback(
+    (error) => {
+      const errorCode = String(
+        error?.errorCode || error?.code || error?.status || "",
+      ).toUpperCase();
+      if (
+        errorCode === "TOKEN_EXPIRED" ||
+        errorCode === "TOKEN_INVALID" ||
+        errorCode === "401" ||
+        errorCode === "4011" ||
+        errorCode === "4012"
+      ) {
+        return;
+      }
+      notify(
+        getErrorMessage(error, "Kết nối thông báo realtime gặp sự cố."),
+        "error",
+      );
+    },
+    [notify],
+  );
 
   const { connectionState, sendWorldMessage } = useChatSocket({
     enabled: Boolean(user) && can(PERMISSIONS.ADMIN_SEND_MESSAGE),
@@ -262,380 +435,759 @@ function AdminPage() {
     subscribeToWorld: true,
     onWorldMessage: handleWorldMessage,
     onError: handleSocketError,
-  })
+  });
 
-  const loadAnnouncements = useCallback(async (cursor = null, append = false) => {
-    setBusy('announcements-load')
-    try {
-      const response = await adminApi.getSystemMessages(cursor, 20)
-      const content = response?.data?.content || []
-      setAnnouncements((current) => {
-        const combined = append ? [...current, ...content] : content
-        const unique = new Map(combined.map((item) => [`${item.sender}-${item.timestamp}-${item.content}`, item]))
-        return [...unique.values()].sort((left, right) => new Date(right.timestamp) - new Date(left.timestamp))
-      })
-      setAnnouncementCursor(response?.data?.nextCursor || null)
-      setAnnouncementHasMore(Boolean(response?.data?.hasMore && response?.data?.nextCursor))
-    } catch (error) {
-      notify(getErrorMessage(error, 'Không thể tải lịch sử thông báo.'), 'error')
-    } finally {
-      setBusy('')
-    }
-  }, [notify])
-
-  useEffect(() => {
-    if (tab === 'broadcast' && announcements.length === 0) void loadAnnouncements()
-  }, [announcements.length, loadAnnouncements, tab])
-
-  const loadReports = useCallback(async (customFilters = reportFilters) => {
-    if (!can(PERMISSIONS.ADMIN_VIEW_REPORTS)) return
-    setBusy('reports-load')
-    try {
-      const response = await adminApi.getReports(customFilters)
-      const pageData = response?.data || EMPTY_PAGE
-      setReports(pageData.content || [])
-      setReportPage({
-        pageNo: pageData.pageNo || 0,
-        pageSize: pageData.pageSize || 20,
-        totalElements: pageData.totalElements || 0,
-        totalPages: pageData.totalPages || 0,
-        last: Boolean(pageData.last),
-      })
-    } catch (error) {
-      notify(getErrorMessage(error, 'Không thể tải danh sách báo cáo.'), 'error')
-    } finally {
-      setBusy('')
-    }
-  }, [can, notify, reportFilters])
+  const loadAnnouncements = useCallback(
+    async (cursor = null, append = false) => {
+      setBusy("announcements-load");
+      try {
+        const response = await adminApi.getSystemMessages(cursor, 20);
+        const content = response?.data?.content || [];
+        setAnnouncements((current) => {
+          const combined = append ? [...current, ...content] : content;
+          const unique = new Map(
+            combined.map((item) => [
+              `${item.sender}-${item.timestamp}-${item.content}`,
+              item,
+            ]),
+          );
+          return [...unique.values()].sort(
+            (left, right) =>
+              new Date(right.timestamp) - new Date(left.timestamp),
+          );
+        });
+        setAnnouncementCursor(response?.data?.nextCursor || null);
+        setAnnouncementHasMore(
+          Boolean(response?.data?.hasMore && response?.data?.nextCursor),
+        );
+      } catch (error) {
+        notify(
+          getErrorMessage(error, "Không thể tải lịch sử thông báo."),
+          "error",
+        );
+      } finally {
+        setBusy("");
+      }
+    },
+    [notify],
+  );
 
   useEffect(() => {
-    if (tab === 'reports' && reports.length === 0) void loadReports()
-  }, [loadReports, reports.length, tab])
+    if (tab === "broadcast" && announcements.length === 0)
+      void loadAnnouncements();
+  }, [announcements.length, loadAnnouncements, tab]);
+
+  const loadReports = useCallback(
+    async (customFilters = reportFilters) => {
+      if (!can(PERMISSIONS.ADMIN_VIEW_REPORTS)) return;
+      setBusy("reports-load");
+      try {
+        const response = await adminApi.getReports(customFilters);
+        const pageData = response?.data || EMPTY_PAGE;
+        setReports(pageData.content || []);
+        setReportPage({
+          pageNo: pageData.pageNo || 0,
+          pageSize: pageData.pageSize || 20,
+          totalElements: pageData.totalElements || 0,
+          totalPages: pageData.totalPages || 0,
+          last: Boolean(pageData.last),
+        });
+      } catch (error) {
+        notify(
+          getErrorMessage(error, "Không thể tải danh sách báo cáo."),
+          "error",
+        );
+      } finally {
+        setBusy("");
+      }
+    },
+    [can, notify, reportFilters],
+  );
+
+  useEffect(() => {
+    if (tab === "reports" && reports.length === 0) void loadReports();
+  }, [loadReports, reports.length, tab]);
 
   const applyReportFilters = (event) => {
-    event.preventDefault()
-    const next = { ...reportFilters, page: 0 }
-    setReportFilters(next)
-    void loadReports(next)
-  }
+    event.preventDefault();
+    const next = { ...reportFilters, page: 0 };
+    setReportFilters(next);
+    void loadReports(next);
+  };
 
   const changeReportPage = (page) => {
-    const next = { ...reportFilters, page }
-    setReportFilters(next)
-    void loadReports(next)
-  }
+    const next = { ...reportFilters, page };
+    setReportFilters(next);
+    void loadReports(next);
+  };
 
   const openReportDetail = async (reportId) => {
-    setBusy('report-detail')
+    setBusy("report-detail");
     try {
-      let reportData = null
+      let reportData = null;
       if (can(PERMISSIONS.ADMIN_VIEW_REPORTS)) {
-        const response = await adminApi.getReport(reportId)
-        reportData = response?.data || null
-      } else if (can(PERMISSIONS.ADMIN_RESOLVE_REPORTS) || can(PERMISSIONS.ADMIN_DELETE_REPORTS)) {
+        const response = await adminApi.getReport(reportId);
+        reportData = response?.data || null;
+      } else if (
+        can(PERMISSIONS.ADMIN_RESOLVE_REPORTS) ||
+        can(PERMISSIONS.ADMIN_DELETE_REPORTS)
+      ) {
         reportData = {
           id: Number(reportId),
-          status: 'PENDING',
-          reason: '—',
-          details: '',
-          reporter: { username: '—' },
-          reportedUser: { username: '—' },
-        }
+          status: "PENDING",
+          reason: "—",
+          details: "",
+          reporter: { username: "—" },
+          reportedUser: { username: "—" },
+        };
       }
 
       if (reportData) {
-        setSelectedReport(reportData)
+        setSelectedReport(reportData);
         setResolveForm({
-          status: reportData.status === 'PENDING' ? 'RESOLVED' : reportData.status,
-          resolutionNote: reportData.resolutionNote || '',
+          status:
+            reportData.status === "PENDING" ? "RESOLVED" : reportData.status,
+          resolutionNote: reportData.resolutionNote || "",
           lockReportedUser: false,
-        })
-        setReportDrawerOpen(true)
+        });
+        setReportDrawerOpen(true);
       }
     } catch (error) {
-      notify(getErrorMessage(error, 'Không thể tải chi tiết báo cáo.'), 'error')
+      notify(
+        getErrorMessage(error, "Không thể tải chi tiết báo cáo."),
+        "error",
+      );
     } finally {
-      setBusy('')
+      setBusy("");
     }
-  }
+  };
 
   const resolveReport = async (event) => {
-    event.preventDefault()
-    if (!selectedReport) return
+    event.preventDefault();
+    if (!selectedReport) return;
     const response = await run(
-      'report-resolve',
+      "report-resolve",
       () => adminApi.resolveReport(selectedReport.id, resolveForm),
-      'Đã cập nhật trạng thái báo cáo.'
-    )
+      "Đã cập nhật trạng thái báo cáo.",
+    );
     if (response) {
-      setReportDrawerOpen(false)
-      setSelectedReport(null)
+      setReportDrawerOpen(false);
+      setSelectedReport(null);
       if (can(PERMISSIONS.ADMIN_VIEW_REPORTS)) {
-        void loadReports()
-        void loadReportStats()
+        void loadReports();
+        void loadReportStats();
       }
     }
-  }
+  };
 
   const deleteReport = async (reportId) => {
     const ok = await confirm({
-      title: 'Xóa báo cáo',
-      message: 'Bạn có chắc chắn muốn xóa bản ghi báo cáo này?',
-      confirmText: 'Xóa',
-      cancelText: 'Hủy',
-      tone: 'danger',
-    })
-    if (!ok) return
-    const response = await run('report-delete', () => adminApi.deleteReport(reportId), 'Đã xóa báo cáo.')
+      title: "Xóa báo cáo",
+      message: "Bạn có chắc chắn muốn xóa bản ghi báo cáo này?",
+      confirmText: "Xóa",
+      cancelText: "Hủy",
+      tone: "danger",
+    });
+    if (!ok) return;
+    const response = await run(
+      "report-delete",
+      () => adminApi.deleteReport(reportId),
+      "Đã xóa báo cáo.",
+    );
     if (response) {
-      setReportDrawerOpen(false)
-      setSelectedReport(null)
+      setReportDrawerOpen(false);
+      setSelectedReport(null);
       if (can(PERMISSIONS.ADMIN_VIEW_REPORTS)) {
-        void loadReports()
-        void loadReportStats()
+        void loadReports();
+        void loadReportStats();
       }
     }
-  }
+  };
 
-  const selectTab = (nextTab) => { setTab(nextTab); setMobileNavOpen(false); setNotice(null) }
-  const applyFilters = (event) => { event.preventDefault(); const next = { ...filters, page: 0 }; setFilters(next); void loadUsers(next, onlineOnly) }
-  const changeUserPage = (page) => { const next = { ...filters, page }; setFilters(next); void loadUsers(next, onlineOnly) }
+  const selectTab = (nextTab) => {
+    setTab(nextTab);
+    setMobileNavOpen(false);
+    setNotice(null);
+  };
+  const applyFilters = (event) => {
+    event.preventDefault();
+    const next = { ...filters, page: 0 };
+    setFilters(next);
+    void loadUsers(next, onlineOnly);
+  };
+  const changeUserPage = (page) => {
+    const next = { ...filters, page };
+    setFilters(next);
+    void loadUsers(next, onlineOnly);
+  };
   const toggleOnlineOnly = (checked) => {
-    if (!can(PERMISSIONS.ADMIN_VIEW_USERS)) return
-    const next = { ...filters, page: 0 }
-    setOnlineOnly(checked)
-    setFilters(next)
-    void loadUsers(next, checked)
-  }
+    if (!can(PERMISSIONS.ADMIN_VIEW_USERS)) return;
+    const next = { ...filters, page: 0 };
+    setOnlineOnly(checked);
+    setFilters(next);
+    void loadUsers(next, checked);
+  };
 
   const startCreateUser = () => {
-    setSelectedUser(null); setSelectedAddresses([]); setEditingAddress(null); setUserForm(EMPTY_USER); setUserEditorOpen(true)
-  }
+    setSelectedUser(null);
+    setSelectedAddresses([]);
+    setEditingAddress(null);
+    setUserForm(EMPTY_USER);
+    setUserEditorOpen(true);
+  };
 
   const canOpenUserDrawer = useMemo(
     () => USER_DRAWER_ACTION_PERMISSIONS.some((p) => can(p)),
-    [can]
-  )
+    [can],
+  );
 
   const openUser = async (usernameOrSeed) => {
-    if (!canOpenUserDrawer) return
-    const targetUsername = typeof usernameOrSeed === 'string'
-      ? usernameOrSeed.trim().replace(/^@/, '')
-      : usernameOrSeed?.username
-    if (!targetUsername) return
+    if (!canOpenUserDrawer) return;
+    const targetUsername =
+      typeof usernameOrSeed === "string"
+        ? usernameOrSeed.trim().replace(/^@/, "")
+        : usernameOrSeed?.username;
+    if (!targetUsername) return;
 
-    setBusy('user-detail'); setNotice(null)
+    setBusy("user-detail");
+    setNotice(null);
     try {
-      let userData = null
+      let userData = null;
       if (can(PERMISSIONS.ADMIN_VIEW_USER_DETAIL)) {
-        const detail = await adminApi.getUser(targetUsername)
-        userData = detail?.data || null
+        const detail = await adminApi.getUser(targetUsername);
+        userData = detail?.data || null;
       } else {
-        const fromList = users.find((u) => u.username === targetUsername)
-        userData = fromList || (typeof usernameOrSeed === 'object' ? usernameOrSeed : null) || {
-          username: targetUsername,
-          userStatus: 'ACTIVE',
-          role: '—',
-          authProvider: 'LOCAL',
-        }
+        const fromList = users.find((u) => u.username === targetUsername);
+        userData = fromList ||
+          (typeof usernameOrSeed === "object" ? usernameOrSeed : null) || {
+            username: targetUsername,
+            userStatus: "ACTIVE",
+            role: "—",
+            authProvider: "LOCAL",
+          };
       }
 
-      if (!userData) return
+      if (!userData) return;
 
-      let addresses = []
+      let addresses = [];
       if (can(PERMISSIONS.ADMIN_VIEW_USER_ADDRESSES)) {
-        addresses = (await adminApi.getAddresses(targetUsername))?.data || []
+        addresses = (await adminApi.getAddresses(targetUsername))?.data || [];
       }
 
-      setSelectedUser(userData)
-      setSelectedAddresses(addresses || userData.addresses || [])
-      setEditingAddress(null)
+      setSelectedUser(userData);
+      setSelectedAddresses(addresses || userData.addresses || []);
+      setEditingAddress(null);
       setUserForm({
         username: userData.username,
-        password: '',
-        firstName: userData.firstName || '',
-        lastName: userData.lastName || '',
-        email: userData.email || '',
-        phone: userData.phone || '',
-        roleId: roles.find((role) => role.name === userData.role)?.id || '',
-      })
-      setUserEditorOpen(true)
+        password: "",
+        firstName: userData.firstName || "",
+        lastName: userData.lastName || "",
+        email: userData.email || "",
+        phone: userData.phone || "",
+        roleId: roles.find((role) => role.name === userData.role)?.id || "",
+      });
+      setUserEditorOpen(true);
     } catch (error) {
-      notify(getErrorMessage(error, 'Không thể tải chi tiết người dùng.'), 'error')
-    } finally { setBusy('') }
-  }
+      notify(
+        getErrorMessage(error, "Không thể tải chi tiết người dùng."),
+        "error",
+      );
+    } finally {
+      setBusy("");
+    }
+  };
 
-  const closeUserEditor = () => { setUserEditorOpen(false); setSelectedUser(null); setEditingAddress(null); setUserForm(EMPTY_USER) }
+  const closeUserEditor = () => {
+    setUserEditorOpen(false);
+    setSelectedUser(null);
+    setEditingAddress(null);
+    setUserForm(EMPTY_USER);
+  };
 
   const saveUser = async (event) => {
-    event.preventDefault()
-    const roleId = userForm.roleId ? Number(userForm.roleId) : null
+    event.preventDefault();
+    const roleId = userForm.roleId ? Number(userForm.roleId) : null;
     const response = selectedUser
-      ? await run('user-save', () => adminApi.updateUser(selectedUser.username, { firstName: userForm.firstName || null, lastName: userForm.lastName || null, email: userForm.email || null, phone: userForm.phone || null, roleId }), 'Đã cập nhật người dùng.')
-      : await run('user-save', () => adminApi.createUser({ ...userForm, phone: userForm.phone || null, roleId }), 'Đã tạo người dùng.')
+      ? await run(
+          "user-save",
+          () =>
+            adminApi.updateUser(selectedUser.username, {
+              firstName: userForm.firstName || null,
+              lastName: userForm.lastName || null,
+              email: userForm.email || null,
+              phone: userForm.phone || null,
+              roleId,
+            }),
+          "Đã cập nhật người dùng.",
+        )
+      : await run(
+          "user-save",
+          () =>
+            adminApi.createUser({
+              ...userForm,
+              phone: userForm.phone || null,
+              roleId,
+            }),
+          "Đã tạo người dùng.",
+        );
     if (response) {
-      closeUserEditor()
-      if (can(PERMISSIONS.ADMIN_VIEW_USERS)) await loadUsers(filters, onlineOnly)
-      else if (can(PERMISSIONS.ADMIN_VIEW_ONLINE_USERS)) await loadUsers(filters, true)
+      closeUserEditor();
+      if (can(PERMISSIONS.ADMIN_VIEW_USERS))
+        await loadUsers(filters, onlineOnly);
+      else if (can(PERMISSIONS.ADMIN_VIEW_ONLINE_USERS))
+        await loadUsers(filters, true);
     }
-  }
+  };
 
   const userAction = async (action) => {
-    if (!selectedUser) return
-    const username = selectedUser.username
-    const operations = { lock: () => adminApi.lockUser(username), unlock: () => adminApi.unlockUser(username), avatar: () => adminApi.deleteAvatar(username), delete: () => adminApi.deleteUser(username) }
-    if (['delete', 'avatar'].includes(action)) {
-      const isDelete = action === 'delete'
+    if (!selectedUser) return;
+    const username = selectedUser.username;
+    const operations = {
+      lock: () => adminApi.lockUser(username),
+      unlock: () => adminApi.unlockUser(username),
+      avatar: () => adminApi.deleteAvatar(username),
+      delete: () => adminApi.deleteUser(username),
+    };
+    if (["delete", "avatar"].includes(action)) {
+      const isDelete = action === "delete";
       const ok = await confirm({
-        title: isDelete ? 'Xóa người dùng' : 'Xóa ảnh đại diện',
-        message: isDelete ? `Bạn có chắc chắn muốn xóa tài khoản @${username}?` : `Bạn có chắc chắn muốn xóa ảnh đại diện của @${username}?`,
+        title: isDelete ? "Xóa người dùng" : "Xóa ảnh đại diện",
+        message: isDelete
+          ? `Bạn có chắc chắn muốn xóa tài khoản @${username}?`
+          : `Bạn có chắc chắn muốn xóa ảnh đại diện của @${username}?`,
         detail: `@${username}`,
-        confirmText: 'Xóa',
-        cancelText: 'Hủy',
-        tone: 'danger',
-      })
-      if (!ok) return
+        confirmText: "Xóa",
+        cancelText: "Hủy",
+        tone: "danger",
+      });
+      if (!ok) return;
     }
-    const response = await run(`user-${action}`, operations[action], 'Thao tác thành công.')
-    if (!response) return
-    if (action === 'delete') {
-      closeUserEditor()
+    const response = await run(
+      `user-${action}`,
+      operations[action],
+      "Thao tác thành công.",
+    );
+    if (!response) return;
+    if (action === "delete") {
+      closeUserEditor();
     } else if (can(PERMISSIONS.ADMIN_VIEW_USER_DETAIL)) {
-      await openUser(username)
+      await openUser(username);
     } else {
       setSelectedUser((prev) => {
-        if (!prev) return prev
-        if (action === 'lock') return { ...prev, userStatus: 'LOCKED' }
-        if (action === 'unlock') return { ...prev, userStatus: 'ACTIVE' }
-        if (action === 'avatar') return { ...prev, avatar: null }
-        return prev
-      })
+        if (!prev) return prev;
+        if (action === "lock") return { ...prev, userStatus: "LOCKED" };
+        if (action === "unlock") return { ...prev, userStatus: "ACTIVE" };
+        if (action === "avatar") return { ...prev, avatar: null };
+        return prev;
+      });
     }
-    if (can(PERMISSIONS.ADMIN_VIEW_USERS)) await loadUsers(filters, onlineOnly)
-    else if (can(PERMISSIONS.ADMIN_VIEW_ONLINE_USERS)) await loadUsers(filters, true)
-    await loadOnlineCount()
-  }
+    if (can(PERMISSIONS.ADMIN_VIEW_USERS)) await loadUsers(filters, onlineOnly);
+    else if (can(PERMISSIONS.ADMIN_VIEW_ONLINE_USERS))
+      await loadUsers(filters, true);
+    await loadOnlineCount();
+  };
 
   const beginAddressEdit = async (id) => {
-    if (!selectedUser) return
-    const fromList = (selectedAddresses || []).find((a) => a.id === id)
+    if (!selectedUser) return;
+    const fromList = (selectedAddresses || []).find((a) => a.id === id);
     if (fromList) {
-      setEditingAddress(fromList)
-      return
+      setEditingAddress(fromList);
+      return;
     }
-    const response = await run('address-detail', () => adminApi.getAddress(selectedUser.username, id))
+    const response = await run("address-detail", () =>
+      adminApi.getAddress(selectedUser.username, id),
+    );
     if (response?.data) {
-      setEditingAddress(response.data)
+      setEditingAddress(response.data);
     } else if (can(PERMISSIONS.ADMIN_UPDATE_USER_ADDRESS)) {
-      setEditingAddress({ id, houseNumber: '', street: '', ward: '', district: '', city: '', country: '', postalCode: '' })
+      setEditingAddress({
+        id,
+        houseNumber: "",
+        street: "",
+        ward: "",
+        district: "",
+        city: "",
+        country: "",
+        postalCode: "",
+      });
     }
-  }
-  const saveAddress = async (event) => { event.preventDefault(); if (!selectedUser || !editingAddress) return; const response = await run('address-save', () => adminApi.updateAddress(selectedUser.username, editingAddress.id, addressPayload(editingAddress)), 'Đã cập nhật địa chỉ.'); if (response) await openUser(selectedUser.username) }
+  };
+  const saveAddress = async (event) => {
+    event.preventDefault();
+    if (!selectedUser || !editingAddress) return;
+    const response = await run(
+      "address-save",
+      () =>
+        adminApi.updateAddress(
+          selectedUser.username,
+          editingAddress.id,
+          addressPayload(editingAddress),
+        ),
+      "Đã cập nhật địa chỉ.",
+    );
+    if (response) await openUser(selectedUser.username);
+  };
   const deleteAddress = async (id) => {
-    if (!selectedUser) return
+    if (!selectedUser) return;
     const ok = await confirm({
-      title: 'Xóa địa chỉ',
-      message: 'Xóa địa chỉ của người dùng này?',
+      title: "Xóa địa chỉ",
+      message: "Xóa địa chỉ của người dùng này?",
       detail: `@${selectedUser.username}`,
-      confirmText: 'Xóa',
-      cancelText: 'Hủy',
-      tone: 'danger',
-    })
-    if (!ok) return
-    const response = await run('address-delete', () => adminApi.deleteAddress(selectedUser.username, id), 'Đã xóa địa chỉ.')
-    if (response) await openUser(selectedUser.username)
-  }
+      confirmText: "Xóa",
+      cancelText: "Hủy",
+      tone: "danger",
+    });
+    if (!ok) return;
+    const response = await run(
+      "address-delete",
+      () => adminApi.deleteAddress(selectedUser.username, id),
+      "Đã xóa địa chỉ.",
+    );
+    if (response) await openUser(selectedUser.username);
+  };
 
   const saveRole = async (event) => {
     event.preventDefault();
     if (isSystemRole(roleForm.name)) {
-      notify('Không thể tạo hoặc sửa đổi vai trò hệ thống (ADMIN, USER).', 'error')
-      return
+      notify(
+        "Không thể tạo hoặc sửa đổi vai trò hệ thống (ADMIN, USER).",
+        "error",
+      );
+      return;
     }
+    const hasAdminPerm = permissions
+      .filter((p) => roleForm.permissionIds.includes(p.id))
+      .some((p) => p.name?.toUpperCase().startsWith("ADMIN_"));
     const body = {
       name: roleForm.name,
       description: roleForm.description,
-      userRole: roleForm.userRole !== undefined ? roleForm.userRole : true,
+      userRole: hasAdminPerm
+        ? false
+        : roleForm.userRole !== undefined
+          ? roleForm.userRole
+          : true,
       permissionIds: roleForm.permissionIds.map(Number),
+    };
+    const response = editingRoleId
+      ? await run(
+          "role-save",
+          () => adminApi.updateRole(editingRoleId, body),
+          "Đã cập nhật role.",
+        )
+      : await run("role-save", () => adminApi.createRole(body), "Đã tạo role.");
+    if (response) {
+      setRoleForm(EMPTY_ROLE);
+      setEditingRoleId(null);
+      await loadRoles();
     }
-    const response = editingRoleId ? await run('role-save', () => adminApi.updateRole(editingRoleId, body), 'Đã cập nhật role.') : await run('role-save', () => adminApi.createRole(body), 'Đã tạo role.')
-    if (response) { setRoleForm(EMPTY_ROLE); setEditingRoleId(null); await loadRoles() }
-  }
+  };
   const editRole = (role) => {
-    setEditingRoleId(role.id)
+    setEditingRoleId(role.id);
     setRoleForm({
       name: role.name,
-      description: role.description || '',
-      userRole: role.userRole !== undefined ? role.userRole : isUserRoleCategory(role),
-      permissionIds: (role.permissions || []).map((permission) => permission.id),
-    })
-  }
+      description: role.description || "",
+      userRole:
+        role.userRole !== undefined ? role.userRole : isUserRoleCategory(role),
+      permissionIds: (role.permissions || []).map(
+        (permission) => permission.id,
+      ),
+    });
+  };
   const deleteRole = async (id) => {
     const ok = await confirm({
-      title: 'Xóa vai trò',
-      message: 'Bạn có chắc chắn muốn xóa role này?',
-      confirmText: 'Xóa',
-      cancelText: 'Hủy',
-      tone: 'danger',
-    })
-    if (!ok) return
-    const response = await run('role-delete', () => adminApi.deleteRole(id), 'Đã xóa role.')
-    if (response) await loadRoles()
-  }
+      title: "Xóa vai trò",
+      message: "Bạn có chắc chắn muốn xóa role này?",
+      confirmText: "Xóa",
+      cancelText: "Hủy",
+      tone: "danger",
+    });
+    if (!ok) return;
+    const response = await run(
+      "role-delete",
+      () => adminApi.deleteRole(id),
+      "Đã xóa role.",
+    );
+    if (response) await loadRoles();
+  };
 
-  const sendEmail = async (event) => { event.preventDefault(); const response = await run('email-send', () => adminApi.sendEmail(emailForm), 'Email đã được đưa vào hàng đợi gửi.'); if (response) setEmailForm(EMPTY_EMAIL) }
-  const sendAnnouncement = (event) => { event.preventDefault(); const content = announcementForm.content.trim(); if (!content) return; const survivalTime = announcementForm.survivalTime ? Number(announcementForm.survivalTime) : null; if (sendWorldMessage({ content, survivalTime })) { setAnnouncementForm(EMPTY_ANNOUNCEMENT); notify('Đã phát thông báo toàn hệ thống.') } else notify('Kết nối realtime chưa sẵn sàng. Vui lòng thử lại.', 'error') }
-  const handleLogout = async () => { await logout().catch(() => {}); navigate('/login', { replace: true }) }
+  const sendEmail = async (event) => {
+    event.preventDefault();
+    const response = await run(
+      "email-send",
+      () => adminApi.sendEmail(emailForm),
+      "Email đã được đưa vào hàng đợi gửi.",
+    );
+    if (response) setEmailForm(EMPTY_EMAIL);
+  };
+  const sendAnnouncement = (event) => {
+    event.preventDefault();
+    const content = announcementForm.content.trim();
+    if (!content) return;
+    const survivalTime = announcementForm.survivalTime
+      ? Number(announcementForm.survivalTime)
+      : null;
+    if (sendWorldMessage({ content, survivalTime })) {
+      setAnnouncementForm(EMPTY_ANNOUNCEMENT);
+      notify("Đã phát thông báo toàn hệ thống.");
+    } else notify("Kết nối realtime chưa sẵn sàng. Vui lòng thử lại.", "error");
+  };
+  const handleLogout = async () => {
+    await logout().catch(() => {});
+    navigate("/login", { replace: true });
+  };
 
-  if (!isAdmin) return <main className="admin-denied"><Brand /><section><ChatIcon name="shield" size={34} /><h1>Không có quyền truy cập</h1><p>Tài khoản này không có quyền mở Admin Console.</p><Link to="/chat">Quay lại trò chuyện</Link></section></main>
+  if (!isAdmin)
+    return (
+      <main className="admin-denied">
+        <Brand />
+        <section>
+          <ChatIcon name="shield" size={34} />
+          <h1>Không có quyền truy cập</h1>
+          <p>Tài khoản này không có quyền mở Admin Console.</p>
+          <Link to="/chat">Quay lại trò chuyện</Link>
+        </section>
+      </main>
+    );
 
-  return <main className="admin-shell">
-    {mobileNavOpen && <button className="admin-nav-backdrop" type="button" aria-label="Đóng menu" onClick={() => setMobileNavOpen(false)} />}
-    <aside className={`admin-sidebar${mobileNavOpen ? ' is-open' : ''}`}>
-      <div className="admin-brand"><Brand to="/admin" ariaLabel="ChatWeb Admin Console" /><span>CONTROL CENTER</span></div>
-      <div className="admin-profile"><AdminAvatar person={user} /><div><strong>{displayName(user)}</strong><small>@{user.username}</small></div><span>ADMIN</span></div>
-      <nav><small>ĐIỀU HƯỚNG</small>{visibleNavItems.map((item) => <button key={item.id} className={tab === item.id ? 'is-active' : ''} type="button" onClick={() => selectTab(item.id)}><ChatIcon name={item.icon} size={18} /><span>{item.label}</span></button>)}</nav>
-      <footer><Link to="/chat"><ChatIcon name="chat" size={17} />Giao diện trò chuyện</Link><Link to="/settings"><ChatIcon name="settings" size={17} />Cài đặt tài khoản</Link><button type="button" onClick={handleLogout}><ChatIcon name="logout" size={17} />Đăng xuất</button></footer>
-    </aside>
-
-    <section className="admin-main">
-      <header className="admin-topbar">
-        <button className="admin-mobile-menu" type="button" aria-label="Mở menu" onClick={() => setMobileNavOpen(true)}><ChatIcon name="more" /></button>
-        <div>
-          <small>ADMIN CONSOLE / {tab.toUpperCase()}</small>
-          <h1>{sectionTitle}</h1>
-          <p>{sectionDescription}</p>
+  return (
+    <main className="admin-shell">
+      {mobileNavOpen && (
+        <button
+          className="admin-nav-backdrop"
+          type="button"
+          aria-label="Đóng menu"
+          onClick={() => setMobileNavOpen(false)}
+        />
+      )}
+      <aside className={`admin-sidebar${mobileNavOpen ? " is-open" : ""}`}>
+        <div className="admin-brand">
+          <Brand to="/admin" ariaLabel="ChatWeb Admin Console" />
+          <span>CONTROL CENTER</span>
         </div>
-        {can(PERMISSIONS.ADMIN_SEND_MESSAGE) && (
-          <div className="admin-topbar__status">
-            <i className={connectionState === 'connected' ? 'is-online' : ''} />
-            <span>Realtime</span>
-            <strong>{connectionState === 'connected' ? 'Hoạt động' : 'Đang kết nối'}</strong>
+        <div className="admin-profile">
+          <AdminAvatar person={user} />
+          <div>
+            <strong>{displayName(user)}</strong>
+            <small>@{user.username}</small>
           </div>
-        )}
-      </header>
-      <div className="admin-content">
-        {notice && <div className={`admin-notice admin-notice--${notice.tone}`} role="status"><span>{notice.tone === 'error' ? '!' : '✓'}</span><p>{notice.message}</p><button type="button" onClick={() => setNotice(null)}><ChatIcon name="close" size={14} /></button></div>}
-        {tab === 'dashboard' && <Dashboard user={user} userPage={userPage} onlineCount={onlineCount} roles={roles} permissions={permissions} connectionState={connectionState} navItems={visibleNavItems} onSelect={selectTab} can={can} reportStats={reportStats} />}
-        {tab === 'users' && <UsersSection users={users} roles={roles} filters={filters} setFilters={setFilters} onlineOnly={onlineOnly} onToggleOnline={toggleOnlineOnly} onFilter={applyFilters} onCreate={startCreateUser} onOpen={openUser} can={can} busy={busy} page={userPage} onPage={changeUserPage} onLoad={loadUsers} />}
-        {tab === 'reports' && <ReportsSection reports={reports} filters={reportFilters} setFilters={setReportFilters} onFilter={applyReportFilters} onOpen={openReportDetail} can={can} busy={busy} page={reportPage} onPage={changeReportPage} onLoad={loadReports} />}
-        {tab === 'roles' && <RolesSection roles={roles} permissions={permissions} form={roleForm} setForm={setRoleForm} editingId={editingRoleId} busy={busy} can={can} onEdit={editRole} onDelete={deleteRole} onSave={saveRole} onCancel={() => { setEditingRoleId(null); setRoleForm(EMPTY_ROLE) }} />}
-        {tab === 'email' && <EmailSection form={emailForm} setForm={setEmailForm} busy={busy} onSubmit={sendEmail} />}
-        {tab === 'broadcast' && <BroadcastSection form={announcementForm} setForm={setAnnouncementForm} messages={announcements} connectionState={connectionState} busy={busy} hasMore={announcementHasMore} onSubmit={sendAnnouncement} onRefresh={() => loadAnnouncements()} onMore={() => loadAnnouncements(announcementCursor, true)} />}
-      </div>
-    </section>
-    {userEditorOpen && <UserDrawer currentUser={user} selectedUser={selectedUser} addresses={selectedAddresses} editingAddress={editingAddress} setEditingAddress={setEditingAddress} form={userForm} setForm={setUserForm} roles={roles} busy={busy} can={can} onClose={closeUserEditor} onSave={saveUser} onAction={userAction} onAddressEdit={beginAddressEdit} onAddressSave={saveAddress} onAddressDelete={deleteAddress} />}
-    {reportDrawerOpen && <ReportDrawer report={selectedReport} form={resolveForm} setForm={setResolveForm} busy={busy} can={can} onClose={() => { setReportDrawerOpen(false); setSelectedReport(null) }} onResolve={resolveReport} onDelete={deleteReport} />}
-  </main>
+          <span>ADMIN</span>
+        </div>
+        <nav>
+          <small>ĐIỀU HƯỚNG</small>
+          {visibleNavItems.map((item) => (
+            <button
+              key={item.id}
+              className={tab === item.id ? "is-active" : ""}
+              type="button"
+              onClick={() => selectTab(item.id)}
+            >
+              <ChatIcon name={item.icon} size={18} />
+              <span>{item.label}</span>
+            </button>
+          ))}
+        </nav>
+        <footer>
+          <Link to="/chat">
+            <ChatIcon name="chat" size={17} />
+            Giao diện trò chuyện
+          </Link>
+          <Link to="/settings">
+            <ChatIcon name="settings" size={17} />
+            Cài đặt tài khoản
+          </Link>
+          <button type="button" onClick={handleLogout}>
+            <ChatIcon name="logout" size={17} />
+            Đăng xuất
+          </button>
+        </footer>
+      </aside>
+
+      <section className="admin-main">
+        <header className="admin-topbar">
+          <button
+            className="admin-mobile-menu"
+            type="button"
+            aria-label="Mở menu"
+            onClick={() => setMobileNavOpen(true)}
+          >
+            <ChatIcon name="more" />
+          </button>
+          <div>
+            <small>ADMIN CONSOLE / {tab.toUpperCase()}</small>
+            <h1>{sectionTitle}</h1>
+            <p>{sectionDescription}</p>
+          </div>
+          {can(PERMISSIONS.ADMIN_SEND_MESSAGE) && (
+            <div className="admin-topbar__status">
+              <i
+                className={connectionState === "connected" ? "is-online" : ""}
+              />
+              <span>Realtime</span>
+              <strong>
+                {connectionState === "connected" ? "Hoạt động" : "Đang kết nối"}
+              </strong>
+            </div>
+          )}
+        </header>
+        <div className="admin-content">
+          {notice && (
+            <div
+              className={`admin-notice admin-notice--${notice.tone}`}
+              role="status"
+            >
+              <span>{notice.tone === "error" ? "!" : "✓"}</span>
+              <p>{notice.message}</p>
+              <button type="button" onClick={() => setNotice(null)}>
+                <ChatIcon name="close" size={14} />
+              </button>
+            </div>
+          )}
+          {tab === "dashboard" && (
+            <Dashboard
+              user={user}
+              userPage={userPage}
+              onlineCount={onlineCount}
+              roles={roles}
+              permissions={permissions}
+              connectionState={connectionState}
+              navItems={visibleNavItems}
+              onSelect={selectTab}
+              can={can}
+              reportStats={reportStats}
+            />
+          )}
+          {tab === "users" && (
+            <UsersSection
+              users={users}
+              roles={roles}
+              filters={filters}
+              setFilters={setFilters}
+              onlineOnly={onlineOnly}
+              onToggleOnline={toggleOnlineOnly}
+              onFilter={applyFilters}
+              onCreate={startCreateUser}
+              onOpen={openUser}
+              can={can}
+              busy={busy}
+              page={userPage}
+              onPage={changeUserPage}
+              onLoad={loadUsers}
+            />
+          )}
+          {tab === "reports" && (
+            <ReportsSection
+              reports={reports}
+              filters={reportFilters}
+              setFilters={setReportFilters}
+              onFilter={applyReportFilters}
+              onOpen={openReportDetail}
+              can={can}
+              busy={busy}
+              page={reportPage}
+              onPage={changeReportPage}
+              onLoad={loadReports}
+            />
+          )}
+          {tab === "roles" && (
+            <RolesSection
+              roles={roles}
+              permissions={permissions}
+              form={roleForm}
+              setForm={setRoleForm}
+              editingId={editingRoleId}
+              busy={busy}
+              can={can}
+              onEdit={editRole}
+              onDelete={deleteRole}
+              onSave={saveRole}
+              onCancel={() => {
+                setEditingRoleId(null);
+                setRoleForm(EMPTY_ROLE);
+              }}
+            />
+          )}
+          {tab === "email" && (
+            <EmailSection
+              form={emailForm}
+              setForm={setEmailForm}
+              busy={busy}
+              onSubmit={sendEmail}
+            />
+          )}
+          {tab === "broadcast" && (
+            <BroadcastSection
+              form={announcementForm}
+              setForm={setAnnouncementForm}
+              messages={announcements}
+              connectionState={connectionState}
+              busy={busy}
+              hasMore={announcementHasMore}
+              onSubmit={sendAnnouncement}
+              onRefresh={() => loadAnnouncements()}
+              onMore={() => loadAnnouncements(announcementCursor, true)}
+            />
+          )}
+        </div>
+      </section>
+      {userEditorOpen && (
+        <UserDrawer
+          currentUser={user}
+          selectedUser={selectedUser}
+          addresses={selectedAddresses}
+          editingAddress={editingAddress}
+          setEditingAddress={setEditingAddress}
+          form={userForm}
+          setForm={setUserForm}
+          roles={roles}
+          busy={busy}
+          can={can}
+          onClose={closeUserEditor}
+          onSave={saveUser}
+          onAction={userAction}
+          onAddressEdit={beginAddressEdit}
+          onAddressSave={saveAddress}
+          onAddressDelete={deleteAddress}
+        />
+      )}
+      {reportDrawerOpen && (
+        <ReportDrawer
+          report={selectedReport}
+          form={resolveForm}
+          setForm={setResolveForm}
+          busy={busy}
+          can={can}
+          onClose={() => {
+            setReportDrawerOpen(false);
+            setSelectedReport(null);
+          }}
+          onResolve={resolveReport}
+          onDelete={deleteReport}
+        />
+      )}
+    </main>
+  );
 }
 
-function Dashboard({ user, userPage, onlineCount, roles, permissions, connectionState, navItems, onSelect, can, reportStats }) {
+function Dashboard({
+  user,
+  userPage,
+  onlineCount,
+  roles,
+  permissions,
+  connectionState,
+  navItems,
+  onSelect,
+  can,
+  reportStats,
+}) {
   return (
     <section className="admin-dashboard">
       <div className="admin-stat-grid">
         {can(PERMISSIONS.ADMIN_VIEW_USERS) && (
           <article>
-            <span><ChatIcon name="users" /></span>
+            <span>
+              <ChatIcon name="users" />
+            </span>
             <div>
               <small>TỔNG NGƯỜI DÙNG</small>
               <strong>{userPage.totalElements}</strong>
@@ -645,7 +1197,9 @@ function Dashboard({ user, userPage, onlineCount, roles, permissions, connection
         )}
         {can(PERMISSIONS.ADMIN_VIEW_ONLINE_USERS) && (
           <article>
-            <span><ChatIcon name="chat" /></span>
+            <span>
+              <ChatIcon name="chat" />
+            </span>
             <div>
               <small>ĐANG ONLINE</small>
               <strong>{onlineCount}</strong>
@@ -655,7 +1209,9 @@ function Dashboard({ user, userPage, onlineCount, roles, permissions, connection
         )}
         {can(PERMISSIONS.ROLE_VIEW_ALL) && (
           <article>
-            <span><ChatIcon name="shield" /></span>
+            <span>
+              <ChatIcon name="shield" />
+            </span>
             <div>
               <small>ROLE HỆ THỐNG</small>
               <strong>{roles.length}</strong>
@@ -665,20 +1221,26 @@ function Dashboard({ user, userPage, onlineCount, roles, permissions, connection
         )}
         {can(PERMISSIONS.ADMIN_VIEW_REPORTS) && (
           <article>
-            <span><ChatIcon name="flag" /></span>
+            <span>
+              <ChatIcon name="flag" />
+            </span>
             <div>
               <small>BÁO CÁO CHỜ XỬ LÝ</small>
-              <strong>{reportStats?.pendingReports ?? '—'}</strong>
-              <p>Tổng: {reportStats?.totalReports ?? '—'} báo cáo</p>
+              <strong>{reportStats?.pendingReports ?? "—"}</strong>
+              <p>Tổng: {reportStats?.totalReports ?? "—"} báo cáo</p>
             </div>
           </article>
         )}
         {can(PERMISSIONS.ADMIN_SEND_MESSAGE) && (
           <article>
-            <span><ChatIcon name="globe" /></span>
+            <span>
+              <ChatIcon name="globe" />
+            </span>
             <div>
               <small>KẾT NỐI SOCKET</small>
-              <strong className="admin-stat-word">{connectionState === 'connected' ? 'Ổn định' : 'Chờ'}</strong>
+              <strong className="admin-stat-word">
+                {connectionState === "connected" ? "Ổn định" : "Chờ"}
+              </strong>
               <p>Kênh thông báo hệ thống</p>
             </div>
           </article>
@@ -688,13 +1250,25 @@ function Dashboard({ user, userPage, onlineCount, roles, permissions, connection
         <article className="admin-panel admin-welcome-panel">
           <small>CHATWEB ADMINISTRATION</small>
           <h2>Chào {user.firstName || user.username}, hệ thống đã sẵn sàng.</h2>
-          <p>Quản lý tài khoản, phân quyền và giao tiếp hệ thống từ một không gian độc lập với ứng dụng chat.</p>
+          <p>
+            Quản lý tài khoản, phân quyền và giao tiếp hệ thống từ một không
+            gian độc lập với ứng dụng chat.
+          </p>
           <div>
-            {navItems.filter((item) => item.id !== 'dashboard').slice(0, 3).map((item) => (
-              <button key={item.id} type="button" onClick={() => onSelect(item.id)}>
-                <ChatIcon name={item.icon} size={17} />{item.label}<span>→</span>
-              </button>
-            ))}
+            {navItems
+              .filter((item) => item.id !== "dashboard")
+              .slice(0, 3)
+              .map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => onSelect(item.id)}
+                >
+                  <ChatIcon name={item.icon} size={17} />
+                  {item.label}
+                  <span>→</span>
+                </button>
+              ))}
           </div>
         </article>
         <article className="admin-panel admin-capabilities">
@@ -703,24 +1277,52 @@ function Dashboard({ user, userPage, onlineCount, roles, permissions, connection
               <small>PHẠM VI QUẢN TRỊ</small>
               <h3>Quyền đang được cấp</h3>
             </div>
-            <b>{user.permissions?.length || (user.permissions instanceof Set ? user.permissions.size : permissions.length)}</b>
+            <b>
+              {user.permissions?.length ||
+                (user.permissions instanceof Set
+                  ? user.permissions.size
+                  : permissions.length)}
+            </b>
           </header>
           <div>
-            {(Array.isArray(user.permissions) ? user.permissions : Array.from(user.permissions || [])).slice(0, 12).map((permission) => (
-              <span key={permission}><i />{permission}</span>
-            ))}
+            {(Array.isArray(user.permissions)
+              ? user.permissions
+              : Array.from(user.permissions || [])
+            )
+              .slice(0, 12)
+              .map((permission) => (
+                <span key={permission}>
+                  <i />
+                  {permission}
+                </span>
+              ))}
           </div>
         </article>
       </div>
     </section>
-  )
+  );
 }
 
-function UsersSection({ users, roles, filters, setFilters, onlineOnly, onToggleOnline, onFilter, onCreate, onOpen, can, busy, page, onPage, onLoad }) {
-  const [targetUsernameInput, setTargetUsernameInput] = useState('')
-  const canViewAllUsers = can(PERMISSIONS.ADMIN_VIEW_USERS)
-  const canViewOnline = can(PERMISSIONS.ADMIN_VIEW_ONLINE_USERS)
-  const canOpenUserDrawer = USER_DRAWER_ACTION_PERMISSIONS.some((p) => can(p))
+function UsersSection({
+  users,
+  roles,
+  filters,
+  setFilters,
+  onlineOnly,
+  onToggleOnline,
+  onFilter,
+  onCreate,
+  onOpen,
+  can,
+  busy,
+  page,
+  onPage,
+  onLoad,
+}) {
+  const [targetUsernameInput, setTargetUsernameInput] = useState("");
+  const canViewAllUsers = can(PERMISSIONS.ADMIN_VIEW_USERS);
+  const canViewOnline = can(PERMISSIONS.ADMIN_VIEW_ONLINE_USERS);
+  const canOpenUserDrawer = USER_DRAWER_ACTION_PERMISSIONS.some((p) => can(p));
 
   return (
     <section className="admin-section">
@@ -729,55 +1331,102 @@ function UsersSection({ users, roles, filters, setFilters, onlineOnly, onToggleO
           <form className="admin-filter-form" onSubmit={onFilter}>
             <label className="admin-search">
               <ChatIcon name="search" size={17} />
-              <input value={filters.keyword} onChange={(event) => setFilters({ ...filters, keyword: event.target.value })} placeholder="Username, email hoặc tên..." />
+              <input
+                value={filters.keyword}
+                onChange={(event) =>
+                  setFilters({ ...filters, keyword: event.target.value })
+                }
+                placeholder="Username, email hoặc tên..."
+              />
             </label>
             {can(PERMISSIONS.ROLE_VIEW_ALL) && roles.length > 0 && (
-              <select value={filters.role} onChange={(event) => setFilters({ ...filters, role: event.target.value })}>
+              <select
+                value={filters.role}
+                onChange={(event) =>
+                  setFilters({ ...filters, role: event.target.value })
+                }
+              >
                 <option value="">Mọi role</option>
                 {roles.some((r) => isUserRoleCategory(r)) && (
                   <optgroup label="Vai trò Người dùng (User / VIP / Pro)">
-                    {roles.filter((r) => isUserRoleCategory(r)).map((role) => (
-                      <option key={role.id} value={role.name}>{role.name}</option>
-                    ))}
+                    {roles
+                      .filter((r) => isUserRoleCategory(r))
+                      .map((role) => (
+                        <option key={role.id} value={role.name}>
+                          {role.name}
+                        </option>
+                      ))}
                   </optgroup>
                 )}
                 {roles.some((r) => !isUserRoleCategory(r)) && (
                   <optgroup label="Vai trò Quản trị & Hệ thống">
-                    {roles.filter((r) => !isUserRoleCategory(r)).map((role) => (
-                      <option key={role.id} value={role.name}>{role.name}</option>
-                    ))}
+                    {roles
+                      .filter((r) => !isUserRoleCategory(r))
+                      .map((role) => (
+                        <option key={role.id} value={role.name}>
+                          {role.name}
+                        </option>
+                      ))}
                   </optgroup>
                 )}
               </select>
             )}
-            <select value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })}>
+            <select
+              value={filters.status}
+              onChange={(event) =>
+                setFilters({ ...filters, status: event.target.value })
+              }
+            >
               <option value="">Mọi trạng thái</option>
-              {['ACTIVE', 'LOCKED', 'UNVERIFIED', 'INACTIVE'].map((status) => <option key={status}>{status}</option>)}
+              {["ACTIVE", "LOCKED", "UNVERIFIED", "INACTIVE"].map((status) => (
+                <option key={status}>{status}</option>
+              ))}
             </select>
-            <select value={filters.gender} onChange={(event) => setFilters({ ...filters, gender: event.target.value })}>
+            <select
+              value={filters.gender}
+              onChange={(event) =>
+                setFilters({ ...filters, gender: event.target.value })
+              }
+            >
               <option value="">Mọi giới tính</option>
               <option value="MAN">Nam</option>
               <option value="WOMAN">Nữ</option>
             </select>
-            <select value={filters.authProvider} onChange={(event) => setFilters({ ...filters, authProvider: event.target.value })}>
+            <select
+              value={filters.authProvider}
+              onChange={(event) =>
+                setFilters({ ...filters, authProvider: event.target.value })
+              }
+            >
               <option value="">Mọi đăng nhập</option>
-              {['LOCAL', 'GOOGLE', 'FACEBOOK', 'GITHUB'].map((provider) => <option key={provider}>{provider}</option>)}
+              {["LOCAL", "GOOGLE", "FACEBOOK", "GITHUB"].map((provider) => (
+                <option key={provider}>{provider}</option>
+              ))}
             </select>
-            <select value={filters.sorts} onChange={(event) => setFilters({ ...filters, sorts: event.target.value })}>
+            <select
+              value={filters.sorts}
+              onChange={(event) =>
+                setFilters({ ...filters, sorts: event.target.value })
+              }
+            >
               <option value="id:desc">Mới nhất</option>
               <option value="id:asc">Cũ nhất</option>
               <option value="username:asc">Username A–Z</option>
               <option value="username:desc">Username Z–A</option>
               <option value="updateAt:desc">Cập nhật gần nhất</option>
             </select>
-            <button type="submit"><ChatIcon name="search" size={15} />Lọc</button>
+            <button type="submit">
+              <ChatIcon name="search" size={15} />
+              Lọc
+            </button>
           </form>
         ) : !canViewAllUsers && !canViewOnline && canOpenUserDrawer ? (
           <form
             className="admin-filter-form"
             onSubmit={(event) => {
-              event.preventDefault()
-              if (targetUsernameInput.trim()) void onOpen(targetUsernameInput.trim())
+              event.preventDefault();
+              if (targetUsernameInput.trim())
+                void onOpen(targetUsernameInput.trim());
             }}
           >
             <label className="admin-search">
@@ -790,10 +1439,17 @@ function UsersSection({ users, roles, filters, setFilters, onlineOnly, onToggleO
             </label>
             <button type="submit">Mở thao tác</button>
           </form>
-        ) : <div />}
+        ) : (
+          <div />
+        )}
         {can(PERMISSIONS.ADMIN_CREATE) && (
-          <button className="admin-primary-button" type="button" onClick={onCreate}>
-            <ChatIcon name="plus" size={16} />Tạo người dùng
+          <button
+            className="admin-primary-button"
+            type="button"
+            onClick={onCreate}
+          >
+            <ChatIcon name="plus" size={16} />
+            Tạo người dùng
           </button>
         )}
       </div>
@@ -813,8 +1469,21 @@ function UsersSection({ users, roles, filters, setFilters, onlineOnly, onToggleO
 
       <div className="admin-table-card">
         <div className="admin-table-summary">
-          <span><strong>{page.totalElements}</strong> người dùng</span>
-          <select value={filters.size} onChange={(event) => { const next = { ...filters, size: Number(event.target.value), page: 0 }; setFilters(next); void onLoad(next, onlineOnly) }}>
+          <span>
+            <strong>{page.totalElements}</strong> người dùng
+          </span>
+          <select
+            value={filters.size}
+            onChange={(event) => {
+              const next = {
+                ...filters,
+                size: Number(event.target.value),
+                page: 0,
+              };
+              setFilters(next);
+              void onLoad(next, onlineOnly);
+            }}
+          >
             <option value="10">10 / trang</option>
             <option value="20">20 / trang</option>
             <option value="50">50 / trang</option>
@@ -838,19 +1507,23 @@ function UsersSection({ users, roles, filters, setFilters, onlineOnly, onToggleO
                 </div>
               </div>
               <div>
-                <strong>{item.email || '—'}</strong>
-                <small>{item.phone || item.authProvider || 'Chưa có thông tin'}</small>
+                <strong>{item.email || "—"}</strong>
+                <small>
+                  {item.phone || item.authProvider || "Chưa có thông tin"}
+                </small>
               </div>
               <span
                 className={`admin-role-badge ${
-                  item.role?.toUpperCase().includes('ADMIN') || item.role?.toUpperCase().includes('MANAGER')
-                    ? 'admin-role-badge--admin'
-                    : item.role?.toUpperCase().includes('VIP') || item.role?.toUpperCase().includes('PRO')
-                      ? 'admin-role-badge--vip'
-                      : ''
+                  item.role?.toUpperCase().includes("ADMIN") ||
+                  item.role?.toUpperCase().includes("MANAGER")
+                    ? "admin-role-badge--admin"
+                    : item.role?.toUpperCase().includes("VIP") ||
+                        item.role?.toUpperCase().includes("PRO")
+                      ? "admin-role-badge--vip"
+                      : ""
                 }`}
               >
-                {item.role || '—'}
+                {item.role || "—"}
               </span>
               <StatusBadge status={item.userStatus} />
               <button
@@ -864,94 +1537,136 @@ function UsersSection({ users, roles, filters, setFilters, onlineOnly, onToggleO
           ))}
           {!users.length && (
             <EmptyState icon="users">
-              {busy === 'users-load'
-                ? 'Đang tải người dùng...'
-                : (!canViewAllUsers && !canViewOnline
-                  ? 'Bạn không có quyền xem danh sách người dùng.'
-                  : 'Không tìm thấy người dùng phù hợp.')}
+              {busy === "users-load"
+                ? "Đang tải người dùng..."
+                : !canViewAllUsers && !canViewOnline
+                  ? "Bạn không có quyền xem danh sách người dùng."
+                  : "Không tìm thấy người dùng phù hợp."}
             </EmptyState>
           )}
         </div>
         <Pagination page={page} onChange={onPage} />
       </div>
     </section>
-  )
+  );
 }
 
-function RolesSection({ roles, permissions, form, setForm, editingId, busy, can, onEdit, onDelete, onSave, onCancel }) {
-  const [quickRoleId, setQuickRoleId] = useState('')
-  const canViewRoles = can(PERMISSIONS.ROLE_VIEW_ALL)
-  const canAddRole = can(PERMISSIONS.ROLE_ADD)
-  const canUpdateRole = can(PERMISSIONS.ROLE_UPDATE)
-  const canViewAllPermissions = can(PERMISSIONS.ROLE_VIEW_ALL_PERMISSION)
+function RolesSection({
+  roles,
+  permissions,
+  form,
+  setForm,
+  editingId,
+  busy,
+  can,
+  onEdit,
+  onDelete,
+  onSave,
+  onCancel,
+}) {
+  const [quickRoleId, setQuickRoleId] = useState("");
+  const canViewRoles = can(PERMISSIONS.ROLE_VIEW_ALL);
+  const canAddRole = can(PERMISSIONS.ROLE_ADD);
+  const canUpdateRole = can(PERMISSIONS.ROLE_UPDATE);
+  const canViewAllPermissions = can(PERMISSIONS.ROLE_VIEW_ALL_PERMISSION);
 
   const selectedAdminPermission = permissions
     .filter((p) => form.permissionIds.includes(p.id))
-    .find((p) => p.name?.toUpperCase().startsWith('ADMIN_'))
-  const hasAdminPermission = Boolean(selectedAdminPermission)
-  const effectiveUserRole = hasAdminPermission ? false : form.userRole !== false
+    .find((p) => p.name?.toUpperCase().startsWith("ADMIN_"));
+  const hasAdminPermission = Boolean(selectedAdminPermission);
+  const effectiveUserRole = hasAdminPermission
+    ? false
+    : form.userRole !== false;
 
   return (
     <section className="admin-section admin-role-layout">
       <div className="admin-role-list">
         {canViewRoles ? (
           roles.map((role) => {
-            const isProtected = isSystemRole(role.name)
-            const isUserType = isUserRoleCategory(role)
+            const isProtected = isSystemRole(role.name);
+            const isUserType = isUserRoleCategory(role);
             return (
               <article className="admin-panel" key={role.id}>
                 <header>
-                  <span><ChatIcon name="shield" size={18} /></span>
+                  <span>
+                    <ChatIcon name="shield" size={18} />
+                  </span>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        flexWrap: "wrap",
+                      }}
+                    >
                       <h3 style={{ margin: 0 }}>{role.name}</h3>
-                      <span className={`admin-role-type-tag ${isUserType ? 'is-user-type' : 'is-admin-type'}`}>
-                        {isUserType ? 'Vai trò Người dùng (User/VIP)' : 'Vai trò Quản trị (Admin/Staff)'}
+                      <span
+                        className={`admin-role-type-tag ${isUserType ? "is-user-type" : "is-admin-type"}`}
+                      >
+                        {isUserType
+                          ? "Vai trò Người dùng (User/VIP)"
+                          : "Vai trò Quản trị (Admin/Staff)"}
                       </span>
                     </div>
                     <small>
-                      {(role.permissions || []).length} quyền • {isUserType ? 'Hiển thị tìm kiếm & nhận kết bạn' : 'Ẩn tìm kiếm & chặn kết bạn'}
+                      {(role.permissions || []).length} quyền •{" "}
+                      {isUserType
+                        ? "Hiển thị tìm kiếm & nhận kết bạn"
+                        : "Ẩn tìm kiếm & chặn kết bạn"}
                     </small>
                   </div>
                 </header>
-                <p>{role.description || 'Chưa có mô tả.'}</p>
+                <p>{role.description || "Chưa có mô tả."}</p>
                 <div className="admin-role-permissions">
                   {(role.permissions || []).slice(0, 5).map((permission) => (
                     <span key={permission.id}>{permission.name}</span>
                   ))}
-                  {(role.permissions || []).length > 5 && <span>+{role.permissions.length - 5}</span>}
+                  {(role.permissions || []).length > 5 && (
+                    <span>+{role.permissions.length - 5}</span>
+                  )}
                 </div>
                 <footer>
                   {isProtected ? (
-                    <small style={{ color: '#888', fontStyle: 'italic' }}>Role mặc định hệ thống</small>
+                    <small style={{ color: "#888", fontStyle: "italic" }}>
+                      Role mặc định hệ thống
+                    </small>
                   ) : (
                     <>
                       {canUpdateRole && (
                         <button type="button" onClick={() => onEdit(role)}>
-                          <ChatIcon name="edit" size={14} />Sửa
+                          <ChatIcon name="edit" size={14} />
+                          Sửa
                         </button>
                       )}
                       {can(PERMISSIONS.ROLE_DELETE) && (
-                        <button className="is-danger" type="button" onClick={() => void onDelete(role.id)}>
-                          <ChatIcon name="trash" size={14} />Xóa
+                        <button
+                          className="is-danger"
+                          type="button"
+                          onClick={() => void onDelete(role.id)}
+                        >
+                          <ChatIcon name="trash" size={14} />
+                          Xóa
                         </button>
                       )}
                     </>
                   )}
                 </footer>
               </article>
-            )
+            );
           })
-        ) : (canUpdateRole || can(PERMISSIONS.ROLE_DELETE)) ? (
+        ) : canUpdateRole || can(PERMISSIONS.ROLE_DELETE) ? (
           <div className="admin-panel">
             <header>
-              <span><ChatIcon name="settings" size={18} /></span>
+              <span>
+                <ChatIcon name="settings" size={18} />
+              </span>
               <div>
                 <h3>Thao tác Role theo ID</h3>
                 <small>Nhập Role ID để sửa hoặc xóa</small>
               </div>
             </header>
-            <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+            <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
               <input
                 type="number"
                 placeholder="Nhập Role ID..."
@@ -962,8 +1677,15 @@ function RolesSection({ roles, permissions, form, setForm, editingId, busy, can,
                 <button
                   type="button"
                   onClick={() => {
-                    const id = Number(quickRoleId)
-                    if (id) onEdit({ id, name: '', description: '', userRole: true, permissionIds: [] })
+                    const id = Number(quickRoleId);
+                    if (id)
+                      onEdit({
+                        id,
+                        name: "",
+                        description: "",
+                        userRole: true,
+                        permissionIds: [],
+                      });
                   }}
                 >
                   Sửa
@@ -974,8 +1696,8 @@ function RolesSection({ roles, permissions, form, setForm, editingId, busy, can,
                   className="is-danger"
                   type="button"
                   onClick={() => {
-                    const id = Number(quickRoleId)
-                    if (id) void onDelete(id)
+                    const id = Number(quickRoleId);
+                    if (id) void onDelete(id);
                   }}
                 >
                   Xóa
@@ -986,35 +1708,47 @@ function RolesSection({ roles, permissions, form, setForm, editingId, busy, can,
         ) : canViewAllPermissions ? (
           <div className="admin-panel">
             <header>
-              <span><ChatIcon name="shield" size={18} /></span>
+              <span>
+                <ChatIcon name="shield" size={18} />
+              </span>
               <div>
                 <h3>Danh mục Quyền hệ thống</h3>
                 <small>{permissions.length} quyền khả dụng</small>
               </div>
             </header>
-            <div className="admin-role-permissions" style={{ marginTop: '12px' }}>
+            <div
+              className="admin-role-permissions"
+              style={{ marginTop: "12px" }}
+            >
               {permissions.map((p) => (
                 <span key={p.id}>{p.name}</span>
               ))}
             </div>
           </div>
         ) : (
-          <EmptyState icon="shield">Bạn không có quyền xem danh sách vai trò.</EmptyState>
+          <EmptyState icon="shield">
+            Bạn không có quyền xem danh sách vai trò.
+          </EmptyState>
         )}
       </div>
 
       {(editingId ? canUpdateRole : canAddRole) && (
-        <form className="admin-panel admin-form admin-role-form" onSubmit={onSave}>
+        <form
+          className="admin-panel admin-form admin-role-form"
+          onSubmit={onSave}
+        >
           <header>
             <small>ROLE EDITOR</small>
-            <h2>{editingId ? 'Cập nhật role' : 'Tạo role mới'}</h2>
+            <h2>{editingId ? "Cập nhật role" : "Tạo role mới"}</h2>
           </header>
           <label>
             Tên role
             <input
               required
               value={form.name}
-              onChange={(event) => setForm({ ...form, name: event.target.value })}
+              onChange={(event) =>
+                setForm({ ...form, name: event.target.value })
+              }
               placeholder="VD: MODERATOR"
             />
           </label>
@@ -1023,14 +1757,18 @@ function RolesSection({ roles, permissions, form, setForm, editingId, busy, can,
             <textarea
               rows="3"
               value={form.description}
-              onChange={(event) => setForm({ ...form, description: event.target.value })}
+              onChange={(event) =>
+                setForm({ ...form, description: event.target.value })
+              }
             />
           </label>
 
           <fieldset className="admin-role-type-fieldset">
             <legend>Phân loại vai trò</legend>
             <div className="admin-role-type-selector">
-              <label className={`admin-role-type-option ${effectiveUserRole ? 'is-active' : ''} ${hasAdminPermission ? 'is-disabled' : ''}`}>
+              <label
+                className={`admin-role-type-option ${effectiveUserRole ? "is-active" : ""} ${hasAdminPermission ? "is-disabled" : ""}`}
+              >
                 <input
                   type="radio"
                   name="roleCategory"
@@ -1040,11 +1778,16 @@ function RolesSection({ roles, permissions, form, setForm, editingId, busy, can,
                 />
                 <div>
                   <strong>Vai trò Người dùng (VIP / PRO / Thành viên)</strong>
-                  <small>Được hiển thị trong danh sách tìm kiếm và nhận lời mời kết bạn từ người khác.</small>
+                  <small>
+                    Được hiển thị trong danh sách tìm kiếm và nhận lời mời kết
+                    bạn từ người khác.
+                  </small>
                 </div>
               </label>
 
-              <label className={`admin-role-type-option ${!effectiveUserRole ? 'is-active' : ''}`}>
+              <label
+                className={`admin-role-type-option ${!effectiveUserRole ? "is-active" : ""}`}
+              >
                 <input
                   type="radio"
                   name="roleCategory"
@@ -1052,8 +1795,13 @@ function RolesSection({ roles, permissions, form, setForm, editingId, busy, can,
                   onChange={() => setForm({ ...form, userRole: false })}
                 />
                 <div>
-                  <strong>Vai trò Quản trị & Nhân viên (Admin / Manager / Moderator)</strong>
-                  <small>Bảo vệ tài khoản: Ẩn hoàn toàn khỏi tìm kiếm người dùng và chặn tất cả lời mời kết bạn.</small>
+                  <strong>
+                    Vai trò Quản trị & Nhân viên (Admin / Manager / Moderator)
+                  </strong>
+                  <small>
+                    Bảo vệ tài khoản: Ẩn hoàn toàn khỏi tìm kiếm người dùng và
+                    chặn tất cả lời mời kết bạn.
+                  </small>
                 </div>
               </label>
             </div>
@@ -1061,7 +1809,10 @@ function RolesSection({ roles, permissions, form, setForm, editingId, busy, can,
               <div className="admin-role-type-hint">
                 <ChatIcon name="shield" size={14} />
                 <span>
-                  Role chứa quyền quản trị (<strong>{selectedAdminPermission.name}</strong>). Hệ thống sẽ tự động gán là <strong>Vai trò Quản trị</strong> để bảo vệ tài khoản.
+                  Role chứa quyền quản trị (
+                  <strong>{selectedAdminPermission.name}</strong>). Hệ thống sẽ
+                  tự động gán là <strong>Vai trò Quản trị</strong> để bảo vệ tài
+                  khoản.
                 </span>
               </div>
             )}
@@ -1078,16 +1829,24 @@ function RolesSection({ roles, permissions, form, setForm, editingId, busy, can,
                       checked={form.permissionIds.includes(permission.id)}
                       onChange={(event) => {
                         const nextIds = event.target.checked
-                          ? resolvePermissionIdsWithPrerequisites(form.permissionIds, permission.id, permissions)
-                          : form.permissionIds.filter((id) => id !== permission.id)
+                          ? resolvePermissionIdsWithPrerequisites(
+                              form.permissionIds,
+                              permission.id,
+                              permissions,
+                            )
+                          : form.permissionIds.filter(
+                              (id) => id !== permission.id,
+                            );
                         const adminPerm = permissions
                           .filter((p) => nextIds.includes(p.id))
-                          .some((p) => p.name?.toUpperCase().startsWith('ADMIN_'))
+                          .some((p) =>
+                            p.name?.toUpperCase().startsWith("ADMIN_"),
+                          );
                         setForm({
                           ...form,
                           permissionIds: nextIds,
                           userRole: adminPerm ? false : form.userRole,
-                        })
+                        });
                       }}
                     />
                     <span>
@@ -1098,21 +1857,31 @@ function RolesSection({ roles, permissions, form, setForm, editingId, busy, can,
                 ))}
               </div>
             ) : (
-              <p style={{ color: '#888', fontStyle: 'italic', margin: '8px 0' }}>
-                Cần quyền xem danh sách permission để phân quyền chi tiết cho role.
+              <p
+                style={{ color: "#888", fontStyle: "italic", margin: "8px 0" }}
+              >
+                Cần quyền xem danh sách permission để phân quyền chi tiết cho
+                role.
               </p>
             )}
           </fieldset>
           <div className="admin-form-actions">
-            <button className="admin-primary-button" disabled={busy === 'role-save'}>
-              {editingId ? 'Lưu thay đổi' : 'Tạo role'}
+            <button
+              className="admin-primary-button"
+              disabled={busy === "role-save"}
+            >
+              {editingId ? "Lưu thay đổi" : "Tạo role"}
             </button>
-            {editingId && <button type="button" onClick={onCancel}>Hủy</button>}
+            {editingId && (
+              <button type="button" onClick={onCancel}>
+                Hủy
+              </button>
+            )}
           </div>
         </form>
       )}
     </section>
-  )
+  );
 }
 
 function EmailSection({ form, setForm, busy, onSubmit }) {
@@ -1120,7 +1889,9 @@ function EmailSection({ form, setForm, busy, onSubmit }) {
     <section className="admin-section admin-email-section">
       <form className="admin-panel admin-form" onSubmit={onSubmit}>
         <header>
-          <span className="admin-form-icon"><ChatIcon name="send" /></span>
+          <span className="admin-form-icon">
+            <ChatIcon name="send" />
+          </span>
           <small>EMAIL HỆ THỐNG</small>
           <h2>Soạn email</h2>
           <p>Nhập thông tin người nhận và nội dung cần gửi.</p>
@@ -1140,7 +1911,9 @@ function EmailSection({ form, setForm, busy, onSubmit }) {
           <input
             required
             value={form.subject}
-            onChange={(event) => setForm({ ...form, subject: event.target.value })}
+            onChange={(event) =>
+              setForm({ ...form, subject: event.target.value })
+            }
           />
         </label>
         <label>
@@ -1153,25 +1926,42 @@ function EmailSection({ form, setForm, busy, onSubmit }) {
           />
         </label>
         <div className="admin-form-actions">
-          <button className="admin-primary-button" disabled={busy === 'email-send'}>
+          <button
+            className="admin-primary-button"
+            disabled={busy === "email-send"}
+          >
             <ChatIcon name="send" size={15} />
-            {busy === 'email-send' ? 'Đang gửi...' : 'Gửi email'}
+            {busy === "email-send" ? "Đang gửi..." : "Gửi email"}
           </button>
         </div>
       </form>
     </section>
-  )
+  );
 }
 
-function BroadcastSection({ form, setForm, messages, connectionState, busy, hasMore, onSubmit, onRefresh, onMore }) {
+function BroadcastSection({
+  form,
+  setForm,
+  messages,
+  connectionState,
+  busy,
+  hasMore,
+  onSubmit,
+  onRefresh,
+  onMore,
+}) {
   return (
     <section className="admin-section admin-communication-layout">
       <form className="admin-panel admin-form" onSubmit={onSubmit}>
         <header>
-          <span className="admin-form-icon"><ChatIcon name="globe" /></span>
+          <span className="admin-form-icon">
+            <ChatIcon name="globe" />
+          </span>
           <small>REALTIME BROADCAST</small>
           <h2>Phát thông báo mới</h2>
-          <p>Thông báo sẽ xuất hiện ngay trên kênh Thế giới của mọi người dùng.</p>
+          <p>
+            Thông báo sẽ xuất hiện ngay trên kênh Thế giới của mọi người dùng.
+          </p>
         </header>
         <label>
           Nội dung
@@ -1180,7 +1970,9 @@ function BroadcastSection({ form, setForm, messages, connectionState, busy, hasM
             required
             maxLength="10000"
             value={form.content}
-            onChange={(event) => setForm({ ...form, content: event.target.value })}
+            onChange={(event) =>
+              setForm({ ...form, content: event.target.value })
+            }
             placeholder="Nhập nội dung thông báo..."
           />
         </label>
@@ -1190,15 +1982,26 @@ function BroadcastSection({ form, setForm, messages, connectionState, busy, hasM
             type="number"
             min="1"
             value={form.survivalTime}
-            onChange={(event) => setForm({ ...form, survivalTime: event.target.value })}
+            onChange={(event) =>
+              setForm({ ...form, survivalTime: event.target.value })
+            }
           />
         </label>
         <div className="admin-form-actions">
-          <button className="admin-primary-button" disabled={connectionState !== 'connected'}>
-            <ChatIcon name="send" size={15} />Phát thông báo
+          <button
+            className="admin-primary-button"
+            disabled={connectionState !== "connected"}
+          >
+            <ChatIcon name="send" size={15} />
+            Phát thông báo
           </button>
-          <span className={`admin-socket-state admin-socket-state--${connectionState}`}>
-            <i />{connectionState === 'connected' ? 'Realtime sẵn sàng' : 'Đang kết nối...'}
+          <span
+            className={`admin-socket-state admin-socket-state--${connectionState}`}
+          >
+            <i />
+            {connectionState === "connected"
+              ? "Realtime sẵn sàng"
+              : "Đang kết nối..."}
           </span>
         </div>
       </form>
@@ -1208,57 +2011,122 @@ function BroadcastSection({ form, setForm, messages, connectionState, busy, hasM
             <small>LỊCH SỬ KÊNH THẾ GIỚI</small>
             <h3>Thông báo gần đây</h3>
           </div>
-          <button type="button" onClick={() => void onRefresh()}><ChatIcon name="history" size={15} />Làm mới</button>
+          <button type="button" onClick={() => void onRefresh()}>
+            <ChatIcon name="history" size={15} />
+            Làm mới
+          </button>
         </header>
         {messages.map((message, index) => (
           <article key={`${message.timestamp}-${index}`}>
-            <span><ChatIcon name="globe" size={16} /></span>
+            <span>
+              <ChatIcon name="globe" size={16} />
+            </span>
             <div>
-              <strong>{message.sender || 'Admin'}</strong>
+              <strong>{message.sender || "Admin"}</strong>
               <p>{message.content}</p>
-              <time>{message.timestamp ? new Date(message.timestamp).toLocaleString('vi-VN') : ''}</time>
+              <time>
+                {message.timestamp
+                  ? new Date(message.timestamp).toLocaleString("vi-VN")
+                  : ""}
+              </time>
             </div>
           </article>
         ))}
-        {!messages.length && <EmptyState icon="globe">Chưa có thông báo hệ thống.</EmptyState>}
+        {!messages.length && (
+          <EmptyState icon="globe">Chưa có thông báo hệ thống.</EmptyState>
+        )}
         {hasMore && (
-          <button className="admin-load-more" type="button" disabled={busy === 'announcements-load'} onClick={() => void onMore()}>
+          <button
+            className="admin-load-more"
+            type="button"
+            disabled={busy === "announcements-load"}
+            onClick={() => void onMore()}
+          >
             Tải thông báo cũ hơn
           </button>
         )}
       </div>
     </section>
-  )
+  );
 }
 
-function UserDrawer({ currentUser, selectedUser, addresses, editingAddress, setEditingAddress, form, setForm, roles, busy, can, onClose, onSave, onAction, onAddressEdit, onAddressSave, onAddressDelete }) {
-  const [quickAddressId, setQuickAddressId] = useState('')
-  const isEditing = Boolean(selectedUser)
-  const canUpdate = can(PERMISSIONS.ADMIN_UPDATE_USER)
-  const canCreate = can(PERMISSIONS.ADMIN_CREATE)
-  const isSelf = Boolean(selectedUser && currentUser && (selectedUser.username === currentUser.username || (checkIsRootAdmin(selectedUser) && checkIsRootAdmin(currentUser))))
-  const isRootAdmin = checkIsRootAdmin(selectedUser)
-  const isTargetProtected = isRootAdmin && !checkIsRootAdmin(currentUser)
-  const canSubmitForm = isEditing ? (canUpdate && !isTargetProtected) : canCreate
+function UserDrawer({
+  currentUser,
+  selectedUser,
+  addresses,
+  editingAddress,
+  setEditingAddress,
+  form,
+  setForm,
+  roles,
+  busy,
+  can,
+  onClose,
+  onSave,
+  onAction,
+  onAddressEdit,
+  onAddressSave,
+  onAddressDelete,
+}) {
+  const [quickAddressId, setQuickAddressId] = useState("");
+  const isEditing = Boolean(selectedUser);
+  const canUpdate = can(PERMISSIONS.ADMIN_UPDATE_USER);
+  const canCreate = can(PERMISSIONS.ADMIN_CREATE);
+  const isSelf = Boolean(
+    selectedUser &&
+    currentUser &&
+    (selectedUser.username === currentUser.username ||
+      (checkIsRootAdmin(selectedUser) && checkIsRootAdmin(currentUser))),
+  );
+  const isRootAdmin = checkIsRootAdmin(selectedUser);
+  const isTargetProtected = isRootAdmin && !checkIsRootAdmin(currentUser);
+  const canSubmitForm = isEditing ? canUpdate && !isTargetProtected : canCreate;
 
   return (
-    <div className="admin-drawer-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+    <div
+      className="admin-drawer-backdrop"
+      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
+    >
       <aside className="admin-user-drawer" role="dialog" aria-modal="true">
         <header>
           <div>
-            {selectedUser ? <AdminAvatar person={selectedUser} /> : <span className="admin-form-icon"><ChatIcon name="plus" /></span>}
+            {selectedUser ? (
+              <AdminAvatar person={selectedUser} />
+            ) : (
+              <span className="admin-form-icon">
+                <ChatIcon name="plus" />
+              </span>
+            )}
             <span>
-              <small>{selectedUser ? 'USER MANAGEMENT' : 'CREATE ACCOUNT'}</small>
-              <h2>{selectedUser ? displayName(selectedUser) : 'Tạo người dùng'}</h2>
+              <small>
+                {selectedUser ? "USER MANAGEMENT" : "CREATE ACCOUNT"}
+              </small>
+              <h2>
+                {selectedUser ? displayName(selectedUser) : "Tạo người dùng"}
+              </h2>
               {selectedUser && <p>@{selectedUser.username}</p>}
             </span>
           </div>
-          <button type="button" onClick={onClose}><ChatIcon name="close" /></button>
+          <button type="button" onClick={onClose}>
+            <ChatIcon name="close" />
+          </button>
         </header>
         <div className="admin-user-drawer__body">
           {isTargetProtected && (
-            <div className="admin-warning-banner" style={{ padding: '10px 14px', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', borderRadius: '8px', marginBottom: '14px', fontSize: '0.875rem', fontWeight: 500 }}>
-              Chỉ tài khoản quản trị viên gốc mới có quyền tự cập nhật thông tin của mình.
+            <div
+              className="admin-warning-banner"
+              style={{
+                padding: "10px 14px",
+                background: "rgba(239, 68, 68, 0.1)",
+                color: "#ef4444",
+                borderRadius: "8px",
+                marginBottom: "14px",
+                fontSize: "0.875rem",
+                fontWeight: 500,
+              }}
+            >
+              Chỉ tài khoản quản trị viên gốc mới có quyền tự cập nhật thông tin
+              của mình.
             </div>
           )}
           {selectedUser && (
@@ -1266,11 +2134,13 @@ function UserDrawer({ currentUser, selectedUser, addresses, editingAddress, setE
               <StatusBadge status={selectedUser.userStatus} />
               <span
                 className={`admin-role-badge ${
-                  selectedUser.role?.toUpperCase().includes('ADMIN') || selectedUser.role?.toUpperCase().includes('MANAGER')
-                    ? 'admin-role-badge--admin'
-                    : selectedUser.role?.toUpperCase().includes('VIP') || selectedUser.role?.toUpperCase().includes('PRO')
-                      ? 'admin-role-badge--vip'
-                      : ''
+                  selectedUser.role?.toUpperCase().includes("ADMIN") ||
+                  selectedUser.role?.toUpperCase().includes("MANAGER")
+                    ? "admin-role-badge--admin"
+                    : selectedUser.role?.toUpperCase().includes("VIP") ||
+                        selectedUser.role?.toUpperCase().includes("PRO")
+                      ? "admin-role-badge--vip"
+                      : ""
                 }`}
               >
                 {selectedUser.role}
@@ -1287,7 +2157,9 @@ function UserDrawer({ currentUser, selectedUser, addresses, editingAddress, setE
                     <input
                       required
                       value={form.username}
-                      onChange={(event) => setForm({ ...form, username: event.target.value })}
+                      onChange={(event) =>
+                        setForm({ ...form, username: event.target.value })
+                      }
                     />
                   </label>
                   <label>
@@ -1297,7 +2169,9 @@ function UserDrawer({ currentUser, selectedUser, addresses, editingAddress, setE
                       minLength="8"
                       required
                       value={form.password}
-                      onChange={(event) => setForm({ ...form, password: event.target.value })}
+                      onChange={(event) =>
+                        setForm({ ...form, password: event.target.value })
+                      }
                     />
                   </label>
                 </>
@@ -1308,7 +2182,9 @@ function UserDrawer({ currentUser, selectedUser, addresses, editingAddress, setE
                   required={!selectedUser}
                   disabled={!canSubmitForm}
                   value={form.firstName}
-                  onChange={(event) => setForm({ ...form, firstName: event.target.value })}
+                  onChange={(event) =>
+                    setForm({ ...form, firstName: event.target.value })
+                  }
                 />
               </label>
               <label>
@@ -1316,7 +2192,9 @@ function UserDrawer({ currentUser, selectedUser, addresses, editingAddress, setE
                 <input
                   disabled={!canSubmitForm}
                   value={form.lastName}
-                  onChange={(event) => setForm({ ...form, lastName: event.target.value })}
+                  onChange={(event) =>
+                    setForm({ ...form, lastName: event.target.value })
+                  }
                 />
               </label>
               <label>
@@ -1326,7 +2204,9 @@ function UserDrawer({ currentUser, selectedUser, addresses, editingAddress, setE
                   required
                   disabled={!canSubmitForm}
                   value={form.email}
-                  onChange={(event) => setForm({ ...form, email: event.target.value })}
+                  onChange={(event) =>
+                    setForm({ ...form, email: event.target.value })
+                  }
                 />
               </label>
               <label>
@@ -1334,7 +2214,9 @@ function UserDrawer({ currentUser, selectedUser, addresses, editingAddress, setE
                 <input
                   disabled={!canSubmitForm}
                   value={form.phone}
-                  onChange={(event) => setForm({ ...form, phone: event.target.value })}
+                  onChange={(event) =>
+                    setForm({ ...form, phone: event.target.value })
+                  }
                   placeholder="0xxxxxxxxx"
                 />
               </label>
@@ -1343,47 +2225,95 @@ function UserDrawer({ currentUser, selectedUser, addresses, editingAddress, setE
                 <select
                   disabled={!canSubmitForm || isSelf || isRootAdmin}
                   value={form.roleId}
-                  onChange={(event) => setForm({ ...form, roleId: event.target.value })}
+                  onChange={(event) =>
+                    setForm({ ...form, roleId: event.target.value })
+                  }
                 >
                   <option value="">Role mặc định</option>
                   {roles.some((r) => isUserRoleCategory(r)) && (
                     <optgroup label="Vai trò Người dùng (User / VIP / Pro)">
-                      {roles.filter((r) => isUserRoleCategory(r)).map((role) => {
-                        const isRoleAdmin = normalizeRoleName(role.name).replace(/^ROLE_/, '') === SYSTEM_ROLES.ADMIN
-                        const isReservedAdmin = isRoleAdmin && !isRootAdmin
-                        const assignable = !isReservedAdmin && canAssignRole(currentUser, role)
-                        return (
-                          <option key={role.id} value={role.id} disabled={!assignable}>
-                            {role.name}
-                            {isReservedAdmin ? ' (Dành riêng cho root admin)' : !assignable ? ' (Vượt quá quyền)' : ''}
-                          </option>
-                        )
-                      })}
+                      {roles
+                        .filter((r) => isUserRoleCategory(r))
+                        .map((role) => {
+                          const isRoleAdmin =
+                            normalizeRoleName(role.name).replace(
+                              /^ROLE_/,
+                              "",
+                            ) === SYSTEM_ROLES.ADMIN;
+                          const isReservedAdmin = isRoleAdmin && !isRootAdmin;
+                          const assignable =
+                            !isReservedAdmin &&
+                            canAssignRole(currentUser, role);
+                          return (
+                            <option
+                              key={role.id}
+                              value={role.id}
+                              disabled={!assignable}
+                            >
+                              {role.name}
+                              {isReservedAdmin
+                                ? " (Dành riêng cho root admin)"
+                                : !assignable
+                                  ? " (Vượt quá quyền)"
+                                  : ""}
+                            </option>
+                          );
+                        })}
                     </optgroup>
                   )}
                   {roles.some((r) => !isUserRoleCategory(r)) && (
                     <optgroup label="Vai trò Quản trị & Nhân viên (Admin / Manager)">
-                      {roles.filter((r) => !isUserRoleCategory(r)).map((role) => {
-                        const isRoleAdmin = normalizeRoleName(role.name).replace(/^ROLE_/, '') === SYSTEM_ROLES.ADMIN
-                        const isReservedAdmin = isRoleAdmin && !isRootAdmin
-                        const assignable = !isReservedAdmin && canAssignRole(currentUser, role)
-                        return (
-                          <option key={role.id} value={role.id} disabled={!assignable}>
-                            {role.name}
-                            {isReservedAdmin ? ' (Dành riêng cho root admin)' : !assignable ? ' (Vượt quá quyền)' : ''}
-                          </option>
-                        )
-                      })}
+                      {roles
+                        .filter((r) => !isUserRoleCategory(r))
+                        .map((role) => {
+                          const isRoleAdmin =
+                            normalizeRoleName(role.name).replace(
+                              /^ROLE_/,
+                              "",
+                            ) === SYSTEM_ROLES.ADMIN;
+                          const isReservedAdmin = isRoleAdmin && !isRootAdmin;
+                          const assignable =
+                            !isReservedAdmin &&
+                            canAssignRole(currentUser, role);
+                          return (
+                            <option
+                              key={role.id}
+                              value={role.id}
+                              disabled={!assignable}
+                            >
+                              {role.name}
+                              {isReservedAdmin
+                                ? " (Dành riêng cho root admin)"
+                                : !assignable
+                                  ? " (Vượt quá quyền)"
+                                  : ""}
+                            </option>
+                          );
+                        })}
                     </optgroup>
                   )}
                 </select>
                 {isSelf && (
-                  <small style={{ color: '#888', fontStyle: 'italic', display: 'block', marginTop: '4px' }}>
+                  <small
+                    style={{
+                      color: "#888",
+                      fontStyle: "italic",
+                      display: "block",
+                      marginTop: "4px",
+                    }}
+                  >
                     Không thể tự thay đổi vai trò của chính mình
                   </small>
                 )}
                 {isTargetProtected && (
-                  <small style={{ color: '#888', fontStyle: 'italic', display: 'block', marginTop: '4px' }}>
+                  <small
+                    style={{
+                      color: "#888",
+                      fontStyle: "italic",
+                      display: "block",
+                      marginTop: "4px",
+                    }}
+                  >
                     Không thể thay đổi vai trò của tài khoản quản trị viên gốc
                   </small>
                 )}
@@ -1391,8 +2321,11 @@ function UserDrawer({ currentUser, selectedUser, addresses, editingAddress, setE
             </div>
             <div className="admin-form-actions">
               {canSubmitForm && (
-                <button className="admin-primary-button" disabled={busy === 'user-save'}>
-                  {selectedUser ? 'Lưu thay đổi' : 'Tạo tài khoản'}
+                <button
+                  className="admin-primary-button"
+                  disabled={busy === "user-save"}
+                >
+                  {selectedUser ? "Lưu thay đổi" : "Tạo tài khoản"}
                 </button>
               )}
             </div>
@@ -1400,31 +2333,66 @@ function UserDrawer({ currentUser, selectedUser, addresses, editingAddress, setE
 
           {selectedUser && (
             <>
-              {(can(PERMISSIONS.ADMIN_LOCK) || can(PERMISSIONS.ADMIN_UNLOCK) || can(PERMISSIONS.ADMIN_DELETE_AVATAR) || can(PERMISSIONS.ADMIN_DELETE_USER)) && (
+              {(can(PERMISSIONS.ADMIN_LOCK) ||
+                can(PERMISSIONS.ADMIN_UNLOCK) ||
+                can(PERMISSIONS.ADMIN_DELETE_AVATAR) ||
+                can(PERMISSIONS.ADMIN_DELETE_USER)) && (
                 <section className="admin-danger-actions">
                   <h3>Thao tác tài khoản</h3>
                   <div>
                     {!isSelf && !isRootAdmin && (
                       <>
-                        {can(PERMISSIONS.ADMIN_LOCK) && (selectedUser.userStatus !== 'LOCKED' || !can(PERMISSIONS.ADMIN_VIEW_USER_DETAIL)) && (
-                          <button type="button" onClick={() => void onAction('lock')}>Khóa tài khoản</button>
-                        )}
-                        {can(PERMISSIONS.ADMIN_UNLOCK) && (selectedUser.userStatus === 'LOCKED' || !can(PERMISSIONS.ADMIN_VIEW_USER_DETAIL)) && (
-                          <button type="button" onClick={() => void onAction('unlock')}>Mở khóa</button>
-                        )}
+                        {can(PERMISSIONS.ADMIN_LOCK) &&
+                          (selectedUser.userStatus !== "LOCKED" ||
+                            !can(PERMISSIONS.ADMIN_VIEW_USER_DETAIL)) && (
+                            <button
+                              type="button"
+                              onClick={() => void onAction("lock")}
+                            >
+                              Khóa tài khoản
+                            </button>
+                          )}
+                        {can(PERMISSIONS.ADMIN_UNLOCK) &&
+                          (selectedUser.userStatus === "LOCKED" ||
+                            !can(PERMISSIONS.ADMIN_VIEW_USER_DETAIL)) && (
+                            <button
+                              type="button"
+                              onClick={() => void onAction("unlock")}
+                            >
+                              Mở khóa
+                            </button>
+                          )}
                       </>
                     )}
-                    {can(PERMISSIONS.ADMIN_DELETE_AVATAR) && (Boolean(selectedUser.avatar) || !can(PERMISSIONS.ADMIN_VIEW_USER_DETAIL)) && !isTargetProtected && (
-                      <button type="button" onClick={() => void onAction('avatar')}>Xóa avatar</button>
-                    )}
-                    {!isSelf && !isRootAdmin && can(PERMISSIONS.ADMIN_DELETE_USER) && (
-                      <button className="is-danger" type="button" onClick={() => void onAction('delete')}>Xóa người dùng</button>
-                    )}
+                    {can(PERMISSIONS.ADMIN_DELETE_AVATAR) &&
+                      (Boolean(selectedUser.avatar) ||
+                        !can(PERMISSIONS.ADMIN_VIEW_USER_DETAIL)) &&
+                      !isTargetProtected && (
+                        <button
+                          type="button"
+                          onClick={() => void onAction("avatar")}
+                        >
+                          Xóa avatar
+                        </button>
+                      )}
+                    {!isSelf &&
+                      !isRootAdmin &&
+                      can(PERMISSIONS.ADMIN_DELETE_USER) && (
+                        <button
+                          className="is-danger"
+                          type="button"
+                          onClick={() => void onAction("delete")}
+                        >
+                          Xóa người dùng
+                        </button>
+                      )}
                   </div>
                 </section>
               )}
 
-              {(can(PERMISSIONS.ADMIN_VIEW_USER_ADDRESSES) || can(PERMISSIONS.ADMIN_UPDATE_USER_ADDRESS) || can(PERMISSIONS.ADMIN_DELETE_USER_ADDRESS)) && (
+              {(can(PERMISSIONS.ADMIN_VIEW_USER_ADDRESSES) ||
+                can(PERMISSIONS.ADMIN_UPDATE_USER_ADDRESS) ||
+                can(PERMISSIONS.ADMIN_DELETE_USER_ADDRESS)) && (
                 <section className="admin-address-section">
                   <header>
                     <h3>Địa chỉ người dùng</h3>
@@ -1435,54 +2403,121 @@ function UserDrawer({ currentUser, selectedUser, addresses, editingAddress, setE
                       {addresses.map((address) => (
                         <article key={address.id}>
                           <div>
-                            <strong>{address.houseNumber} {address.street}</strong>
-                            <p>{[address.ward, address.district, address.city, address.country].filter(Boolean).join(', ')}</p>
+                            <strong>
+                              {address.houseNumber} {address.street}
+                            </strong>
+                            <p>
+                              {[
+                                address.ward,
+                                address.district,
+                                address.city,
+                                address.country,
+                              ]
+                                .filter(Boolean)
+                                .join(", ")}
+                            </p>
                           </div>
                           <span>
-                            {can(PERMISSIONS.ADMIN_UPDATE_USER_ADDRESS) && !isTargetProtected && (
-                              <button type="button" onClick={() => void onAddressEdit(address.id)}>Sửa</button>
-                            )}
-                            {can(PERMISSIONS.ADMIN_DELETE_USER_ADDRESS) && !isTargetProtected && (
-                              <button className="is-danger" type="button" onClick={() => void onAddressDelete(address.id)}>Xóa</button>
-                            )}
+                            {can(PERMISSIONS.ADMIN_UPDATE_USER_ADDRESS) &&
+                              !isTargetProtected && (
+                                <button
+                                  type="button"
+                                  onClick={() => void onAddressEdit(address.id)}
+                                >
+                                  Sửa
+                                </button>
+                              )}
+                            {can(PERMISSIONS.ADMIN_DELETE_USER_ADDRESS) &&
+                              !isTargetProtected && (
+                                <button
+                                  className="is-danger"
+                                  type="button"
+                                  onClick={() =>
+                                    void onAddressDelete(address.id)
+                                  }
+                                >
+                                  Xóa
+                                </button>
+                              )}
                           </span>
                         </article>
                       ))}
-                      {!addresses.length && <EmptyState icon="globe">Người dùng chưa có địa chỉ.</EmptyState>}
+                      {!addresses.length && (
+                        <EmptyState icon="globe">
+                          Người dùng chưa có địa chỉ.
+                        </EmptyState>
+                      )}
                     </>
                   ) : (
-                    <div className="admin-quick-address-form" style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+                    <div
+                      className="admin-quick-address-form"
+                      style={{ display: "flex", gap: "8px", marginTop: "10px" }}
+                    >
                       <input
                         type="number"
                         placeholder="Nhập Address ID..."
                         value={quickAddressId}
                         onChange={(e) => setQuickAddressId(e.target.value)}
                       />
-                      {can(PERMISSIONS.ADMIN_UPDATE_USER_ADDRESS) && !isTargetProtected && (
-                        <button type="button" onClick={() => quickAddressId && onAddressEdit(Number(quickAddressId))}>Sửa theo ID</button>
-                      )}
-                      {can(PERMISSIONS.ADMIN_DELETE_USER_ADDRESS) && !isTargetProtected && (
-                        <button className="is-danger" type="button" onClick={() => quickAddressId && onAddressDelete(Number(quickAddressId))}>Xóa theo ID</button>
-                      )}
+                      {can(PERMISSIONS.ADMIN_UPDATE_USER_ADDRESS) &&
+                        !isTargetProtected && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              quickAddressId &&
+                              onAddressEdit(Number(quickAddressId))
+                            }
+                          >
+                            Sửa theo ID
+                          </button>
+                        )}
+                      {can(PERMISSIONS.ADMIN_DELETE_USER_ADDRESS) &&
+                        !isTargetProtected && (
+                          <button
+                            className="is-danger"
+                            type="button"
+                            onClick={() =>
+                              quickAddressId &&
+                              onAddressDelete(Number(quickAddressId))
+                            }
+                          >
+                            Xóa theo ID
+                          </button>
+                        )}
                     </div>
                   )}
                   {editingAddress && (
-                    <form className="admin-form admin-address-form" onSubmit={onAddressSave}>
+                    <form
+                      className="admin-form admin-address-form"
+                      onSubmit={onAddressSave}
+                    >
                       <h3>Cập nhật địa chỉ</h3>
                       <div className="admin-form-grid">
                         {ADDRESS_FIELDS.map((key) => (
                           <label key={key}>
                             {key}
                             <input
-                              value={editingAddress[key] || ''}
-                              onChange={(event) => setEditingAddress({ ...editingAddress, [key]: event.target.value })}
+                              value={editingAddress[key] || ""}
+                              onChange={(event) =>
+                                setEditingAddress({
+                                  ...editingAddress,
+                                  [key]: event.target.value,
+                                })
+                              }
                             />
                           </label>
                         ))}
                       </div>
                       <div className="admin-form-actions">
-                        <button className="admin-primary-button">Lưu địa chỉ</button>
-                        <button type="button" onClick={() => setEditingAddress(null)}>Hủy</button>
+                        <button className="admin-primary-button">
+                          Lưu địa chỉ
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingAddress(null)}
+                        >
+                          Hủy
+                        </button>
                       </div>
                     </form>
                   )}
@@ -1493,13 +2528,26 @@ function UserDrawer({ currentUser, selectedUser, addresses, editingAddress, setE
         </div>
       </aside>
     </div>
-  )
+  );
 }
 
-function ReportsSection({ reports, filters, setFilters, onFilter, onOpen, can, busy, page, onPage, onLoad }) {
-  const [quickReportId, setQuickReportId] = useState('')
-  const canViewReports = can(PERMISSIONS.ADMIN_VIEW_REPORTS)
-  const canModerate = can(PERMISSIONS.ADMIN_RESOLVE_REPORTS) || can(PERMISSIONS.ADMIN_DELETE_REPORTS)
+function ReportsSection({
+  reports,
+  filters,
+  setFilters,
+  onFilter,
+  onOpen,
+  can,
+  busy,
+  page,
+  onPage,
+  onLoad,
+}) {
+  const [quickReportId, setQuickReportId] = useState("");
+  const canViewReports = can(PERMISSIONS.ADMIN_VIEW_REPORTS);
+  const canModerate =
+    can(PERMISSIONS.ADMIN_RESOLVE_REPORTS) ||
+    can(PERMISSIONS.ADMIN_DELETE_REPORTS);
 
   return (
     <section className="admin-section">
@@ -1508,8 +2556,8 @@ function ReportsSection({ reports, filters, setFilters, onFilter, onOpen, can, b
           <form
             className="admin-filter-form"
             onSubmit={(event) => {
-              event.preventDefault()
-              if (quickReportId.trim()) void onOpen(quickReportId.trim())
+              event.preventDefault();
+              if (quickReportId.trim()) void onOpen(quickReportId.trim());
             }}
           >
             <label className="admin-search">
@@ -1529,17 +2577,29 @@ function ReportsSection({ reports, filters, setFilters, onFilter, onOpen, can, b
               <ChatIcon name="search" size={17} />
               <input
                 value={filters.keyword}
-                onChange={(event) => setFilters({ ...filters, keyword: event.target.value })}
+                onChange={(event) =>
+                  setFilters({ ...filters, keyword: event.target.value })
+                }
                 placeholder="Username người gửi hoặc bị báo cáo..."
               />
             </label>
-            <select value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })}>
+            <select
+              value={filters.status}
+              onChange={(event) =>
+                setFilters({ ...filters, status: event.target.value })
+              }
+            >
               <option value="">Mọi trạng thái</option>
               <option value="PENDING">Chờ xử lý (PENDING)</option>
               <option value="RESOLVED">Đã giải quyết (RESOLVED)</option>
               <option value="DISMISSED">Đã bác bỏ (DISMISSED)</option>
             </select>
-            <select value={filters.reason} onChange={(event) => setFilters({ ...filters, reason: event.target.value })}>
+            <select
+              value={filters.reason}
+              onChange={(event) =>
+                setFilters({ ...filters, reason: event.target.value })
+              }
+            >
               <option value="">Mọi lý do</option>
               <option value="SPAM">Spam / Lừa đảo</option>
               <option value="HARASSMENT">Quấy rối</option>
@@ -1547,14 +2607,30 @@ function ReportsSection({ reports, filters, setFilters, onFilter, onOpen, can, b
               <option value="IMPERSONATION">Mạo danh</option>
               <option value="OTHER">Lý do khác</option>
             </select>
-            <button type="submit"><ChatIcon name="search" size={15} />Lọc</button>
+            <button type="submit">
+              <ChatIcon name="search" size={15} />
+              Lọc
+            </button>
           </form>
         )}
       </div>
       <div className="admin-table-card">
         <div className="admin-table-summary">
-          <span><strong>{page.totalElements}</strong> báo cáo vi phạm</span>
-          <select value={filters.size} onChange={(event) => { const next = { ...filters, size: Number(event.target.value), page: 0 }; setFilters(next); void onLoad(next) }}>
+          <span>
+            <strong>{page.totalElements}</strong> báo cáo vi phạm
+          </span>
+          <select
+            value={filters.size}
+            onChange={(event) => {
+              const next = {
+                ...filters,
+                size: Number(event.target.value),
+                page: 0,
+              };
+              setFilters(next);
+              void onLoad(next);
+            }}
+          >
             <option value="10">10 / trang</option>
             <option value="20">20 / trang</option>
             <option value="50">50 / trang</option>
@@ -1586,7 +2662,13 @@ function ReportsSection({ reports, filters, setFilters, onFilter, onOpen, can, b
               </div>
               <div>
                 <strong>{item.reason}</strong>
-                <small>{item.details ? (item.details.length > 35 ? `${item.details.slice(0, 35)}...` : item.details) : 'Không có chi tiết'}</small>
+                <small>
+                  {item.details
+                    ? item.details.length > 35
+                      ? `${item.details.slice(0, 35)}...`
+                      : item.details
+                    : "Không có chi tiết"}
+                </small>
               </div>
               <StatusBadge status={item.status} />
               <button
@@ -1600,72 +2682,128 @@ function ReportsSection({ reports, filters, setFilters, onFilter, onOpen, can, b
           ))}
           {!reports.length && (
             <EmptyState icon="flag">
-              {busy === 'reports-load'
-                ? 'Đang tải danh sách báo cáo...'
-                : (!canViewReports
-                  ? 'Bạn không có quyền xem danh sách báo cáo.'
-                  : 'Không có báo cáo vi phạm nào.')}
+              {busy === "reports-load"
+                ? "Đang tải danh sách báo cáo..."
+                : !canViewReports
+                  ? "Bạn không có quyền xem danh sách báo cáo."
+                  : "Không có báo cáo vi phạm nào."}
             </EmptyState>
           )}
         </div>
         <Pagination page={page} onChange={onPage} />
       </div>
     </section>
-  )
+  );
 }
 
-function ReportDrawer({ report, form, setForm, busy, can, onClose, onResolve, onDelete }) {
-  if (!report) return null
+function ReportDrawer({
+  report,
+  form,
+  setForm,
+  busy,
+  can,
+  onClose,
+  onResolve,
+  onDelete,
+}) {
+  if (!report) return null;
 
   return (
-    <div className="admin-drawer-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+    <div
+      className="admin-drawer-backdrop"
+      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
+    >
       <aside className="admin-user-drawer" role="dialog" aria-modal="true">
         <header>
           <div>
-            <span className="admin-form-icon"><ChatIcon name="flag" /></span>
+            <span className="admin-form-icon">
+              <ChatIcon name="flag" />
+            </span>
             <span>
               <small>REPORT MODERATION</small>
               <h2>Báo cáo #{report.id}</h2>
-              <p>Lý do: <strong>{report.reason}</strong></p>
+              <p>
+                Lý do: <strong>{report.reason}</strong>
+              </p>
             </span>
           </div>
-          <button type="button" onClick={onClose}><ChatIcon name="close" /></button>
+          <button type="button" onClick={onClose}>
+            <ChatIcon name="close" />
+          </button>
         </header>
         <div className="admin-user-drawer__body">
           <div className="admin-user-overview">
             <StatusBadge status={report.status} />
-            <span className="admin-role-badge">Bị báo cáo: {report.reportedUserTotalReports || 1} lần</span>
+            <span className="admin-role-badge">
+              Bị báo cáo: {report.reportedUserTotalReports || 1} lần
+            </span>
           </div>
-          <section className="admin-panel admin-form" style={{ marginTop: '14px' }}>
+          <section
+            className="admin-panel admin-form"
+            style={{ marginTop: "14px" }}
+          >
             <h3>Chi tiết các bên liên quan</h3>
             <div className="admin-form-grid">
               <div>
-                <small style={{ color: '#888' }}>Người gửi tố cáo:</small>
-                <div><strong>{displayName(report.reporter)}</strong> (@{report.reporter?.username})</div>
+                <small style={{ color: "#888" }}>Người gửi tố cáo:</small>
+                <div>
+                  <strong>{displayName(report.reporter)}</strong> (@
+                  {report.reporter?.username})
+                </div>
               </div>
               <div>
-                <small style={{ color: '#888' }}>Người bị tố cáo:</small>
-                <div><strong>{displayName(report.reportedUser)}</strong> (@{report.reportedUser?.username})</div>
+                <small style={{ color: "#888" }}>Người bị tố cáo:</small>
+                <div>
+                  <strong>{displayName(report.reportedUser)}</strong> (@
+                  {report.reportedUser?.username})
+                </div>
               </div>
             </div>
-            <div style={{ marginTop: '12px' }}>
-              <small style={{ color: '#888' }}>Nội dung mô tả từ người gửi:</small>
-              <p style={{ marginTop: '5px', padding: '10px', background: '#f6f7fa', borderRadius: '8px', fontSize: '11px', whiteSpace: 'pre-wrap' }}>
-                {report.details || 'Không có mô tả chi tiết.'}
+            <div style={{ marginTop: "12px" }}>
+              <small style={{ color: "#888" }}>
+                Nội dung mô tả từ người gửi:
+              </small>
+              <p
+                style={{
+                  marginTop: "5px",
+                  padding: "10px",
+                  background: "#f6f7fa",
+                  borderRadius: "8px",
+                  fontSize: "11px",
+                  whiteSpace: "pre-wrap",
+                }}
+              >
+                {report.details || "Không có mô tả chi tiết."}
               </p>
             </div>
-            <small style={{ display: 'block', marginTop: '8px', color: '#999' }}>
-              Gửi lúc: {report.createdAt ? new Date(report.createdAt).toLocaleString('vi-VN') : '—'}
+            <small
+              style={{ display: "block", marginTop: "8px", color: "#999" }}
+            >
+              Gửi lúc:{" "}
+              {report.createdAt
+                ? new Date(report.createdAt).toLocaleString("vi-VN")
+                : "—"}
             </small>
           </section>
 
           {can(PERMISSIONS.ADMIN_RESOLVE_REPORTS) && (
-            <form className="admin-form" onSubmit={onResolve} style={{ marginTop: '16px' }}>
+            <form
+              className="admin-form"
+              onSubmit={onResolve}
+              style={{ marginTop: "16px" }}
+            >
               <h3>Phán quyết & Xử lý</h3>
               <label>
                 Hành động
-                <select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}>
-                  <option value="RESOLVED">Chấp thuận vi phạm (RESOLVED)</option>
+                <select
+                  value={form.status}
+                  onChange={(event) =>
+                    setForm({ ...form, status: event.target.value })
+                  }
+                >
+                  <option value="RESOLVED">
+                    Chấp thuận vi phạm (RESOLVED)
+                  </option>
                   <option value="DISMISSED">Bác bỏ báo cáo (DISMISSED)</option>
                 </select>
               </label>
@@ -1675,32 +2813,61 @@ function ReportDrawer({ report, form, setForm, busy, can, onClose, onResolve, on
                   rows="3"
                   value={form.resolutionNote}
                   placeholder="Lý do xử lý..."
-                  onChange={(event) => setForm({ ...form, resolutionNote: event.target.value })}
+                  onChange={(event) =>
+                    setForm({ ...form, resolutionNote: event.target.value })
+                  }
                 />
               </label>
-              {form.status === 'RESOLVED' && can(PERMISSIONS.ADMIN_LOCK) && (
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px', cursor: 'pointer' }}>
+              {form.status === "RESOLVED" && can(PERMISSIONS.ADMIN_LOCK) && (
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    marginTop: "10px",
+                    cursor: "pointer",
+                  }}
+                >
                   <input
                     type="checkbox"
                     checked={form.lockReportedUser}
-                    onChange={(event) => setForm({ ...form, lockReportedUser: event.target.checked })}
+                    onChange={(event) =>
+                      setForm({
+                        ...form,
+                        lockReportedUser: event.target.checked,
+                      })
+                    }
                   />
-                  <span>Khóa tài khoản <strong>@{report.reportedUser?.username}</strong> ngay lập tức</span>
+                  <span>
+                    Khóa tài khoản{" "}
+                    <strong>@{report.reportedUser?.username}</strong> ngay lập
+                    tức
+                  </span>
                 </label>
               )}
               <div className="admin-form-actions">
-                <button className="admin-primary-button" disabled={busy === 'report-resolve'}>
-                  {busy === 'report-resolve' ? 'Đang lưu...' : 'Lưu kết quả'}
+                <button
+                  className="admin-primary-button"
+                  disabled={busy === "report-resolve"}
+                >
+                  {busy === "report-resolve" ? "Đang lưu..." : "Lưu kết quả"}
                 </button>
               </div>
             </form>
           )}
 
           {can(PERMISSIONS.ADMIN_DELETE_REPORTS) && (
-            <section className="admin-danger-actions" style={{ marginTop: '16px' }}>
+            <section
+              className="admin-danger-actions"
+              style={{ marginTop: "16px" }}
+            >
               <h3>Thao tác dữ liệu</h3>
               <div>
-                <button className="is-danger" type="button" onClick={() => void onDelete(report.id)}>
+                <button
+                  className="is-danger"
+                  type="button"
+                  onClick={() => void onDelete(report.id)}
+                >
                   Xóa bản ghi báo cáo này
                 </button>
               </div>
@@ -1709,7 +2876,7 @@ function ReportDrawer({ report, form, setForm, busy, can, onClose, onResolve, on
         </div>
       </aside>
     </div>
-  )
+  );
 }
 
-export default AdminPage
+export default AdminPage;

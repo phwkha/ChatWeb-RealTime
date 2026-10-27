@@ -55,18 +55,23 @@ public class DataSeeder implements CommandLineRunner {
         log.info("Database seeding started...");
         // Admin permissions to match AdminUserController
         PermissionEntity pAdminViewUsers = createPermissionIfNotFound("ADMIN_VIEW_USERS", "Xem danh sách User");
-        PermissionEntity pAdminViewOnlineUsers = createPermissionIfNotFound("ADMIN_VIEW_ONLINE_USERS", "Xem User đang online");
-        PermissionEntity pAdminViewUserDetail = createPermissionIfNotFound("ADMIN_VIEW_USER_DETAIL", "Xem chi tiết User");
-        PermissionEntity pAdminViewUserAddresses = createPermissionIfNotFound("ADMIN_VIEW_USER_ADDRESSES", "Xem địa chỉ User");
+        PermissionEntity pAdminViewOnlineUsers = createPermissionIfNotFound("ADMIN_VIEW_ONLINE_USERS",
+                "Xem User đang online");
+        PermissionEntity pAdminViewUserDetail = createPermissionIfNotFound("ADMIN_VIEW_USER_DETAIL",
+                "Xem chi tiết User");
+        PermissionEntity pAdminViewUserAddresses = createPermissionIfNotFound("ADMIN_VIEW_USER_ADDRESSES",
+                "Xem địa chỉ User");
 
         PermissionEntity pAdminCreate = createPermissionIfNotFound("ADMIN_CREATE", "Tạo tài khoản User");
-        
+
         PermissionEntity pAdminUpdateUser = createPermissionIfNotFound("ADMIN_UPDATE_USER", "Cập nhật thông tin User");
-        PermissionEntity pAdminUpdateUserAddress = createPermissionIfNotFound("ADMIN_UPDATE_USER_ADDRESS", "Cập nhật địa chỉ User");
-        
+        PermissionEntity pAdminUpdateUserAddress = createPermissionIfNotFound("ADMIN_UPDATE_USER_ADDRESS",
+                "Cập nhật địa chỉ User");
+
         PermissionEntity pAdminDeleteUser = createPermissionIfNotFound("ADMIN_DELETE_USER", "Xóa tài khoản User");
-        PermissionEntity pAdminDeleteUserAddress = createPermissionIfNotFound("ADMIN_DELETE_USER_ADDRESS", "Xóa địa chỉ User");
-        
+        PermissionEntity pAdminDeleteUserAddress = createPermissionIfNotFound("ADMIN_DELETE_USER_ADDRESS",
+                "Xóa địa chỉ User");
+
         PermissionEntity pAdminLock = createPermissionIfNotFound("ADMIN_LOCK", "Khóa user");
         PermissionEntity pAdminUnlock = createPermissionIfNotFound("ADMIN_UNLOCK", "Mở khóa user");
         PermissionEntity pAdminDeleteAvatar = createPermissionIfNotFound("ADMIN_DELETE_AVATAR", "Xóa avatar user");
@@ -84,14 +89,21 @@ public class DataSeeder implements CommandLineRunner {
 
         // Chat permissions
         PermissionEntity pAdminSendMessage = createPermissionIfNotFound("ADMIN_SEND-MESSAGE", "Gửi tin nhắn hệ thống");
-        PermissionEntity pUserSendWorldChat = createPermissionIfNotFound("USER_SEND_WORLD_CHAT", "Gửi tin nhắn chat thế giới");
+        PermissionEntity pUserSendWorldChat = createPermissionIfNotFound("USER_SEND_WORLD_CHAT",
+                "Gửi tin nhắn chat thế giới");
 
         // Report moderation permissions
-        PermissionEntity pAdminViewReports = createPermissionIfNotFound("ADMIN_VIEW_REPORTS", "Xem danh sách báo cáo vi phạm");
-        PermissionEntity pAdminResolveReports = createPermissionIfNotFound("ADMIN_RESOLVE_REPORTS", "Xử lý báo cáo vi phạm");
-        PermissionEntity pAdminDeleteReports = createPermissionIfNotFound("ADMIN_DELETE_REPORTS", "Xóa báo cáo vi phạm");
+        PermissionEntity pAdminViewReports = createPermissionIfNotFound("ADMIN_VIEW_REPORTS",
+                "Xem danh sách báo cáo vi phạm");
+        PermissionEntity pAdminResolveReports = createPermissionIfNotFound("ADMIN_RESOLVE_REPORTS",
+                "Xử lý báo cáo vi phạm");
+        PermissionEntity pAdminDeleteReports = createPermissionIfNotFound("ADMIN_DELETE_REPORTS",
+                "Xóa báo cáo vi phạm");
 
         RoleEntity roleAdmin = createRoleIfNotFound("ADMIN", "Quản trị viên hệ thống", false);
+        if (roleAdmin != null) {
+            roleAdmin.setUserRole(false);
+        }
         createRoleIfNotFound("USER", "Người dùng cơ bản", true);
 
         assignPermissionToRole(roleAdmin,
