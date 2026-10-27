@@ -95,6 +95,11 @@ chatweb_be/
   ```bash
   ./mvnw test
   ```
+- **Generate Test Coverage Report (JaCoCo)**:
+  ```bash
+  ./mvnw test jacoco:report
+  # View report at: target/site/jacoco/index.html
+  ```
 - **Package JAR**:
   ```bash
   ./mvnw clean package -DskipTests
@@ -146,6 +151,11 @@ chatweb_be/
   private static final String SUCCESS_CHAT_UPLOAD_STRING = "success.chat.upload";
   ```
 
+### 4.7 Testing & Code Coverage for New Code
+- **Mandatory Tests for New Code**: Whenever new code is written (new service methods, controller endpoints, validation logic, event handlers, utility functions) or existing logic is refactored, corresponding unit tests or integration tests must be created in `src/test/java/`.
+- **Ensure High Code Coverage**: Tests must cover happy paths, edge cases, error conditions, and branch coverage for newly written code to maintain and improve overall JaCoCo code coverage. No new business logic should be introduced without accompanying test coverage.
+- **Testing Tools**: Use JUnit 5 (`junit-jupiter`), Mockito for mocking dependencies, Spring Security Test, and Testcontainers for integration tests involving external systems (PostgreSQL, MongoDB, Kafka, Redis).
+
 ---
 
 ## 5. Agent Workflow & Guidelines
@@ -158,4 +168,7 @@ When modifying or adding code in this repository, follow these rules:
    - `Service` encapsulates pure business logic, transactions (`@Transactional`), and exception triggering.
    - `Repository` is strictly for database queries.
 3. **Preserve Environment Configuration**: Never commit raw API keys, passwords, or secrets. Always reference environment variables defined in `.env` and `application-dev.yml` (e.g. `${JWT_SECRET_ACCESS}`, `${CLOUDINARY_API_KEY}`).
-4. **Maintain Test Integrity**: When modifying business logic in services or controllers, update or add corresponding unit/integration tests in `src/test/java/` using Mockito or Testcontainers.
+4. **Mandatory Test Coverage for New Code**:
+   - Always write corresponding unit/integration tests for every new class, method, endpoint, or feature added to the codebase.
+   - Ensure comprehensive test coverage for all new code paths (success scenarios, boundary conditions, and exception/failure cases) to uphold JaCoCo code coverage standards.
+   - Run tests (`./mvnw test` or `./mvnw test jacoco:report`) and verify that all tests pass before completing any task.
