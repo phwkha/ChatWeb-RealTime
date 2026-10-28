@@ -12,8 +12,8 @@ The messaging gateway exposes a standardized WebSocket endpoint with transparent
   - Direct / Local Development: `ws://localhost/ws` (or SockJS HTTP fallback: `http://localhost/ws`)
   - Reverse Proxy (Production / Staging): `wss://<domain>/ws`
 - **Authentication Lifecycle**:
-  The system supports dual token transmission strategies during the initial STOMP handshake:
-  1. **Primary Strategy (STOMP Header)**: The client attaches the JWT Access Token directly within the `CONNECT` frame:
+  The system authenticates clients during the STOMP protocol lifecycle:
+  1. **STOMP Header Authentication**: The HTTP WebSocket upgrade passes through unconditionally (`JwtHandshakeInterceptor.beforeHandshake()` returns `true`), and authentication is performed strictly at the STOMP `CONNECT` frame via the `Authorization` header:
      ```stomp
      CONNECT
      accept-version:1.2,1.1,1.0
@@ -22,12 +22,16 @@ The messaging gateway exposes a standardized WebSocket endpoint with transparent
      Accept-Language:en-US
      \0
      ```
-  2. **Secondary Strategy (HttpOnly Cookie Fallback)**: The handshake interceptor extracts the `accessToken` cookie from the initial HTTP Upgrade request attributes.
+     *(Note: `WebSocketConfig.java` retains legacy dead fallback code checking `jwt_token_cookie` in session attributes if the header is absent, but in normal flow authentication is exclusively via the STOMP header).*
 
-### Handshake Interceptor Security Checks
+### Handshake & Channel Interceptor Security Checks
 Implemented in `WebSocketConfig.java` / `ChannelInterceptor`:
 - **Redis Token Blacklist**: Verifies the token has not been revoked (`blacklist:<token>`).
-- **Token Version Enforcement**: Extracts claim `v` from the JWT and compares it against the user's current `token_version` in PostgreSQL. If mismatched, the connection is instantly rejected, terminating sessions across all revoked devices.
+- **Token Version Enforcement (CONNECT & SEND Frames)**:
+  - During `CONNECT`: Extracts claim `v` from the JWT and compares it against the user's current `token_version` in PostgreSQL, storing `tokenVersion` in session attribute `WS_TOKEN_VERSION_ATTR`.
+  - During `SEND`: On every inbound `StompCommand.SEND`, `refreshAuthenticationIfSendCommand()` reloads `UserDetails` and verifies `sessionTokenVersion` matches current `tokenVersion`. If mismatched, it immediately throws `4012` (`TOKEN_INVALID`), closing the socket.
+- **Online Presence Timestamp Updates**:
+  - `WebSocketConfig.updateOnlineUsers()` updates the user's timestamp score in the Redis Sorted Set `online_users` on active STOMP frames, throttled to at most once per 60 seconds per user via `lastOnlineTimestampMap`.
 - **Custom Authentication Error Classification (`4011` / `4012`)**:
   - **`4011` (`TOKEN_EXPIRED`)**: Dispatched when the JWT Access Token has expired (`ExpiredJwtException`).
   - **`4012` (`TOKEN_INVALID`)**: Dispatched when the token signature is invalid, malformed, blacklisted, or has an outdated `token_version`.
@@ -71,7 +75,7 @@ Spring Boot WebSocket message broker partitions destination paths into three dis
 ```
 
 #### Field Specifications:
-- `localId` (*String, Required*): Client-generated UUID v4 used for backend deduplication (`SETNX ws:dedup:{sender}:{localId}` with TTL 300s).
+- `localId` (*String, Optional*): Client-generated UUID v4 (`@Size(max = 255)`) used for backend deduplication (`SETNX ws:dedup:{sender}:{localId}` with TTL 300s). If omitted or empty, backend skips deduplication checks.
 - `recipient` (*String, Required*): Username of the intended recipient.
 - `content` (*String, Optional*): Text content. Required when `contentType == 'TEXT'`.
 - `contentType` (*Enum*): `TEXT`, `IMAGE`, `VIDEO`, `FILE`.
@@ -114,7 +118,27 @@ Violations return an `ErrorSocketResponse` to `/user/queue/errors` with code `42
 }
 ```
 
-- `survivalTime` (*Long, Required*): Lifetime of the announcement in seconds. The backend computes `expiresAt = now + survivalTime`, allowing MongoDB TTL index to automatically purge the document upon expiration.
+- `survivalTime` (*Long, Optional*): Lifetime of the announcement in seconds. If provided, the backend computes `expiresAt = now + survivalTime`, allowing MongoDB TTL index to automatically purge the document upon expiration. If omitted (`null`), `expiresAt` remains `null` and the announcement will not expire.
+
+---
+
+### 3.3. Send World Chat Message
+- **STOMP Destination**: `/app/chat/sendWorldChat`
+- **Authorization**: `@PreAuthorize("hasAnyAuthority('USER_SEND_WORLD_CHAT', 'ADMIN_SEND-MESSAGE')")`
+- **Request Payload (`WorldChatRequest`)**:
+
+```json
+{
+  "content": "Xin chào mọi người trên kênh thế giới!"
+}
+```
+
+#### Field Specifications & Constraints:
+- `content` (*String, Required*): World chat text (`@NotBlank`, `@Size(max = 500)`).
+- **Processing & Rate Limiting**:
+  - Protected by Redis rate limiter **`ws_chat_world`**: strictly **1 message / 15 seconds** per user.
+  - Persisted to MongoDB `system_message` collection with `type = WORLD_CHAT` and a 24-hour expiration (`expiresAt = now + 24 hours`).
+  - Published to Kafka topic `chat-system-messages` and broadcast to all connected clients via `/topic/public`.
 
 ---
 
@@ -139,6 +163,7 @@ Violations return an `ErrorSocketResponse` to `/user/queue/errors` with code `42
   "fileUrl": null,
   "fileName": null,
   "fileSize": null,
+  "notificationId": null,
   "timestamp": "2026-09-18T15:30:00.120Z",
   "status": "SENT",
   "isEdited": false,
@@ -169,23 +194,28 @@ Violations return an `ErrorSocketResponse` to `/user/queue/errors` with code `42
 }
 ```
 
-The system dispatches 13 distinct notification types (`NotificationsType.java`) across friendship, presence, message mutations, and read receipts:
+The system dispatches 13 distinct notification types (`NotificationsType.java`) across friendship, presence, message mutations, and read receipts.
+
+> [!NOTE]
+> **PostgreSQL Persistence vs Ephemeral Real-Time Events**:
+> Only **3 notification types** persist records in the PostgreSQL `notifications` table (`id != null`, `notificationId != null`): `FRIEND_REQUEST`, `FRIEND_ACCEPTED`, and `REACT_MESSAGE` (when adding an emoji reaction).
+> In contrast, `EDIT_MESSAGE` and `REVOKE_MESSAGE` are emitted strictly as ephemeral WebSocket events (`id: null`, `notificationId: null`) with the updated message entity carried in `data`.
 
 | Notification Type | Target Destination | Description & Payload Contents |
 | :--- | :--- | :--- |
-| `REQUEST_SENT_SUCCESS` | Requester queue | Confirmation dispatched to sender upon successfully creating an outgoing friend invitation. |
-| `YOU_ACCEPTED` | Acceptor queue | Confirmation dispatched to the user who accepted a friend request. |
-| `FRIEND_REQUEST` | Addressee queue | Real-time alert dispatched to the recipient of a new friend invitation (`data: FriendResponse`). |
-| `FRIEND_ACCEPTED` | Requester queue | Dispatched to original requester when their friend invitation is accepted. |
-| `UNFRIENDED` | Ex-friend queue | Alert dispatched to the other party when a friendship is terminated. |
-| `REQUEST_CANCELLED` | Addressee queue | Alert dispatched when a pending friend invitation is retracted by the requester. |
-| `REQUEST_REJECTED` | Requester queue | Alert dispatched when a friend invitation is declined by the addressee. |
+| `REQUEST_SENT_SUCCESS` | Requester queue | Confirmation dispatched to sender upon successfully creating an outgoing friend invitation (`data: null`). |
+| `YOU_ACCEPTED` | Acceptor queue | Confirmation dispatched to the user who accepted a friend request (`data: null`). |
+| `FRIEND_REQUEST` | Addressee queue | Real-time alert dispatched to the recipient of a new friend invitation (`data: null`, persisted in DB). |
+| `FRIEND_ACCEPTED` | Requester queue | Dispatched to original requester when their friend invitation is accepted (`data: null`, persisted in DB). |
+| `UNFRIENDED` | Ex-friend queue | Alert dispatched to the other party when a friendship is terminated (`data: null`). |
+| `REQUEST_CANCELLED` | Addressee queue | Alert dispatched when a pending friend invitation is retracted by the requester (`data: null`). |
+| `REQUEST_REJECTED` | Requester queue | Alert dispatched when a friend invitation is declined by the addressee (`data: null`). |
 | `USER_ONLINE` | Mutual friends | Dispatched immediately upon WebSocket connection handshake to mutual accepted friends (`relatedUsername: "alice"`, `data: null`). |
 | `USER_OFFLINE` | Mutual friends | Dispatched after the 5-second debounce window expires in `SessionCleanupScheduler` when all user sessions disconnect (`data: null`). |
-| `EDIT_MESSAGE` | Chat recipient | Dispatched when a message is edited, carrying the updated `ChatMessageResponse` in `data`. |
-| `REVOKE_MESSAGE` | Chat recipient | Dispatched when a message is revoked, carrying the updated `ChatMessageResponse` (`deleted: true`) in `data`. |
-| `REACT_MESSAGE` | Chat recipient | Dispatched when an emoji reaction is added/updated, carrying the updated `ChatMessageResponse` (with `reactions` map) in `data`. |
-| `STATUS_MESSAGE` | Original sender | Dispatched upon atomic read receipt watermark upsert. Carries `data: { conversationId, reader, sender, readTimestamp }`. |
+| `EDIT_MESSAGE` | Chat recipient | Dispatched when a message is edited, carrying the updated `ChatMessageResponse` in `data` (`id: null`, ephemeral). |
+| `REVOKE_MESSAGE` | Chat recipient | Dispatched when a message is revoked, carrying the updated `ChatMessageResponse` (`deleted: true`) in `data` (`id: null`, ephemeral). |
+| `REACT_MESSAGE` | Chat recipient | Dispatched when an emoji reaction is added/updated, carrying the updated `ChatMessageResponse` (with `reactions` map) in `data` (persisted on addition). |
+| `STATUS_MESSAGE` | Original sender | Dispatched upon atomic read receipt watermark upsert. Carries `data: { conversationId, reader, sender, readTimestamp }` (`id: null`). |
 
 #### Sample Payloads:
 
@@ -245,7 +275,7 @@ The system dispatches 13 distinct notification types (`NotificationsType.java`) 
 
 ---
 
-### 4.3. Global Public Announcements
+### 4.3. Global Public Announcements & World Chat
 - **Client Subscription**: `/topic/public`
 - **Payload Model (`MessageSystemResponse`)**:
 
@@ -253,10 +283,13 @@ The system dispatches 13 distinct notification types (`NotificationsType.java`) 
 {
   "id": "65e52c901f938b29c8e1a789",
   "sender": "admin_system",
+  "type": "ANNOUNCEMENT",
   "content": "Scheduled server maintenance will take place tonight at 02:00 UTC.",
   "timestamp": "2026-09-18T15:00:00.000Z"
 }
 ```
+
+*(For world chat messages sent via `/app/chat/sendWorldChat`, `sender` contains the username and `type` is `"WORLD_CHAT"`).*
 
 ---
 
@@ -268,7 +301,27 @@ The system dispatches 13 distinct notification types (`NotificationsType.java`) 
 
 ## 5. Standardized Error Handling (`ErrorSocketResponse`)
 
-When an exception occurs during frame parsing, validation, or business execution, `StompSubProtocolErrorHandler` generates a standardized JSON payload:
+ChatWeb distinguishes between two tiers of WebSocket errors:
+
+1. **Protocol-Level STOMP `ERROR` Frames**:
+   - Generated during `CONNECT` handshake or inbound frame pre-filtering by `StompSubProtocolErrorHandler` in `WebSocketConfig.java`.
+   - Closes the WebSocket connection when authentication or critical framing fails.
+   - Standard Codes:
+     - `4011` (`TOKEN_EXPIRED`): Expired JWT token. Triggers silent refresh via `/api/auth/refresh-token` in `useChatSocket.js`.
+     - `4012` (`TOKEN_INVALID`): Invalid signature, blacklisted token, or `token_version` mismatch (from `refreshAuthenticationIfSendCommand()`). Triggers refresh attempt; prompts login on failure.
+     - `400` (`STOMP_ERROR`): Malformed frame or missing headers.
+
+2. **Application Error Frames Dispatched to `/user/queue/errors`**:
+   - Handled without terminating the underlying TCP/STOMP connection by `WebSocketErrorHandler` (`@MessageExceptionHandler`).
+   - Mapped directly to application `ErrorCode`:
+     - `400`: `INVALID_INPUT`, `BAD_FORMAT`, `INVALID_DATA`, `CONSTRAINT_VIOLATION`, `ILLEGAL_ARGUMENT`, `ILLEGAL_STATE`
+     - `401`: `UNAUTHORIZED`
+     - `403`: `ACCESS_FORBIDDEN`, `ACCESS_DENIED`
+     - `404`: `RESOURCE_NOT_FOUND`
+     - `409`: `RESOURCE_CONFLICT`
+     - `429`: `RATE_LIMITED` (`ws_chat_send` > 30/min, `ws_chat_typing` > 60/min, `ws_chat_world` > 1/15s)
+     - `500`: `INTERNAL_SERVER_ERROR`
+     - `503`: `SYSTEM_OVERLOAD`
 
 ```json
 {
@@ -279,12 +332,17 @@ When an exception occurs during frame parsing, validation, or business execution
 }
 ```
 
-### Standard WebSocket Error Codes:
+### Standard WebSocket Error Codes Catalog:
 
 | Code | Error Code | Trigger Condition & Client Action |
 | :--- | :--- | :--- |
-| `400` | `STOMP_ERROR` | Validation error, malformed JSON, or business violation (e.g. messaging non-friend). Handled via UI toast notification. |
-| `429` | `RATE_LIMITED` | Inbound STOMP rate limit exceeded (`ws_chat_send` > 30/min or `ws_chat_typing` > 60/min). Handled by delaying retries. |
+| `400` | `STOMP_ERROR` / `BAD_FORMAT` | Validation failure, constraint violation, or business violation (e.g. messaging non-friend). Handled via UI toast notification. |
+| `401` | `UNAUTHORIZED` | Unauthorized action attempted over an active connection. |
+| `403` | `ACCESS_FORBIDDEN` | Missing required authority (e.g. non-admin attempting `/app/chat/sendMessageSystem`). |
+| `404` | `RESOURCE_NOT_FOUND` | Referenced entity not found (e.g. recipient not found). |
+| `409` | `RESOURCE_CONFLICT` | Conflict condition in message state. |
+| `429` | `RATE_LIMITED` | Inbound STOMP rate limit exceeded (`ws_chat_send` > 30/min, `ws_chat_typing` > 60/min, or `ws_chat_world` > 1/15s). Handled by toast and backoff. |
 | `4011` | `TOKEN_EXPIRED` | Expired JWT token in STOMP session. Client (`useChatSocket.js`) attempts a silent refresh via `/api/auth/refresh-token` and reconnects; on refresh failure the session-expired flow is triggered. |
-| `4012` | `TOKEN_INVALID` | Invalid token signature, blacklisted token, or `token_version` mismatch. Client handling is identical to `4011` (refresh attempt, then session-expired on failure). |
+| `4012` | `TOKEN_INVALID` | Invalid token signature, blacklisted token, or `token_version` mismatch. Client handling is identical to `4011`. |
 | `500` | `INTERNAL_SERVER_ERROR` | Unexpected backend runtime exception. |
+| `503` | `SYSTEM_OVERLOAD` | Server capacity overload or downstream service outage. |

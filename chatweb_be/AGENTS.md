@@ -21,7 +21,7 @@ This file serves as the definitive reference and context guide for AI agents (an
   - **Spring WebSocket / STOMP** for real-time bi-directional messaging with clients.
 - **Security & Identity**:
   - Spring Security 6, Stateless JWT (Access + Refresh Token cookies).
-  - OAuth2 Login (Google).
+  - OAuth2 Login (Google, Facebook).
   - Role-Based Access Control (RBAC).
   - Custom Distributed Rate Limiting (`@RateLimit`).
 - **Observability & Monitoring**:
@@ -39,7 +39,6 @@ chatweb_be/
 ├── .mvn/                         # Maven wrapper configuration
 ├── filebeat/                     # Filebeat log collector configuration
 ├── logstash/                     # Logstash pipeline configuration
-├── mongo/                        # MongoDB scripts/configs
 ├── prometheus/                   # Prometheus scraping configuration
 ├── src/
 │   ├── main/
@@ -52,14 +51,15 @@ chatweb_be/
 │   │   │   │   ├── response/               # Standard ApiResponse<T> and domain responses
 │   │   │   │   └── websocket/              # WebSocket controllers & event listeners
 │   │   │   ├── exception/                  # GlobalExceptionHandler, WebSocketErrorHandler, custom exceptions
+│   │   │   ├── idempotent/                 # @Idempotent aspect, annotations, and Redis request deduplication
 │   │   │   ├── jwt/                        # JWT provider, token validation, filter chain
 │   │   │   ├── kafka/                      # Kafka producers, consumers, and payload wrappers
 │   │   │   ├── listener/                   # Spring application event listeners
 │   │   │   ├── mapper/                     # Model-to-DTO mappers (MapStruct / manual)
 │   │   │   ├── model/                      # Data Models
 │   │   │   │   ├── mongodb/                # MongoDB @Document models (ChatMessage, ReadReceipt, SystemMessage)
-│   │   │   │   ├── postgres/               # JPA @Entity models (UserEntity, RoleEntity, FriendshipEntity, etc.)
-│   │   │   │   └── redis/                  # Redis cached data models (RegisterData, RedisWsMessage)
+│   │   │   │   ├── postgres/               # JPA @Entity models (UserEntity, RoleEntity, FriendshipEntity, NotificationEntity, ReportEntity, etc.)
+│   │   │   │   └── redis/                  # Redis cached data models (RegisterData, RedisWsMessage, RefreshTokenData)
 │   │   │   ├── oauth2/                     # Custom OAuth2 success/failure handlers & services
 │   │   │   ├── ratelimit/                  # Rate-limiting annotations, Redis token-bucket aspects
 │   │   │   ├── repository/                 # Spring Data JPA & Spring Data MongoDB repositories
@@ -73,9 +73,7 @@ chatweb_be/
 │   │       ├── i18n/                       # Internationalization bundles (messages_vi, messages_en, etc.)
 │   │       └── logback-spring.xml          # Logback configuration with JSON/Logstash appenders
 │   └── test/                               # Unit and integration tests (Testcontainers)
-├── pom.xml                                 # Maven dependencies and build plugins
-├── grafana-dashboard.json                  # Pre-configured Grafana monitoring dashboard
-└── README.md                               # Project quick-start
+└── pom.xml                                 # Maven dependencies and build plugins
 ```
 
 ---

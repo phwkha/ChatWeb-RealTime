@@ -31,7 +31,7 @@ erDiagram
         varchar password "BCrypt Hash, Not Null"
         varchar email UK "Unique"
         varchar phone "Nullable"
-        boolean is_online "Default false, Indexed"
+        boolean is_online "Default false"
         varchar user_status "ACTIVE, INACTIVE, LOCKED, UNVERIFIED"
         bigint role_id FK "Not Null"
         varchar first_name "Nullable"
@@ -50,6 +50,7 @@ erDiagram
         bigint id PK
         varchar name UK "Not Null, Unique (e.g. ADMIN, USER)"
         varchar description "Human-readable description"
+        boolean is_user_role "Default true, Indexed (false for Admin/Staff roles)"
         timestamp create_at "Creation timestamp"
         timestamp update_at "Auto-updated timestamp"
         bigint version "Default 0 - Optimistic Locking"
@@ -83,7 +84,7 @@ erDiagram
         varchar district "Nullable"
         varchar city "Not Null"
         varchar country "Not Null"
-        varchar postal_code "Nullable"
+        varchar postal_code "Nullable (in entity/request; omitted from AddressResponse)"
         timestamp create_at "Creation timestamp"
         timestamp update_at "Auto-updated timestamp"
         bigint version "Default 0 - Optimistic Locking"
@@ -96,7 +97,7 @@ erDiagram
         varchar type "Not Null (13 types: REQUEST_SENT_SUCCESS, YOU_ACCEPTED, FRIEND_REQUEST, FRIEND_ACCEPTED, UNFRIENDED, REQUEST_CANCELLED, REQUEST_REJECTED, USER_ONLINE, USER_OFFLINE, EDIT_MESSAGE, REVOKE_MESSAGE, REACT_MESSAGE, STATUS_MESSAGE)"
         varchar target_type "Nullable (USER, MESSAGE, CONVERSATION, SYSTEM)"
         varchar target_id "Nullable"
-        boolean is_read "Default false, Indexed"
+        boolean is_read "Default false"
         text content "Not Null"
         timestamp create_at "Creation timestamp"
         timestamp update_at "Auto-updated timestamp"
@@ -121,28 +122,24 @@ erDiagram
 
 ### 1.2. Index Optimization Strategy
 
-- **Table `users`**:
+- **Table `users` (`UserEntity`)**:
   - `idx_user_status` on `(user_status)`: Accelerates queries filtering active, locked, or unverified accounts.
   - `idx_user_role_id` on `(role_id)`: Speeds up authority loading during JWT authentication filter execution.
-  - `idx_user_is_online` on `(is_online)`: Speeds up bulk online status resets (`WHERE is_online = true`) during system restart.
-  - Unique B-Tree Constraints/Indexes: `users_username_key`, `users_email_key`, `users_provider_id_key`.
-- **Table `friendships`**:
+  - Unique Constraints/Indexes: `users_username_key` (`username`), `users_email_key` (`email`), `users_provider_id_key` (`provider_id`).
+- **Table `roles` (`RoleEntity`) & `permissions` (`PermissionEntity`)**:
+  - `idx_role_name` on `(name)` & `idx_permission_name` on `(name)`: Fast deterministic role and permission lookup (`ADMIN`, `USER`, `ADMIN_VIEW_REPORTS`, etc.).
+  - `idx_role_is_user_role` on `(is_user_role)`: Accelerates filtering ordinary user roles from privileged admin roles.
+- **Table `friendships` (`FriendshipEntity`)**:
   - Unique Constraint `uq_friendship_requester_addressee` on `(requester_id, addressee_id)`: Prevents duplicate friendship requests.
   - Composite Index `idx_friendship_requester_status` on `(requester_id, status)`: Accelerates outgoing friend request lookups.
   - Composite Index `idx_friendship_addressee_status` on `(addressee_id, status)`: Accelerates incoming pending invitation lookups.
-- **Table `addresses`**:
-  - `idx_address_user_id` on `(user_id)`: Optimizes user address book queries.
-- **Table `roles` & `permissions`**:
-  - Unique Indexes on `name`: Guarantees deterministic role and permission lookup (`ADMIN`, `USER`, `ADMIN_VIEW_REPORTS`, etc.).
-- **Table `notifications`**:
-  - `idx_notifications_recipient_create_at_id` on `(recipient_id, create_at DESC, id DESC)`: High-performance cursor pagination for in-app notification drawers.
-  - Partial Index `idx_notifications_recipient_unread` on `(recipient_id) WHERE is_read = false`: Ultra-fast query for unread notification count badge.
-  - `idx_notifications_sender_id` on `(sender_id)`: Accelerates foreign key cascade cleanup and duplicate detection queries.
-- **Table `reports`**:
+- **Table `addresses` (`AddressEntity`)**:
+  - `idx_address_user_id` on `(user_id)`: Optimizes user address book lookups.
+- **Table `notifications` (`NotificationEntity`)**:
+  - `idx_notifications_recipient_create_at_id` on `(recipient_id, create_at DESC, id DESC)`: High-performance composite index supporting keyset cursor pagination for in-app notification queries.
+- **Table `reports` (`ReportEntity`)**:
   - `idx_reports_status_create_at` on `(status, create_at DESC)`: Speeds up administrative triage and dashboard queues for pending moderation reports.
   - `idx_reports_reported_user` on `(reported_user_id)`: Accelerates moderation audits against reported accounts.
-  - `idx_reports_reporter_id` on `(reporter_id)`: Accelerates queries by reporting users (`GET /api/reports/me`).
-  - `idx_reports_reporter_reported_status` on `(reporter_id, reported_user_id, status)`: Enforces idempotency preventing multiple active pending reports between the same users.
 
 ---
 
@@ -209,52 +206,38 @@ Implements monotonic watermark tracking for user read positions.
 
 ### 2.3. Collection `system_message`
 
-Stores administrative broadcast announcements with automated lifecycle expiration.
+Stores administrative broadcast announcements and world chat messages with automated lifecycle expiration.
 
 | Field Name | BSON Type | Constraints & Description |
 | :--- | :--- | :--- |
-| `_id` | `String` | Unique announcement identifier. |
-| `sender` | `String` | Admin username who published the announcement. |
-| `content` | `String` | Broadcast message text. |
-| `timestamp` | `Date / ISODate` | Publication timestamp (Indexed descending). |
-| `expiresAt` | `Date / ISODate` | Timestamp after which the announcement becomes obsolete (TTL Indexed). |
+| `_id` | `String` | Unique message identifier. |
+| `sender` | `String` | Admin username who published announcement or sender of world chat message. |
+| `type` | `String` (Enum) | `ANNOUNCEMENT` (default, administrative announcement) or `WORLD_CHAT` (world chat messages, TTL 24h). |
+| `content` | `String` | Message text content. |
+| `timestamp` | `Date / ISODate` | Publication timestamp. |
+| `expiresAt` | `Date / ISODate` | Timestamp after which the message is automatically purged by MongoDB (TTL Indexed). |
 
 #### Indexes:
 - **`expiresAt_ttl_idx`**: `{ expiresAt: 1 }`, `expireAfterSeconds: 0`  
-  MongoDB background TTL thread automatically purges expired announcements without application intervention.
-- **`system_message_timestamp_idx`**: `{ timestamp: -1 }`  
-  High-speed cursor pagination for administrative announcements.
+  MongoDB background TTL thread automatically purges expired announcements and 24-hour world chat records without application intervention.
 
 ---
 
-### 2.4. Automated MongoDB Initialization Script (`init-mongo.js`)
+### 2.4. Automated Schema, Index & Seed Initialization (`DataSeeder.java`)
 
-ChatWeb includes an automated JavaScript database initialization file mounted to `/docker-entrypoint-initdb.d/init-mongo.js:ro` in `docker-compose.yml`:
+Instead of requiring manual script execution (`init-mongo.js` / `initdb.sql`), ChatWeb delegates all database schema creation, compound index construction, and baseline data seeding to automated Spring Boot application startup routines:
 
-```javascript
-const dbName = (typeof process !== 'undefined' && process.env && (process.env.MONGO_INITDB_DATABASE || process.env.MONGO_DB))
-    ? (process.env.MONGO_INITDB_DATABASE || process.env.MONGO_DB)
-    : 'chatweb';
-const targetDb = db.getSiblingDB(dbName);
-
-// 1. messages collection & indexes
-targetDb.createCollection('messages');
-targetDb.messages.createIndex({ conversationId: 1, messageType: 1, timestamp: -1 }, { name: 'conv_msg_time_idx' });
-targetDb.messages.createIndex({ recipient: 1, messageType: 1, isDeleted: 1, sender: 1 }, { name: 'unread_msg_idx' });
-targetDb.messages.createIndex({ conversationId: 1, messageType: 1, isDeleted: 1, timestamp: -1 }, { name: 'conv_content_time_idx' });
-targetDb.messages.createIndex({ sender: 1 }, { name: 'sender_idx' });
-
-// 2. read_receipts collection & indexes
-targetDb.createCollection('read_receipts');
-targetDb.read_receipts.createIndex({ conversationId: 1, username: 1 }, { name: 'conv_user_idx', unique: true });
-targetDb.read_receipts.createIndex({ conversationId: 1 }, { name: 'conversationId_idx' });
-targetDb.read_receipts.createIndex({ username: 1 }, { name: 'username_idx' });
-
-// 3. system_message collection & TTL / pagination indexes
-targetDb.createCollection('system_message');
-targetDb.system_message.createIndex({ expiresAt: 1 }, { name: 'expiresAt_ttl_idx', expireAfterSeconds: 0 });
-targetDb.system_message.createIndex({ timestamp: -1 }, { name: 'system_message_timestamp_idx' });
-```
+1. **JPA & Spring Data Index Lifecycle**:
+   - **PostgreSQL**: Managed via Hibernate (`spring.jpa.hibernate.ddl-auto: update` in `dev` profile) based on JPA `@Table(indexes = ...)` annotations.
+   - **MongoDB**: Managed via Spring Data MongoDB (`spring.data.mongodb.auto-index-creation: true` in `dev` profile) parsing `@CompoundIndex` and `@Indexed` annotations on domain models.
+2. **Purging Redundant Legacy Mongo Indexes (`DataSeeder.dropLegacyMongoIndexes()`)**:
+   - On startup, the system inspects existing indexes on the `messages` collection and automatically drops legacy single-field indexes `recipient_1` and `conversationId_1` which were made redundant by composite index `conv_msg_time_idx`.
+3. **RBAC, System Accounts & Cuckoo Filter Seeding (`DataSeeder.run()`)**:
+   - Seeds 23 granular authorities and 2 core roles: `ADMIN` (`is_user_role = false`) and `USER` (`is_user_role = true`).
+   - Seeds the default administrator account (`admin`) if missing.
+   - Re-populates existing database usernames and emails into Redis Cuckoo Filters (`filter:usernames`, `filter:emails`) to ensure in-memory preflight protection remains intact across restarts.
+4. **Restart Online Presence Cleanup (`DataSeeder.cleanupOnlineStatus()`)**:
+   - Evaluates the size of the Redis Sorted Set `online_users`. If size is 0 (indicating a full cluster restart), it issues a bulk reset setting `is_online = false` in PostgreSQL for any stale records and flushes residual keys (`online_users`, `online_users_count`, `presence:offline_queue`, `ws:routing:servers:*`).
 
 ---
 
@@ -266,6 +249,7 @@ Redis Stack serves as the ultra-fast distributed coordinating fabric across all 
 
 | Key Pattern | Data Structure | TTL | Purpose & Usage |
 | :--- | :--- | :--- | :--- |
+| `kafka:dedup:{consumer}:{eventId}` | **String** | **10m** (`chat_push`, `friend_push`, `message_push_update`) / **24h** (`email`) | Set via `SETNX` (`"COMPLETED"`) in `ConsumerDeduplicationService` to prevent duplicate Kafka event processing across rebalances and retries. |
 | `online_users` | **Sorted Set (ZSet)** | Persistent | Holds usernames of currently online users. `score` = Epoch timestamp of latest ping/connect. |
 | `online_users_count` | **Hash** | Persistent | Field: `username`, Value: integer count of active WebSocket tabs/sessions. |
 | `presence:offline_queue` | **Sorted Set (ZSet)** | Transient | Distributed debounce queue. `score` = Epoch timestamp deadline (`now + 5000ms`). Polled by `SessionCleanupScheduler`. |
@@ -276,7 +260,7 @@ Redis Stack serves as the ultra-fast distributed coordinating fabric across all 
 | `chat:recent:zset:{convId}` | **Sorted Set (ZSet)** | **1 hour (3600s ±300s jitter)** | Stores recent message IDs with `score` = timestamp (capped at 50 messages) for fast ID range slicing. |
 | `read_receipt:{convId}:{username}`| **String** | **7 days** | Caches latest read watermark timestamp for fast frontend synchronization. |
 | `unread_counts:{username}` | **Hash** | **7 days fallback TTL + jitter** | Caches unread message counts per conversation partner. Evicted upon read receipt upsert. |
-| `notif:unread:{username}` | **String** | Evicted on change| Caches unread notification count badge for the user. |
+| `notif:unread:{username}` | **String** | **10 minutes** (Evicted on change)| Caches unread notification count badge for the user (`NotificationServiceImpl`). |
 | `relation:{user1}:{user2}` | **String** | **1 hour (NONE), 1 day (PENDING), 7 days (ACCEPTED/BLOCKED)** | Caches friendship status (`ACCEPTED`, `PENDING:<requester>`, `BLOCKED:<blocker>`, `NONE`) with alphabetically sorted usernames. |
 | `blacklist:{token}` | **String** | Remaining JWT TTL | Set upon logout to immediately invalidate unexpired JWT Access Tokens. |
 | `rt:{token}` | **Serialized Object** | **7 days** | Stores `RefreshTokenData` (UUID, username, `tokenVersion`) for token rotation and validation. |
@@ -288,8 +272,8 @@ Redis Stack serves as the ultra-fast distributed coordinating fabric across all 
 | `lock:session_cleanup` | **String (Distributed Lock)** | **20 seconds** | Distributed lock acquiring exclusive execution rights for `SessionCleanupScheduler`. |
 | `lock:presence_debounce` | **String (Distributed Lock)** | **2 seconds** | Distributed lock preventing duplicate processing of the offline debounce queue. |
 | `lock:notification_cleanup` | **String (Distributed Lock)** | **60 seconds** | Distributed lock ensuring only one node runs `NotificationCleanupScheduler` (purges expired notifications). |
-| `user_details::{username}` | **Serialized Object** | **Cache Default TTL** | Spring `@Cacheable` storing hydrated `UserDetails` to bypass PostgreSQL on repeated authenticated requests. |
+| `user_details::{username}` | **Serialized Object** | **1 hour** | Spring `@Cacheable` storing hydrated `UserDetails` to bypass PostgreSQL on repeated authenticated requests (`RedisConfig`). |
 | `filter:usernames` | **Cuckoo Filter** | Persistent | High-speed probabilistic filter checking if a username is already registered (`CF.EXISTS`). |
 | `filter:emails` | **Cuckoo Filter** | Persistent | High-speed probabilistic filter checking if an email address is registered (`CF.EXISTS`). |
-| `rate_limit:{key}` | **Sorted Set (ZSet)** | Window + 2s | Sliding Window Log rate limiter managed atomically via custom Lua scripts. |
-| `idempotent:{key}:{idempotencyKey}`| **String** | **300–600 seconds**| Distributed lock preventing duplicate execution of sensitive REST endpoints (e.g. file upload). |
+| `rate_limit:{keyPrefix}:{target}` | **Sorted Set (ZSet)** | Window + 2s | Sliding Window Log rate limiter managed atomically via custom Lua scripts. `{target}` is `ip_{ip}`, `user_{username}`, `global`, or `{sender}`. |
+| `idempotent:{keyPrefix}:{username|anonymous}:{idempotencyKey}`| **String** | **300–600 seconds**| Distributed two-phase idempotency safeguard storing `"PROCESSING"` or `"COMPLETED:{json}"`. |

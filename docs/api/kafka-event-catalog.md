@@ -22,11 +22,11 @@ This document catalogs all Apache Kafka topics, binary serialization contracts (
 
 | Topic Name | Partitions | Replicas | Serialization | Consumer Group ID | Concurrency | Primary Responsibility |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **`chat-messages`** | 12 | 2 | **Apache Avro** (`ChatMessageAvro`) | 1. `chat-websocket-group`<br/>2. `chat-save-group` | 4 (Realtime)<br/>2 (Batch Save) | Core chat stream: Fast WebSocket push delivery and bulk Write-Behind persistence into MongoDB. |
-| **`chat-messages-save-dlt`**| 12 | 2 | **Apache Avro** (`ChatMessageAvro`) | `chat-save-group-dlt` | 2 | Dead Letter Topic (DLT) holding records that failed MongoDB batch insertion after maximum retries. |
-| **`chat-system-messages`** | 6 | 2 | **JSON** (`SystemMessage`) | `system-websocket-group-${random.uuid}` (Dynamic fan-out per node) | 2 | Broadcasts administrative system announcements across all cluster nodes to connected users via `/topic/public`. |
-| **`message-update`** | 6 | 2 | **JSON** (`UpdateMessagePayload`) | `message-update-group-id` | 2 | Dispatches message edits, soft-deletions, emoji reactions, and watermark read receipt notifications. |
-| **`email-messages`** | 3 | 2 | **JSON** (`EmailPayload`) | `email-worker-group` | 1 | Asynchronously delivers verification OTPs and password reset emails without blocking web requests. |
+| **`chat-messages`** | 12 | 2 | **Apache Avro** (`ChatMessageAvro`) | 1. `chat-websocket-group`<br/>2. `chat-save-group` | 4 (Realtime)<br/>2 (Batch Save) | Core chat stream: Transports full message lifecycle (`CREATE`, `EDIT`, `REVOKE`, `REACT`) for sub-10ms WebSocket push and batch Write-Behind persistence into MongoDB. |
+| **`chat-messages-save-dlt`**| 12 | 2 | **Apache Avro** (`ChatMessageAvro`) | `chat-save-group-dlt` | 2 | Dead Letter Topic (DLT) holding records that failed MongoDB persistence; processed with container-level backoff retry. |
+| **`chat-system-messages`** | 6 | 2 | **JSON** (`SystemMessage`) | `system-websocket-group-${random.uuid}` (Dynamic fan-out per node) | 2 | Broadcasts both administrative announcements (`ANNOUNCEMENT`) and user world chat messages (`WORLD_CHAT`) across cluster nodes to `/topic/public`. |
+| **`message-update`** | 6 | 2 | **JSON** (`UpdateMessagePayload`) | `message-update-group-id` | 2 | Exclusively dispatches conversation read watermark sync events (`UpdateMessageType.STATUS` / `ReadReceiptResponse`). |
+| **`email-messages`** | 3 | 2 | **JSON** (`EmailPayload`) | `email-worker-group` | 1 | Asynchronously delivers registration and password-reset verification OTPs. *(Note: Email/phone change OTP in `UserServiceImpl` and admin broadcasts in `AdminEmailController` dispatch synchronously via `EmailService`).* |
 | **`friend-notifications`**| 6 | 2 | **JSON** (`FriendPayload`) | `friend-websocket-group` | 2 | Pushes real-time friend invitation and acceptance notifications to `/user/queue/notifications`. |
 
 ---
@@ -86,21 +86,43 @@ Implemented in `ChatConsumer.java`:
     autoCreateTopics = "true"
 )
 @KafkaListener(topics = "${spring.kafka.topic.chat.messages}", groupId = "${spring.kafka.topic.chat.messages-group-id}")
-public void listen(ConsumerRecord<String, ChatMessageAvro> record) { ... }
+public void listenChatMessages(
+    @Payload ChatMessageAvro message,
+    @Header(name = KafkaHeaders.RECEIVED_KEY, required = false) String conversationKey) { ... }
 ```
 - In the event of transient network hiccups or temporary socket routing delays, the consumer automatically retries up to 5 times with a 200ms fixed backoff before surfacing an error.
 
+### 4.1b. Consumer-Side Idempotency via `ConsumerDeduplicationService`
+To guard against duplicated message delivery caused by consumer group rebalances or producer retries, consumers (`ChatConsumer`, `FriendConsumer`, `UpdateMessageConsumer`, and `EmailConsumer`) invoke `ConsumerDeduplicationService`:
+- **Redis Dedup Key**: `kafka:dedup:{consumerName}:{eventId}`
+- **TTL Strategy**:
+  - `10 minutes`: Real-time push consumers (`chat_push`, `friend_push`, `message_push_update`).
+  - `24 hours`: Asynchronous email worker (`email`) operating under `AckMode.MANUAL_IMMEDIATE`.
+- **Fault Recovery (`clearOnFailure`)**: If downstream processing encounters an unrecoverable exception, `clearOnFailure()` immediately evicts the Redis deduplication key so that retry attempts or re-deliveries are not prematurely dropped.
+
 ### 4.2. Database Write-Behind Batching & DLT Strategy
 Configured in `KafkaConfig.java` and executed in `DatabaseWriteBehindConsumer.java`:
-1. **Unordered Bulk Insert**:
-   - Gathers batches of up to 200 records per poll (max wait 500ms) and executes an unordered bulk insert into MongoDB:
+
+1. **Unordered Bulk Insert & Upsert**:
+   - Gathers batches of up to 200 records per poll (max wait 500ms) and executes bulk operations against MongoDB collection `messages` using `BulkOperations.BulkMode.UNORDERED`:
+     - **`CREATE`**: `bulkOps.insert(entity)`
+     - **`EDIT`**: `bulkOps.upsert(query, buildEditUpdate(avro))`
+     - **`REVOKE`**: `bulkOps.upsert(query, buildRevokeUpdate(avro))` (wipes content, unsets attachments/reactions, sets `isDeleted = true`)
+     - **`REACT`**: `bulkOps.upsert(query, buildReactUpdate(avro))`
      ```java
      BulkOperations bulkOps = mongoTemplate.bulkOps(BulkOperations.BulkMode.UNORDERED, ChatMessage.class);
-     bulkOps.insert(entitiesToSave);
+     // append inserts/upserts according to avro.getActionType()
      bulkOps.execute();
      ```
-2. **Duplicate Key Tolerance**:
-   - Catches `DuplicateKeyException` to guarantee idempotent execution: already-persisted records do not abort the remainder of the batch.
-3. **Dead Letter Recovery**:
-   - If an unrecoverable failure occurs (e.g. malformed database document), `DeadLetterPublishingRecoverer` transfers the failed record to `chat-messages-save-dlt` after 4 retries with a 500ms backoff.
-   - Non-retryable exceptions (e.g., `SerializationException`, `RecordTooLargeException`) are routed directly to the DLT without redundant retries.
+
+2. **Accurate Bulk Operation Error Handling (`retryBulkFailuresIndividually`)**:
+   - In MongoDB `BulkOperations.BulkMode.UNORDERED`, all non-failing operations in the batch succeed and commit independently.
+   - When a `BulkOperationException` occurs, `retryBulkFailuresIndividually(payloadsToSave, boe)` iterates strictly through `boe.getErrors()`.
+   - For each failed element:
+     - Ignores duplicate key errors (`code == 11000`) since the document is already safely committed.
+     - Retries *only the specific failed operations* individually by looking up their payload index via `error.getIndex()`. It does **not** re-execute already committed batch elements.
+
+3. **DLT Persistence Consumer & Container-Level Retry**:
+   - Fatal or persistent database write failures transfer the message payload to `chat-messages-save-dlt`.
+   - `DatabaseWriteBehindConsumer.handleDltPersistence()` listens on `chat-messages-save-dlt` with group `chat-save-group-dlt`.
+   - The DLT listener uses the container factory `dltChatAvroListenerContainerFactory` configured with `FixedBackOff(5000L, 5L)` (retries up to 5 times with a 5-second interval) to replay and persist failed documents into MongoDB once database health is restored.
