@@ -39,34 +39,40 @@ Implement the **Write-Behind Pattern** using **Apache Kafka** with **Dual Compet
 ```mermaid
 sequenceDiagram
     autonumber
-    participant Sender as Client A
-    participant Backend as ChatServiceImpl
+    actor Client as Client A
+    participant Backend as ChatService / RestControllers
     participant Kafka as Kafka (chat-messages)
-    participant FastPush as ChatConsumer (Group 1)
-    participant BatchSave as DBWriteBehindConsumer (Group 2)
+    participant FastPush as ChatConsumer (chat-websocket-group)
+    participant BatchSave as DBWriteBehindConsumer (chat-save-group)
     participant Mongo as MongoDB (messages)
-    participant Recipient as Client B
+    actor Recipient as Client B
 
-    Sender->>Backend: SEND /app/chat/sendPrivateMessage
-    Backend->>Backend: Verify friendship & execute SETNX ws:dedup
+    Client->>Backend: CREATE (WebSocket) or EDIT/REVOKE/REACT (REST)
+    Backend->>Backend: Check RateLimit & Idempotency
     Backend->>Kafka: Publish ChatMessageAvro to "chat-messages"
     
     par Stream 1: Fast-Push (<10ms latency)
         Kafka->>FastPush: Consume ChatMessageAvro
-        FastPush->>Recipient: Dispatch via WebSocket (/user/queue/messages)
+        FastPush->>FastPush: ConsumerDeduplicationService.isDuplicate()
+        alt Action is CREATE
+            FastPush->>Recipient: Dispatch via WebSocket (/user/queue/messages)
+        else Action is EDIT / REVOKE / REACT
+            FastPush->>Recipient: Dispatch via WebSocket (/user/queue/notifications)
+        end
     and Stream 2: Write-Behind (Bulk Persistence)
         Kafka->>BatchSave: Poll batch of up to 200 records
-        BatchSave->>Mongo: Bulk unordered insert into "messages" collection
+        BatchSave->>Mongo: Bulk unordered insert (CREATE) / upsert (EDIT, REVOKE, REACT)
     end
 ```
 
 1. **Fast-Push Stream (`chat-websocket-group`)**:
    - Single-record consumption configured with `concurrency = 4` and `@RetryableTopic` backoff (5 attempts, 200ms delay).
-   - Resolves target server node and pushes the frame immediately to the recipient over WebSocket.
+   - Resolves target server node and pushes real-time payloads to the recipient over WebSocket (`/user/queue/messages` for new chat messages, `/user/queue/notifications` for edits, revocations, and reactions).
 2. **Write-Behind Stream (`chat-save-group`)**:
    - Batch consumption configured with `concurrency = 2`, polling up to 200 messages per batch with a 500ms max fetch wait.
-   - Executes non-blocking unordered bulk inserts into MongoDB via `bulkOps.insert()`.
-   - Permanent failures after 4 retries are forwarded to the Dead Letter Topic (`chat-messages-save-dlt`).
+   - Executes non-blocking unordered bulk operations into MongoDB: `bulkOps.insert()` for `CREATE`, and `bulkOps.upsert()` for `EDIT`, `REVOKE`, and `REACT`.
+   - On `BulkOperationException`, `retryBulkFailuresIndividually()` ignores duplicate key code 11000 and retries only the failed records individually without re-executing already committed elements.
+   - Persistent failures are forwarded to Dead Letter Topic `chat-messages-save-dlt` and retried via `handleDltPersistence` (`FixedBackOff(5000L, 5L)`).
 
 ### Trade-offs
 - **Advantages**: Sub-10ms delivery to online users; MongoDB is insulated from traffic spikes by Kafka's durable disk-backed buffer; bulk database writes minimize network round trips and indexing overhead.
@@ -107,13 +113,13 @@ Deploy a complementary **Two-Tier Rate Limiting Architecture**:
 | Tier | Enforcement Point | Strategy & Rules | Target Protection |
 | :--- | :--- | :--- | :--- |
 | **Tier 1: Ingress** | Nginx (`ngx_http_limit_req_module`) | - Auth Zone: `10r/m` (burst 5)<br/>- Global Zone: `30r/s` (burst 20) | Drops volumetric attacks at the edge before consuming backend compute resources. |
-| **Tier 2: Application** | Spring Boot (`@RateLimit` Aspect + Redis Lua) | Sliding Window Log algorithm executed atomically in Redis | Fine-grained limits scoped by authenticated `username` or client IP. |
+| **Tier 2: Application** | Spring Boot (`@RateLimit` Aspect + Redis Lua) | Sliding Window Log algorithm executed atomically in Redis.<br/>- REST: Scoped per user / IP (`/api/friends/*`, `/api/messages/upload/*`).<br/>- WebSocket STOMP: `ws_chat_send` (30/m), `ws_chat_typing` (60/m), `ws_chat_world` (1 msg / 15s). | Fine-grained limits scoped by authenticated `username` or client IP. |
 
 The application tier executes a custom Redis Lua script implementing the Sliding Window Log algorithm:
 1. Removes expired request timestamps using `ZREMRANGEBYSCORE`.
 2. Computes the count of requests within the active window using `ZCARD`.
 3. If under the limit, records the current epoch timestamp with `ZADD` and permits the request.
-4. If over the limit, rejects the request immediately with HTTP 429 Too Many Requests.
+4. If over the limit, rejects the request immediately with HTTP 429 Too Many Requests (or STOMP error frame).
 
 ---
 
@@ -123,28 +129,34 @@ The application tier executes a custom Redis Lua script implementing the Sliding
 In unstable mobile networks or high-latency environments, clients frequently retry requests when an acknowledgment (ACK) is delayed or temporarily dropped. Without idempotency guardrails, retried requests cause duplicated chat messages, duplicate friend requests, and repeated file uploads to cloud storage.
 
 ### Decision
-Implement end-to-end deduplication across REST, WebSocket, and Database tiers:
+Implement end-to-end deduplication across REST, WebSocket, Kafka Consumers, and Database tiers:
 1. **REST API Idempotency (`@Idempotent`)**:
-   - Applied to state-mutating endpoints (file upload, friend request accept).
-   - Clients supply an `X-Idempotency-Key: <UUID>` header.
-   - `IdempotentAspect` attempts to acquire a distributed Redis lock with key `idempotent:{methodKey}:{idempotencyKey}` (TTL 300–600s). Duplicate invocations within the TTL window are rejected with a conflict error.
+   - Applied to state-mutating endpoints (`/api/friends/request`, `/api/friends/accept`, `/api/messages/upload/*`).
+   - Clients supply an `X-Idempotency-Key: <UUID>` header (automatically injected by frontend `apiClient.js`).
+   - `IdempotentAspect` enforces a 2-phase lifecycle using Redis key `idempotent:{keyPrefix}:{username|anonymous}:{idempotencyKey}`:
+     - Phase 1: Stores `"PROCESSING"` via `SETNX`. Duplicate concurrent requests are rejected with HTTP 409 Conflict.
+     - Phase 2: On completion, stores `"COMPLETED:" + serializedJson` with the configured TTL (300–600s). Re-submissions within the TTL immediately receive the cached `200 OK` response payload.
 2. **WebSocket STOMP Deduplication (`ws:dedup`)**:
-   - Clients generate a unique client-side `localId` (UUID v4) for every message draft.
+   - Clients optionally generate a client-side `localId` (UUID v4) for every message draft.
    - Upon receiving a `/app/chat/sendPrivateMessage` frame, the backend attempts `SETNX ws:dedup:{sender}:{localId}` with a 300-second TTL.
    - If the key already exists, the server silently acknowledges the message without publishing duplicate events to Kafka or dispatching duplicate alerts to the recipient.
-3. **Database Bulk Insert Deduplication**:
+3. **Database Bulk Insert/Upsert Deduplication**:
    - MongoDB unique index constraints handle edge cases during Write-Behind batch processing.
-   - `DatabaseWriteBehindConsumer` catches `DuplicateKeyException` during unordered bulk operations, safely acknowledging duplicated records without failing the entire batch.
+   - `DatabaseWriteBehindConsumer` catches `DuplicateKeyException` (code 11000) during unordered bulk operations, safely ignoring duplicates without failing the entire batch.
+4. **Kafka Consumer Deduplication (`ConsumerDeduplicationService`)**:
+   - Consumers (`ChatConsumer`, `FriendConsumer`, `UpdateMessageConsumer`, `EmailConsumer`) invoke `isDuplicate(consumerName, eventId, ttl)` using Redis key `kafka:dedup:{consumer}:{eventId}`.
+   - TTL: 10 minutes for push notifications; 24 hours for email deliveries (`AckMode.MANUAL_IMMEDIATE`).
+   - If an unrecoverable exception occurs downstream, `clearOnFailure()` evicts the key to allow subsequent retries.
 
 ---
 
-## ADR-06: Distributed 5-Second Presence Debounce Queue via Redis Sorted Set
+## ADR-06: Distributed 5-Second Presence Debounce Queue & Zombie Session Cleanup
 
 ### Context
-When a user refreshes a browser tab (F5) or experiences momentary Wi-Fi/cellular handoff, their WebSocket session disconnects and immediately reconnects within 1 to 2 seconds. If the backend immediately transitions the user's status to `is_online = false` and broadcasts an offline alert to their friend list, friends' clients experience rapid "presence flapping" (online $\rightarrow$ offline $\rightarrow$ online).
+When a user refreshes a browser tab (F5) or experiences momentary Wi-Fi/cellular handoff, their WebSocket session disconnects and immediately reconnects within 1 to 2 seconds. If the backend immediately transitions the user's status to `is_online = false` and broadcasts an offline alert to their friend list, friends' clients experience rapid "presence flapping" (online $\rightarrow$ offline $\rightarrow$ online). Furthermore, if a backend server crashes abruptly without firing `SessionDisconnectEvent`, stale sessions can remain orphaned indefinitely.
 
 ### Decision
-Implement a **Distributed Presence Debounce Queue** backed by Redis:
+Implement a **Distributed Presence Debounce Queue** combined with **Zombie Session Cleanup**:
 
 ```mermaid
 sequenceDiagram
@@ -189,12 +201,13 @@ sequenceDiagram
    - When a session disconnects and the remaining count is $\le 0$, the username is scheduled in the Redis Sorted Set `presence:offline_queue` with a score of `currentTimeMillis + 5000`.
 2. **Reconnection Cancellation**:
    - If a new `CONNECT` event occurs for the user while in the queue, `WebSocketListener` removes the user from `presence:offline_queue` immediately with `ZREM`.
-3. **Clustered Cleanup**:
+3. **Clustered Cleanup & Zombie Eviction**:
    - `SessionCleanupScheduler` runs periodically, querying `presence:offline_queue` for records where `score <= now`.
    - If `online_users_count` remains $\le 0$, it marks `is_online = false` in PostgreSQL, purges the user from `online_users`, and broadcasts an offline presence event to friends.
+   - **Heartbeat & Zombie Session Cleanup**: Clients update their timestamp in Redis `online_users` at most once every 60 seconds (`UserHeartbeatScheduler`). Every 3 minutes, `SessionCleanupScheduler.cleanupZombieSessions()` purges stale entries whose last heartbeat exceeds the zombie threshold, recovering cleanly from abrupt server node crashes or network partition events.
 
 ### Trade-offs
-- **Advantages**: Eliminates presence flapping across tab switches and page refreshes; fully cluster-safe because state resides in Redis Sorted Sets rather than in-memory JVM thread schedulers.
+- **Advantages**: Eliminates presence flapping across tab switches and page refreshes; fully cluster-safe because state resides in Redis Sorted Sets; recovers automatically from ungraceful backend node failures.
 - **Disadvantages**: Offline status propagation is intentionally delayed by 5 seconds when a user closes their browser window.
 
 ---
@@ -214,12 +227,13 @@ Deploy **Redis Cuckoo Filters** via Redis Stack commands (`CF.EXISTS`, `CF.ADD`,
    - `filter:emails`: Holds all registered email addresses.
 2. **Preflight Authentication Guard**:
    - During `login`, `AuthenticationServiceImpl` invokes `cuckooFilterService.exists("filter:usernames", username)`.
-   - If the filter returns `false`, the username is guaranteed not to exist (zero false negatives). The request is rejected immediately with HTTP 404/401 without executing a query against PostgreSQL.
+   - If the filter returns `false`, the username is guaranteed not to exist (zero false negatives). The request is rejected immediately with HTTP 401 (`AuthenticationFailedException`) without executing a query against PostgreSQL (avoiding 404 to prevent user enumeration attacks).
 3. **Registration Availability Preflight**:
    - During `register`, the filter checks username and email presence in memory before executing database validation.
 4. **Dynamic Mutation Support**:
    - When users complete account verification, items are added via `CF.ADD`.
    - When users update their email (`UserServiceImpl`), the old email is removed via `CF.DEL` and the new email is inserted via `CF.ADD`.
+   - When an account is deleted (`UserServiceImpl.deleteUser()`), old credentials are removed from the Cuckoo Filter (`filter:emails` on soft-delete; both `filter:usernames` and `filter:emails` on hard-delete).
 
 ### Trade-offs
 - **Advantages**: In-memory sub-millisecond rejection of invalid credentials; protects relational database connection pool from credential stuffing attacks; supports element deletion.

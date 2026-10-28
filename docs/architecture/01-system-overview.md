@@ -19,7 +19,7 @@ graph TB
     end
 
     subgraph AppLayer["Application Layer"]
-        Backend["Spring Boot 3.5.x (Java 21 LTS)<br/>- Spring Security 6 (JWT + Google OAuth2)<br/>- WebSocket STOMP Broker (/ws)<br/>- Dynamic Rate Limiter (@RateLimit Sliding Window)<br/>- Idempotency Engine (@Idempotent)<br/>- Distributed Presence Scheduler<br/>- Notifications & Moderation Services"]
+        Backend["Spring Boot 3.5.x (Java 21 LTS)<br/>- Spring Security 6 (JWT + Google/Facebook OAuth2)<br/>- WebSocket STOMP Broker (/ws)<br/>- Dynamic Rate Limiter (@RateLimit Sliding Window)<br/>- Idempotency Engine (@Idempotent)<br/>- Consumer Deduplication (kafka:dedup:*)<br/>- Distributed Presence Scheduler & Zombie Cleanup<br/>- Notifications & Moderation Services"]
     end
 
     subgraph EventLayer["Event Streaming & Buffer"]
@@ -62,7 +62,7 @@ graph TB
 - **Dual Communication Channels**:
   - **REST API Client (`apiClient.js`)**: Executes HTTP requests for authentication, profile updates, conversation history queries, and media uploads. Automatically attaches the `X-Idempotency-Key` header for state-modifying operations.
   - **WebSocket Client (`useChatSocket.js`)**: Maintains a persistent, bi-directional full-duplex connection via STOMP over SockJS, featuring automatic reconnection, subscription resumption, and 10-second heartbeats.
-  - **WebRTC Peer-to-Peer Subsystem (`useWebRTC.js`)**: Facilitates real-time audio and video peer-to-peer calls directly between clients, using WebSocket STOMP for signaling exchange.
+  - **WebRTC Peer-to-Peer Subsystem (`useWebRTC.js`)**: A client-side hook module prepared for future peer-to-peer audio and video calling (currently retained as a front-end module; backend does not yet provide dedicated signaling channels and calls are not yet wired into the main chat UI).
 
 ### 2.2. Ingress & Reverse Proxy Tier (Nginx)
 - Serves as the single unified entry point into the system from external networks (or behind an Edge Proxy such as Cloudflare / Tailscale Funnel), listening on port `80` (HTTP).
@@ -84,16 +84,19 @@ graph TB
 - **Defensive Engineering & Protection**:
   - **Redis Cuckoo Filter Preflight**: Intercepts authentication and registration requests to test existence in $O(1)$ time in memory prior to querying PostgreSQL.
   - **Sliding Window Rate Limiter**: Method-level rate-limiting via `@RateLimit` backed by custom Redis Lua scripts.
-  - **Idempotency Engine**: `@Idempotent` aspect backed by Redis distributed locks, eliminating duplicate execution caused by client network timeouts and retries.
-  - **Distributed Presence Debounce**: Queues disconnected sessions into a Redis Sorted Set (`presence:offline_queue`) with a 5-second deadline, suppressing connection flapping during page reloads.
+  - **Idempotency Engine**: `@Idempotent` aspect backed by Redis distributed locks and cached `200 OK` response replay, eliminating duplicate execution caused by client network timeouts and retries.
+  - **Consumer Deduplication Engine (`ConsumerDeduplicationService`)**: Enforces exactly-once processing on the consumer side (`kafka:dedup:{consumer}:{eventId}`) across Kafka rebalances and retries.
+  - **Distributed Presence Debounce & Zombie Session Cleanup**:
+    - Queues disconnected sessions into a Redis Sorted Set (`presence:offline_queue`) with a 5-second deadline, suppressing connection flapping during page reloads.
+    - Integrates a 60-second client presence heartbeat (`UserHeartbeatScheduler`) and a 3-minute zombie session cleanup (`SessionCleanupScheduler.cleanupZombieSessions`) to gracefully handle unexpected server node crashes where `SessionDisconnectEvent` fails to trigger.
 
 ### 2.4. Event Streaming Tier (Apache Kafka)
 - 2-broker Kafka cluster operating in **KRaft (Kafka Raft Metadata)** mode, eliminating external ZooKeeper dependencies.
 - Integrated with **Confluent Schema Registry** to enforce binary **Apache Avro** schemas on critical real-time topics (`chat-messages`).
 - **Asynchronous Dual-Consumer Separation**:
-  - **Fast-Push Consumer Group** (`chat-websocket-group`): Prioritizes sub-10ms delivery to online recipients over WebSocket.
-  - **Write-Behind Batch Consumer Group** (`chat-save-group`): Batches messages for bulk persistence into MongoDB, shielding the primary database from write spikes.
-  - **Dead Letter Topic (DLT)** (`chat-messages-save-dlt`): Isolates unrecoverable persistence failures for automated or manual remediation without blocking event flow.
+  - **Fast-Push Consumer Group** (`chat-websocket-group`): Transports the full message lifecycle (`CREATE`, `EDIT`, `REVOKE`, `REACT`) for sub-10ms delivery to online recipients over WebSocket.
+  - **Write-Behind Batch Consumer Group** (`chat-save-group`): Batches inserts (`CREATE`) and upserts (`EDIT`, `REVOKE`, `REACT`) for bulk persistence into MongoDB, shielding the primary database from write spikes.
+  - **Dead Letter Topic (DLT)** (`chat-messages-save-dlt`): Isolates persistence failures for container-level retry (`FixedBackOff(5000L, 5L)`) and recovery without blocking event flow.
 
 ### 2.5. Polyglot Persistence Tier
 ChatWeb employs specialized data stores matched to specific storage characteristics:

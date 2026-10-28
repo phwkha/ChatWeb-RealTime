@@ -13,7 +13,9 @@ This document provides a comprehensive reference for the ChatWeb REST API, inclu
   👉 `http://localhost/swagger-ui/index.html`
 - **Media Type**: `application/json; charset=UTF-8`
 - **Internationalization (i18n)**: Response messages adapt to client preferences via the `Accept-Language` header (`en-US`, `vi-VN`, `ja-JP`).
-- **Idempotency Safeguard**: For state-mutating requests (file uploads, friend request approvals), clients should provide an `X-Idempotency-Key: <UUID>` header. The backend acquires a distributed Redis lock (`idempotent:{key}:{idempotencyKey}`) to guarantee execution safety against network timeouts and retries.
+- **Idempotency Safeguard**: For state-mutating requests (file uploads, friend requests and approvals), clients provide an `X-Idempotency-Key: <UUID>` header. The frontend `apiClient.js` automatically generates and attaches this header for all mutating HTTP methods (`POST`, `PUT`, `PATCH`, `DELETE`). The backend `IdempotentAspect.java` handles requests in a 2-phase lifecycle using Redis key `idempotent:{keyPrefix}:{username|anonymous}:{idempotencyKey}`:
+  1. **Phase 1 (`PROCESSING`)**: Sets key with value `"PROCESSING"` via atomic `SETNX`. If a duplicate request arrives while still in `"PROCESSING"`, backend throws `DuplicateRequestException` (HTTP `409 Conflict`).
+  2. **Phase 2 (`COMPLETED`)**: Upon successful execution, updates value to `"COMPLETED:" + serializedJson` with the configured TTL (300–600s). If the client resends the same key after completion, backend immediately replays the cached `200 OK` response payload. If an uncaught exception occurs during processing, the Redis key is evicted so that the operation can be retried safely.
 
 ### Standard Response Envelope (`ApiResponse<T>`)
 
@@ -79,7 +81,14 @@ Manages user registration, credential authentication, session tokens, and securi
 | `POST` | `/api/auth/forgot-password` | Initiates password reset by dispatching an OTP to the user's registered email. Rate limit: 3 req/min. |
 | `POST` | `/api/auth/reset-password` | Verifies reset OTP and updates user password (increments `token_version`). Rate limit: 5 req/min. |
 | `POST` | `/api/auth/resend-forgot-password`| Resends password reset OTP (`?email=...`). Rate limit: 3 req/min. |
-| `GET` | `/oauth2/authorization/google` | Initiates Google OAuth2 Single Sign-On flow. Redirects to `/oauth2/redirect` upon successful authentication. |
+| `GET` | `/oauth2/authorization/google` | Initiates Google OAuth2 Single Sign-On flow. |
+| `GET` | `/oauth2/authorization/facebook` | Initiates Facebook OAuth2 Single Sign-On flow. |
+
+> [!NOTE]
+> **OAuth2 Success Cookie Issuance**:
+> Upon successful OAuth2 authentication (`OAuth2AuthenticationSuccessHandler`), the backend generates and attaches dual HttpOnly cookies before redirecting to the frontend:
+> - `accessToken`: `Path=/`, `Max-Age=15m`, `SameSite=Lax`
+> - `refreshToken`: `Path=/api/auth`, `Max-Age=7d`, `SameSite=Lax`
 
 ---
 
@@ -90,12 +99,12 @@ Provides self-service profile updates, credential management, language selection
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
 | `GET` | `/api/users/me` | Retrieves the account details of the currently authenticated user. |
-| `GET` | `/api/users/profile` | Fetches personal profile details (names, birthday, gender, avatar, language). |
-| `PUT` | `/api/users/profile` | Updates personal profile fields (`firstName`, `lastName`, `birthday`, `gender`). |
+| `GET` | `/api/users/profile` | Fetches personal profile details (names, phone, birthday, gender, avatar, language). |
+| `PUT` | `/api/users/profile` | Updates personal profile fields (`firstName`, `lastName`, `phone`, `birthday`, `gender`, `language`). |
 | `PATCH` | `/api/users/language` | Updates user preferred interface language (`{ "language": "vi" }`). |
 | `PATCH` | `/api/users/avatar` | Uploads and updates avatar via multipart file upload. |
 | `POST` | `/api/users/change-password` | Changes account password. Invalidates old session tokens. |
-| `DELETE` | `/api/users/me` | Permanently deletes the current user's account and personal data. |
+| `DELETE` | `/api/users/me` | Executes Hybrid Delete (`UserServiceImpl.deleteUser()`): if user has MongoDB chat history, performs **soft-delete** (`userStatus = INACTIVE`, `isOnline = false`, clears email/phone/avatar, anonymizes name to `"Tài khoản Đã xóa"`, deletes old email from `filter:emails`); if no chat history exists, performs **hard-delete** in PostgreSQL and deletes both username and email from Redis Cuckoo Filters. |
 | `GET` | `/api/users/addresses` | Lists all saved addresses for the authenticated user. |
 | `GET` | `/api/users/address/{addressId}` | Retrieves details for a specific address. |
 | `POST` | `/api/users/address` | Adds a new address entry. |
@@ -114,8 +123,8 @@ Provides self-service profile updates, credential management, language selection
 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
-| `GET` | `/api/users/search?keyword={q}` | Basic user search matching usernames, full names, or email addresses. |
-| `GET` | `/api/users/search/filter` | Multi-criteria advanced search combining user attributes and address fields. |
+| `GET` | `/api/users/search?keyword={q}` | Basic user search matching usernames, full names, or email addresses. Rate limit: **30 req/min**. |
+| `GET` | `/api/users/search/filter` | Multi-criteria advanced search combining user attributes and address fields. Rate limit: **20 req/min**. |
 
 ---
 
@@ -123,15 +132,15 @@ Provides self-service profile updates, credential management, language selection
 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
-| `GET` | `/api/friends` | Returns paginated list of accepted friends. |
-| `GET` | `/api/friends/requests` | Returns pending incoming friend requests. |
-| `GET` | `/api/friends/sent` | Returns pending outgoing friend requests. |
-| `GET` | `/api/friends/blocked` | Lists users blocked by the authenticated user. |
-| `POST` | `/api/friends/request` | Sends a friend invitation (`{ "targetUsername": "..." }`). Dispatches real-time WebSocket alert. |
-| `POST` | `/api/friends/accept` | Accepts a friend request (`{ "targetUsername": "..." }`). Supports `X-Idempotency-Key`. |
-| `DELETE` | `/api/friends/{username}` | Unfriends a user or declines/cancels a friend invitation. |
-| `POST` | `/api/friends/block/{username}` | Blocks a user, preventing all messaging and friend interactions. |
-| `POST` | `/api/friends/unblock/{username}` | Removes block status for a user. |
+| `GET` | `/api/friends` | Returns paginated list of accepted friends. Rate limit: **45 req/min**. |
+| `GET` | `/api/friends/requests` | Returns pending incoming friend requests. Rate limit: **30 req/min**. |
+| `GET` | `/api/friends/sent` | Returns pending outgoing friend requests. Rate limit: **30 req/min**. |
+| `GET` | `/api/friends/blocked` | Lists users blocked by the authenticated user. Rate limit: **30 req/min**. |
+| `POST` | `/api/friends/request` | Sends a friend invitation (`{ "targetUsername": "..." }`). Dispatches real-time WebSocket alert. Rate limit: **20 req/min**. Mandatory `X-Idempotency-Key` (`@Idempotent(key = "friend_request", ttl = 300)`). |
+| `POST` | `/api/friends/accept` | Accepts a friend request (`{ "targetUsername": "..." }`). Rate limit: **20 req/min**. Mandatory `X-Idempotency-Key` (`@Idempotent(key = "friend_accept", ttl = 300)`). |
+| `DELETE` | `/api/friends/{username}` | Unfriends a user or declines/cancels a friend invitation. Rate limit: **20 req/min**. |
+| `POST` | `/api/friends/block/{username}` | Blocks a user, preventing all messaging and friend interactions. Rate limit: **20 req/min**. |
+| `POST` | `/api/friends/unblock/{username}` | Removes block status for a user. Rate limit: **20 req/min**. |
 
 ---
 
@@ -167,7 +176,7 @@ Provides self-service profile updates, credential management, language selection
     "reactionType": "HEART"
   }
   ```
-  *Allowed `reactionType`*: `LIKE`, `HEART`, `LAUGH`, `SAD`, `ANGRY`.
+  *Allowed `reactionType`*: `LIKE`, `HEART`, `LAUGH`, `SAD`, `ANGRY`. Passing `reactionType: null` **removes** the user's reaction from the message.
 
 - **Edit Message Request (`EditMessageRequest`)**:
   ```json
@@ -207,7 +216,7 @@ Allows users to report abusive or violating behavior.
 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
-| `POST` | `/api/reports` | Submits a report (`CreateReportRequest`: `{ "reportedUserId": 12, "reason": "SPAM", "details": "..." }`). Rate limit: 10 req/min. |
+| `POST` | `/api/reports` | Submits a report (`CreateReportRequest`). Supports targeting via `reportedUserId` OR `reportedUsername` (`{ "reportedUserId": 12, "reportedUsername": "bob_smith", "reason": "SPAM", "details": "..." }`). Rate limit: 10 req/min. |
 | `GET` | `/api/reports/me` | Paginated list of reports filed by current user (`?page=0&size=10&sortDir=desc`). |
 | `DELETE`| `/api/reports/{id}` | Cancels a pending report filed by the current user. |
 
@@ -215,12 +224,12 @@ Allows users to report abusive or violating behavior.
 
 ### 2.8. Cloud Media Uploads (`/api/messages/upload`)
 
-Processes multipart media uploads to Cloudinary storage with strict security sanitization.
+Processes multipart media uploads to Cloudinary storage with strict security sanitization and rate limits. Both upload endpoints are governed by `@RateLimit(limit = 10, period = 60)` (10 req/min per user) and idempotency TTL of 600 seconds.
 
 | Method | Endpoint | Parameter & Limits | Description |
 | :--- | :--- | :--- | :--- |
-| `POST` | `/api/messages/upload/image` | `@RequestParam("image")` multipart file. JPEG, PNG, WEBP, GIF (Max 20MB). **SVG explicitly disallowed**. | Uploads image and returns Cloudinary CDN URL. Supports `X-Idempotency-Key`. |
-| `POST` | `/api/messages/upload/video` | `@RequestParam("video")` multipart file. MP4, MOV, WEBM (Max 20MB). | Uploads video. Supports `X-Idempotency-Key`. |
+| `POST` | `/api/messages/upload/image` | `@RequestParam("image")` multipart file. JPEG, PNG, WEBP, GIF (Max 20MB). Rate limit: 10 req/min. TTL: 600s. | Validates MIME type starts with `image/` and strictly rejects `image/svg+xml` to eliminate stored SVG XSS. Uploads image and returns Cloudinary CDN URL. Supports `X-Idempotency-Key`. |
+| `POST` | `/api/messages/upload/video` | `@RequestParam("video")` multipart file. MP4, MOV, WEBM (Max 20MB). Rate limit: 10 req/min. TTL: 600s. | Validates MIME type starts with `video/`. Uploads video and returns Cloudinary URL. Supports `X-Idempotency-Key`. |
 | `PATCH`| `/api/users/avatar` | `@RequestParam("file")` multipart file (Max 5MB). Images only (No SVG). | Updates personal profile avatar image. |
 
 ---
@@ -245,29 +254,33 @@ Restricted to moderators with authority `ADMIN_VIEW_REPORTS`, `ADMIN_RESOLVE_REP
   "lockReportedUser": true
 }
 ```
-*`status` values*: `RESOLVED`, `DISMISSED`. Optional `lockReportedUser` automatically locks the offender's account.
+*`status` values*: `RESOLVED`, `DISMISSED`. If `lockReportedUser: true`, the calling administrator **must** possess the `ADMIN_LOCK` authority (otherwise rejected with `403 Forbidden`). When authorized, the user lock and report resolution execute within a single transaction.
 
 ---
 
 ### 2.10. Role-Based Access Control (`/api/admin/roles`)
 
-Restricted to administrative personnel.
+Restricted to administrative personnel. Standard system roles are **`USER`** and **`ADMIN`**.
 
-| Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| `GET` | `/api/admin/roles` | Lists all defined system roles (`ROLE_USER`, `ROLE_ADMIN`). |
-| `GET` | `/api/admin/roles/permissions` | Lists all available application permissions. |
-| `POST` | `/api/admin/roles` | Creates a new role and maps associated permissions. |
-| `PUT` | `/api/admin/roles/{id}` | Modifies role name, description, or assigned permissions. |
-| `DELETE`| `/api/admin/roles/{id}` | Deletes a role from the system. |
+| Method | Endpoint | Authority | Description |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/admin/roles` | `ADMIN_ROLE_VIEW_ALL` | Lists all defined system roles (`USER`, `ADMIN`, custom roles). |
+| `GET` | `/api/admin/roles/permissions` | `ADMIN_ROLE_VIEW_ALL_PERMISSION` | Lists available permissions currently held by the authenticated admin (prevents privilege escalation). |
+| `POST` | `/api/admin/roles` | `ADMIN_ROLE_ADD` | Creates a new role and maps associated permissions. |
+| `PUT` | `/api/admin/roles/{id}` | `ADMIN_ROLE_UPDATE` | Modifies role name, description, or assigned permissions. |
+| `DELETE`| `/api/admin/roles/{id}` | `ADMIN_ROLE_DELETE` | Deletes a custom role from the system. |
+
+> [!NOTE]
+> **`userRole` Automatic Enforcement**:
+> In `RoleRequest` and `RoleResponse`, the `userRole` boolean designates whether a role is an ordinary user role. If a role is assigned any permission starting with `ADMIN_`, `AdminRoleServiceImpl` automatically enforces `userRole = false`.
 
 ---
 
 ### 2.11. Administrative Mailer (`/api/admin/emails`)
 
-| Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| `POST` | `/api/admin/emails/send` | Dispatches individual email. Requires `SEND_EMAIL` permission. |
+| Method | Endpoint | Authority | Description |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/api/admin/emails/send` | `ADMIN_SEND_EMAIL` | Dispatches individual email directly via `EmailService`. Requires `ADMIN_SEND_EMAIL` authority. |
 
 ---
 
@@ -277,7 +290,7 @@ Administrative controls for user account governance.
 
 | Method | Endpoint | Authority | Description |
 | :--- | :--- | :--- | :--- |
-| `GET` | `/api/admin/users` | `ADMIN_VIEW_USERS` | Paginated search, sorting, and filtering by role, status, and gender. |
+| `GET` | `/api/admin/users` | `ADMIN_VIEW_USERS` | Paginated search, sorting, and filtering by `keyword`, `role`, `status`, `gender`, and `authProvider`. |
 | `GET` | `/api/admin/users/online` | `ADMIN_VIEW_ONLINE_USERS` | Queries real-time online users directly from Redis Sorted Set `online_users`. |
 | `GET` | `/api/admin/users/{username}` | `ADMIN_VIEW_USER_DETAIL` | Retrieves complete profile and status for a specific user. |
 | `POST` | `/api/admin/users` | `ADMIN_CREATE` | Admin creation of new user accounts. |

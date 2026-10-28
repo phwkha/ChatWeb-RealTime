@@ -22,8 +22,8 @@ ChatWeb is an enterprise-grade, real-time messaging web application engineered w
 .
 ├── .github/workflows/      # GitHub Actions CI/CD workflows (backend & frontend CI/CD)
 ├── chatweb_be/             # Spring Boot 3.5.x Backend (Java 21 LTS, JPA, MongoDB, Kafka, Redis)
-│   ├── initdb.sql          # PostgreSQL schema initialization script
-│   ├── init-mongo.js       # MongoDB collection and compound index setup
+│   ├── initdb.sql          # Placeholder file (schema & seed managed via JPA & DataSeeder.java)
+│   ├── init-mongo.js       # Placeholder file (indexes & seed managed via Spring Data & DataSeeder.java)
 │   └── src/                # Backend application and integration test suites
 ├── chatweb_fe/             # React 19 Frontend SPA (Vite 8, Modular CSS, STOMP.js, WebRTC)
 ├── docs/                   # Complete Technical Documentation Hub

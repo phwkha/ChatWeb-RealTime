@@ -54,7 +54,8 @@ sequenceDiagram
 
     par Branch 1: Fast-Push Stream (<10ms latency)
         Kafka->>ChatConsumer: Consume ChatMessageAvro payload
-        ChatConsumer->>WSRouting: routeMessage(recipient, /queue/messages)
+        ChatConsumer->>ChatConsumer: isDuplicate("chat_push", id + ":" + action, 10m)
+        ChatConsumer->>WSRouting: routeMessage(recipient, /queue/messages or /queue/notifications)
         WSRouting->>Redis: Lookup target server node at ws:routing:servers:{recipient}
         alt Recipient is on Current Node
             WSRouting->>Recipient: Push STOMP frame directly to local session
@@ -66,11 +67,12 @@ sequenceDiagram
         WSRouting->>Sender: Receive ACK with localId to update UI message status
     and Branch 2: Write-Behind Stream (Batch Persistence)
         Kafka->>SaveConsumer: Poll batch of up to 200 records
-        SaveConsumer->>Mongo: Bulk unordered insert into "messages" collection
-        alt DuplicateKeyException Encountered
+        SaveConsumer->>Mongo: Bulk unordered insert (CREATE) or upsert (EDIT, REVOKE, REACT)
+        alt DuplicateKeyException Encountered (Code 11000)
             Mongo-->>SaveConsumer: Safely ignored (Idempotent write)
         else Unrecoverable Storage Exception
-            SaveConsumer->>Kafka: Publish failed records to "chat-messages-save-dlt"
+            SaveConsumer->>SaveConsumer: retryBulkFailuresIndividually()
+            SaveConsumer->>Kafka: Publish persistent failures to "chat-messages-save-dlt"
         end
     end
 ```
@@ -79,7 +81,7 @@ sequenceDiagram
 
 ## 2. Authentication, Token Rotation, and Single Sign-Out
 
-Illustrates user login, access token issuance in headers, refresh token storage in HttpOnly cookies, token rotation, and instant global revocation via `token_version`.
+Illustrates user login, access token issuance in headers, refresh token storage in HttpOnly cookies, token rotation with 15-second grace window, and instant global revocation via `token_version`.
 
 ```mermaid
 sequenceDiagram
@@ -102,7 +104,7 @@ sequenceDiagram
         AuthSvc->>Cuckoo: exists("filter:usernames", username)
         alt Not Found in Cuckoo Filter (Zero False Negatives)
             Cuckoo-->>AuthSvc: False (Account definitely does not exist)
-            AuthSvc-->>User: 404 / 401 Rejection without querying PostgreSQL
+            AuthSvc-->>User: 401 Unauthorized (AuthenticationFailedException)
         else Might Exist in System
             Cuckoo-->>AuthSvc: True
             AuthSvc->>DB: Query UserEntity by username
@@ -117,15 +119,22 @@ sequenceDiagram
     AuthSvc-->>AuthCtrl: Return LoginResponse (Tokens + UserDTO)
     AuthCtrl-->>User: Response 200 OK<br/>Header: Authorization: Bearer <accessToken><br/>Set-Cookie: refreshToken=<UUID>#59; Path=/api/auth#59; HttpOnly#59; SameSite=Strict
 
-    note over User, DB: Token Rotation Flow
+    note over User, DB: Token Rotation Flow with 15s Grace Period
     User->>AuthCtrl: POST /api/auth/refresh-token (Cookie: refreshToken)
     AuthCtrl->>AuthSvc: refreshToken(refreshToken)
-    AuthSvc->>Redis: GET rt:{token} (Fetch RefreshTokenData)
-    AuthSvc->>DB: Verify tokenData.tokenVersion == user.tokenVersion
-    AuthSvc->>Redis: DEL rt:{token} (Revoke old refresh token immediately)
-    AuthSvc->>JWT: Issue new Access Token + new Opaque Refresh Token
-    JWT->>Redis: SET rt:{newToken} -> RefreshTokenData (TTL 7 days)
-    AuthCtrl-->>User: Return new tokens (Authorization Header + new Cookie)
+    AuthSvc->>Redis: Check rt_grace:{oldToken} (Grace window for in-flight requests)
+    alt In Grace Window
+        Redis-->>AuthSvc: Cached new token pair
+        AuthSvc-->>User: Return cached token pair
+    else Standard Rotation
+        AuthSvc->>Redis: GET rt:{oldToken} (Fetch RefreshTokenData)
+        AuthSvc->>DB: Verify tokenData.tokenVersion == user.tokenVersion
+        AuthSvc->>Redis: DEL rt:{oldToken} (Revoke old refresh token)
+        AuthSvc->>JWT: Issue new Access Token + new Opaque Refresh Token
+        JWT->>Redis: SET rt:{newToken} -> RefreshTokenData (TTL 7 days)
+        JWT->>Redis: SET rt_grace:{oldToken} -> newTokenPair (TTL 15 seconds)
+        AuthCtrl-->>User: Return new tokens (Authorization Header + new Cookie)
+    end
 
     note over User, DB: Single Sign-Out Across All Devices (O(1) Revocation)
     User->>AuthCtrl: POST /api/auth/logout-all-devices
@@ -207,22 +216,26 @@ sequenceDiagram
     participant WSRouting as WebSocketRoutingService
     actor Bob as Bob (Addressee)
 
-    Alice->>FriendCtrl: POST /api/friends/request { targetUsername: "bob" }
+    Alice->>FriendCtrl: POST /api/friends/request { targetUsername: "bob" }<br/>Header: X-Idempotency-Key: <UUID>
+    FriendCtrl->>Redis: SETNX idempotent:friend_request:alice:<UUID> (TTL 300s)
     FriendCtrl->>FriendSvc: sendFriendRequest("alice", "bob")
     FriendSvc->>DB: Check neither user is blocked & relationship doesn't exist
     FriendSvc->>DB: INSERT INTO friendships (requester_id, addressee_id, status='PENDING')
-    FriendSvc->>Kafka: Publish FriendNotificationPayload to "friend-notifications"
+    FriendSvc->>DB: INSERT INTO notifications (recipient_id=bob, type='FRIEND_REQUEST')
+    FriendSvc->>Kafka: Publish FriendPayload to "friend-notifications" (@TransactionalEventListener AFTER_COMMIT)
     FriendSvc-->>Alice: 200 OK (Request sent)
 
     Kafka->>FriendConsumer: Consume notification event
+    FriendConsumer->>FriendConsumer: isDuplicate("friend_push", eventId, 10m)
     FriendConsumer->>WSRouting: routeMessage("bob", "/queue/notifications", payload)
     WSRouting->>Bob: Deliver STOMP frame to /user/queue/notifications (Unread badge increments)
 
     note over Bob, Alice: Bob Accepts Friend Request with Idempotency Key
     Bob->>FriendCtrl: POST /api/friends/accept { targetUsername: "alice" }<br/>Header: X-Idempotency-Key: <UUID>
-    FriendCtrl->>Redis: SETNX idempotent:friend_accept:<UUID> (TTL 300s)
+    FriendCtrl->>Redis: SETNX idempotent:friend_accept:bob:<UUID> (TTL 300s)
     FriendCtrl->>FriendSvc: acceptFriendRequest("bob", "alice")
     FriendSvc->>DB: UPDATE friendships SET status = 'ACCEPTED' WHERE ...
+    FriendSvc->>DB: INSERT INTO notifications (recipient_id=alice, type='FRIEND_ACCEPTED')
     FriendSvc->>Kafka: Publish ACCEPTED event to "friend-notifications"
     FriendCtrl-->>Bob: 200 OK (Friendship established)
 
@@ -281,7 +294,7 @@ sequenceDiagram
 
 ## 6. User Report & Moderation Lifecycle
 
-Traces user violation reporting, administrative triage, and account moderation enforcement.
+Traces user violation reporting, administrative triage, and atomic account moderation enforcement.
 
 ```mermaid
 sequenceDiagram
@@ -292,7 +305,6 @@ sequenceDiagram
     participant DB as PostgreSQL (reports & users)
     actor Admin as System Administrator
     participant AdminCtrl as AdminReportController
-    participant AdminUserCtrl as AdminUserController
     actor Offender as Violating User
 
     Reporter->>RepCtrl: POST /api/reports { reportedUserId: 42, reason: "HARASSMENT", details: "Abusive language" }
@@ -307,15 +319,11 @@ sequenceDiagram
     AdminCtrl->>DB: Query reports where status='PENDING' (via idx_reports_status_create_at)
     AdminCtrl-->>Admin: Paginated list of pending reports
 
-    Admin->>AdminCtrl: PUT /api/admin/reports/{id}/resolve { status: "RESOLVED", resolutionNote: "Account suspended for TOS breach" }
+    note over Admin, DB: Atomic Resolve & Account Suspension
+    Admin->>AdminCtrl: PUT /api/admin/reports/{id}/resolve { status: "RESOLVED", resolutionNote: "...", lockReportedUser: true }
     AdminCtrl->>RepSvc: resolveReport(adminUser, id, request)
-    RepSvc->>DB: UPDATE reports SET status='RESOLVED', resolution_note=..., resolved_by_id=..., resolve_at=now WHERE id=?
-    RepSvc-->>Admin: 200 OK (ReportDetailResponse)
-
-    opt Admin Suspends Offending Account
-        Admin->>AdminUserCtrl: POST /api/admin/users/{username}/lock
-        AdminUserCtrl->>DB: UPDATE users SET user_status = 'LOCKED' WHERE username = ?
-        AdminUserCtrl-->>Admin: 200 OK (Account locked)
-        note over Offender: Next API call or token refresh by Offender is rejected with HTTP 403 / Account Locked
-    end
+    RepSvc->>RepSvc: Verify admin has ADMIN_LOCK authority
+    RepSvc->>DB: Transactional: UPDATE reports SET status='RESOLVED' & UPDATE users SET user_status='LOCKED' WHERE id=reportedUserId
+    RepSvc-->>Admin: 200 OK (ReportDetailResponse with account locked atomically)
+    note over Offender: Next API call or token refresh by Offender is rejected with HTTP 403 / Account Locked
 ```

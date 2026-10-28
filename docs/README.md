@@ -32,7 +32,7 @@ The documentation suite is structured into three specialized domains:
 ### 2. Database Design & Persistence Models
 - 💾 **[Polyglot Database Design](database/database-design.md)**:
   - **PostgreSQL 16+**: Authoritative relational ERD (`users`, `roles`, `permissions`, `friendships`, `addresses`, `notifications`, `reports`), column constraints, foreign keys, and index optimization.
-  - **MongoDB 7+**: Document schemas for `messages`, `read_receipts`, and `system_message`, compound indexing strategies, TTL auto-expiration, and automated initialization via `init-mongo.js`.
+  - **MongoDB 7+**: Document schemas for `messages`, `read_receipts`, and `system_message`, compound indexing strategies, TTL auto-expiration, and automated index/data seeding via `DataSeeder.java` and Spring Data annotations.
   - **Redis Stack**: Master key catalog, data structures, TTL rules, Cuckoo Filters (`filter:usernames`, `filter:emails`), sliding-window Lua rate limiters, and presence queues.
 
 ---
